@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import BillingModelSelector from '@/components/BillingModelSelector';
 import PayAsYouGoForm from '@/components/PayAsYouGoForm';
+import FlatRecurringForm from '@/components/FlatRecurringForm';
+import FixedOverageForm from '@/components/FixedOverageForm';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 
@@ -18,6 +20,32 @@ const BillingModels = () => {
   const handleBack = () => {
     setShowForm(false);
     setSelectedModel('');
+  };
+
+  const getFormTitle = () => {
+    switch (selectedModel) {
+      case 'pay-as-you-go':
+        return 'Pay As You Go Setup';
+      case 'flat-recurring':
+        return 'Flat Recurring Fee Setup';
+      case 'fixed-overage':
+        return 'Fixed Fee + Overage Setup';
+      default:
+        return '';
+    }
+  };
+
+  const renderForm = () => {
+    switch (selectedModel) {
+      case 'pay-as-you-go':
+        return <PayAsYouGoForm />;
+      case 'flat-recurring':
+        return <FlatRecurringForm />;
+      case 'fixed-overage':
+        return <FixedOverageForm />;
+      default:
+        return null;
+    }
   };
 
   return (
@@ -39,23 +67,11 @@ const BillingModels = () => {
             </Button>
             <div className="h-6 border-l border-border"></div>
             <h3 className="text-lg font-medium">
-              {selectedModel === 'pay-as-you-go' && 'Pay As You Go Setup'}
-              {selectedModel === 'flat-recurring' && 'Flat Recurring Fee Setup'}
-              {selectedModel === 'fixed-overage' && 'Fixed Fee + Overage Setup'}
+              {getFormTitle()}
             </h3>
           </div>
           
-          {selectedModel === 'pay-as-you-go' && <PayAsYouGoForm />}
-          {selectedModel === 'flat-recurring' && (
-            <div className="text-center py-12 text-muted-foreground">
-              Flat recurring form coming soon...
-            </div>
-          )}
-          {selectedModel === 'fixed-overage' && (
-            <div className="text-center py-12 text-muted-foreground">
-              Fixed + overage form coming soon...
-            </div>
-          )}
+          {renderForm()}
         </div>
       )}
     </DashboardLayout>
