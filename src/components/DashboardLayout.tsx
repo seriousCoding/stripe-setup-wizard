@@ -40,7 +40,7 @@ const DashboardLayout = ({ children, title, description }: DashboardLayoutProps)
           <div className="lg:col-span-1">
             <nav className="space-y-2">
               {navItems.map((item) => (
-                <Link key={item.href} href={item.href}>
+                <Link key={item.href} to={item.href}>
                   <Card className="p-4 hover:shadow-md transition-all duration-200 hover:border-indigo-200 cursor-pointer group">
                     <div className="flex items-start space-x-3">
                       <item.icon className="h-5 w-5 text-indigo-600 mt-0.5 group-hover:scale-110 transition-transform" />
