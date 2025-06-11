@@ -15,7 +15,7 @@ const Pricing = () => {
   const { toast } = useToast();
   
   // Enable automatic price refresh every 10 minutes
-  const { pricingTiers, isLoading: isPricingLoading, error: pricingError, isRefreshing } = useStripePricing({
+  const { pricingTiers, isLoading: isPricingLoading, error: pricingError, isRefreshing, refetch } = useStripePricing({
     autoRefresh: true,
     refreshInterval: 600000 // 10 minutes
   });
@@ -26,6 +26,15 @@ const Pricing = () => {
     transactions: 50,
     ai_processing: 20,
     data_exports: 5
+  };
+
+  // Manual refresh function for immediate updates
+  const handleRefreshPricing = () => {
+    refetch();
+    toast({
+      title: "Refreshing Pricing Data",
+      description: "Fetching latest pricing information from Stripe...",
+    });
   };
 
   const handleSelectPlan = async (tierId: string) => {
@@ -139,6 +148,19 @@ const Pricing = () => {
               </Button>
             </Link>
             <h1 className="text-4xl font-bold text-purple-500">Choose Your Plan</h1>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshPricing}
+              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </Button>
           </div>
           <p className="text-white/90 max-w-2xl mx-auto text-lg">
             Select the perfect plan for your business needs
@@ -221,7 +243,7 @@ const Pricing = () => {
                   ))}
                 </div>
                 
-                {tier.usageLimits && (
+                {tier.usageLimits && tier.usageLimits.length > 0 && (
                   <div className="bg-slate-700/40 rounded-lg p-4 mt-4">
                     <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
                       Usage Limits
@@ -234,7 +256,7 @@ const Pricing = () => {
                         </div>
                       ))}
                     </div>
-                    {tier.meterRate && (
+                    {tier.meterRate && tier.meterRate > 0 && (
                       <div className="mt-3 pt-2 border-t border-slate-600">
                         <div className="flex justify-between text-xs">
                           <span className="text-slate-400">After limit</span>

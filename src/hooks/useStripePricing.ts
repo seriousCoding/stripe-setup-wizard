@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -108,38 +107,48 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
 
     const priceAmount = defaultPrice.unit_amount ? defaultPrice.unit_amount / 100 : 0;
     const isRecurring = defaultPrice.recurring?.interval === 'month';
-    const usageLimits = product.usage_limits || {};
     const metadata = product.metadata || {};
     
     // Get tier ID from metadata
     const tierId = metadata.tier_id || 'custom';
 
-    // Create dynamic usage limits array
-    const dynamicUsageLimits = [];
-    if (usageLimits.transactions > 0) {
-      dynamicUsageLimits.push({ 
+    // Extract usage limits from metadata
+    const usageLimits = [];
+    
+    if (metadata.usage_limit_transactions) {
+      const transactionLimit = parseInt(metadata.usage_limit_transactions);
+      usageLimits.push({ 
         name: 'Transactions', 
-        value: usageLimits.transactions === 999999 ? 'Unlimited' : usageLimits.transactions.toLocaleString() 
+        value: transactionLimit >= 999999 ? 'Unlimited' : transactionLimit.toLocaleString() 
       });
     }
-    if (usageLimits.ai_processing > 0) {
-      dynamicUsageLimits.push({ 
+    
+    if (metadata.usage_limit_ai_processing) {
+      const aiLimit = parseInt(metadata.usage_limit_ai_processing);
+      usageLimits.push({ 
         name: 'AI Processing', 
-        value: usageLimits.ai_processing === 999999 ? 'Unlimited' : usageLimits.ai_processing.toLocaleString() 
+        value: aiLimit >= 999999 ? 'Unlimited' : aiLimit.toLocaleString() 
       });
     }
-    if (usageLimits.data_exports > 0) {
-      dynamicUsageLimits.push({ 
+    
+    if (metadata.usage_limit_data_exports) {
+      const exportLimit = parseInt(metadata.usage_limit_data_exports);
+      usageLimits.push({ 
         name: 'Data Exports', 
-        value: usageLimits.data_exports === 999999 ? 'Unlimited' : usageLimits.data_exports.toLocaleString() 
+        value: exportLimit >= 999999 ? 'Unlimited' : exportLimit.toLocaleString() 
       });
     }
-    if (usageLimits.api_calls > 0) {
-      dynamicUsageLimits.push({ 
+    
+    if (metadata.usage_limit_api_calls) {
+      const apiLimit = parseInt(metadata.usage_limit_api_calls);
+      usageLimits.push({ 
         name: 'API Calls', 
-        value: usageLimits.api_calls === 999999 ? 'Unlimited' : usageLimits.api_calls.toLocaleString() 
+        value: apiLimit >= 999999 ? 'Unlimited' : apiLimit.toLocaleString() 
       });
     }
+
+    // Generate features based on tier and metadata
+    const features = generateFeaturesFromTier(tierId, metadata);
 
     // Create tier from Stripe product data
     const tier: StripePricingTier = {
@@ -150,17 +159,17 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       price: priceAmount,
       currency: defaultPrice.currency?.toUpperCase() || 'USD',
       icon: getIconForTier(tierId),
-      features: generateFeaturesFromMetadata(metadata, usageLimits),
-      usageLimits: dynamicUsageLimits.length > 0 ? dynamicUsageLimits : undefined,
+      features: features,
+      usageLimits: usageLimits.length > 0 ? usageLimits : undefined,
       buttonText: priceAmount === 0 ? 'Start Free Trial' : 'Select Plan',
-      popular: metadata.popular === 'true' || tierId === 'professional',
-      badge: getBadgeFromTier(tierId, metadata),
+      popular: metadata.popular === 'true',
+      badge: metadata.badge || getBadgeFromTier(tierId, metadata),
       isMonthly: isRecurring,
-      meterRate: usageLimits.meter_rate || 0,
-      packageCredits: usageLimits.package_credits || 0,
-      includedUsage: usageLimits.included_usage || 0,
-      usageUnit: usageLimits.usage_unit || 'units',
-      tierStructure: product.graduated_pricing ? 'graduated' : 'flat'
+      meterRate: parseFloat(metadata.meter_rate || '0'),
+      packageCredits: parseInt(metadata.package_credits || '0'),
+      includedUsage: parseInt(metadata.usage_limit_transactions || '0'),
+      usageUnit: 'transactions',
+      tierStructure: 'flat'
     };
 
     tiers.push(tier);
@@ -168,6 +177,64 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
 
   // Sort tiers by price
   return tiers.sort((a, b) => a.price - b.price);
+};
+
+const generateFeaturesFromTier = (tierId: string, metadata: any): string[] => {
+  const features = [];
+  
+  // Add tier-specific features based on the image
+  switch (tierId) {
+    case 'trial':
+      features.push(
+        'Full access to all features',
+        '500 transaction limit',
+        'Basic AI processing',
+        'Email support'
+      );
+      break;
+    case 'starter':
+      features.push(
+        'Pay only for what you use',
+        'No monthly commitment',
+        'Basic AI data extraction',
+        'Standard support'
+      );
+      break;
+    case 'professional':
+      features.push(
+        '1,200 transaction credits',
+        '15% discount on bulk purchases',
+        'Advanced AI processing',
+        'Priority support',
+        'Usage analytics'
+      );
+      break;
+    case 'business':
+      features.push(
+        'Unlimited transactions',
+        'Unlimited AI processing',
+        'Advanced analytics',
+        'Dedicated support',
+        'Custom integrations'
+      );
+      break;
+    case 'enterprise':
+      features.push(
+        'Unlimited everything',
+        'Multi-user management',
+        'Advanced security',
+        'SLA guarantee',
+        'Custom development'
+      );
+      break;
+  }
+  
+  // Add meter rate information if available
+  if (metadata.meter_rate && parseFloat(metadata.meter_rate) > 0) {
+    features.push(`$${metadata.meter_rate}/transaction after limit`);
+  }
+  
+  return features;
 };
 
 const getSubtitleFromBillingType = (billingType: string, isRecurring: boolean): string => {
@@ -258,16 +325,19 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
       id: 'default',
       name: 'Default Plan',
       subtitle: 'Setup Required',
-      description: 'Please run the Stripe cleanup and reseed process to see proper billing tiers.',
+      description: 'Please run the Stripe cleanup and reseed process to see proper billing tiers with usage limits.',
       price: 0,
       currency: 'USD',
       icon: '⚙️',
       features: [
         'Use the management tools above',
         'Clean up existing products',
-        'Reseed with proper structure'
+        'Reseed with proper structure',
+        'Usage limits will appear after setup'
       ],
       buttonText: 'Setup Required',
     }
   ];
 };
+
+export default useStripePricing;
