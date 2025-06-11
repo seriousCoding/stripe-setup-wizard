@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting create-checkout function v2');
+    console.log('Starting create-checkout function v3');
     
     // Get Stripe secret key
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
@@ -83,13 +83,12 @@ serve(async (req) => {
       console.log('New customer created:', customerId);
     }
 
-    // Create price object with package and meter rate information
+    // Create price object without description in product_data
     const priceData: any = {
       currency: currency || 'usd',
       unit_amount: amount,
       product_data: {
         name: `${planName} Plan`,
-        description: `${planName} subscription plan${packageCredits ? ` - ${packageCredits} credits included` : ''}${meterRate ? ` - $${meterRate} per transaction after limit` : ''}`,
         metadata: {
           package_credits: packageCredits?.toString() || '0',
           meter_rate: meterRate?.toString() || '0',
