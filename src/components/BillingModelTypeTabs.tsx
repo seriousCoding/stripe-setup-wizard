@@ -1,65 +1,23 @@
 
-import React, { useState } from 'react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import PayAsYouGoForm from './PayAsYouGoForm';
-import FlatRecurringForm from './FlatRecurringForm';
-import FixedOverageForm from './FixedOverageForm';
-import PerSeatForm from './PerSeatForm';
+import React from 'react';
+import { Button } from '@/components/ui/button';
 
-interface BillingModelTypeTabsProps {
-  onTabChange?: (value: string) => void;
-  defaultValue?: string;
-}
-
-const BillingModelTypeTabs = ({ onTabChange, defaultValue = "pay-as-you-go" }: BillingModelTypeTabsProps) => {
-  const [activeTab, setActiveTab] = useState(defaultValue);
-
-  const handleTabChange = (value: string) => {
-    setActiveTab(value);
-    onTabChange?.(value);
-  };
-
+const BillingModelTypeTabs = () => {
   return (
-    <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-      <TabsList className="grid w-full grid-cols-4">
-        <TabsTrigger value="pay-as-you-go" className="flex items-center space-x-2">
-          <span>💰</span>
-          <span className="hidden sm:inline">Pay As You Go</span>
-          <span className="sm:hidden">PAYG</span>
-        </TabsTrigger>
-        <TabsTrigger value="flat-recurring" className="flex items-center space-x-2">
-          <span>🔄</span>
-          <span className="hidden sm:inline">Flat Recurring</span>
-          <span className="sm:hidden">Flat</span>
-        </TabsTrigger>
-        <TabsTrigger value="fixed-overage" className="flex items-center space-x-2">
-          <span>⚡</span>
-          <span className="hidden sm:inline">Fixed Fee & Overage</span>
-          <span className="sm:hidden">Fixed+</span>
-        </TabsTrigger>
-        <TabsTrigger value="per-seat" className="flex items-center space-x-2">
-          <span>💺</span>
-          <span className="hidden sm:inline">Per Seat</span>
-          <span className="sm:hidden">Seat</span>
-        </TabsTrigger>
-      </TabsList>
-      
-      <TabsContent value="pay-as-you-go" className="mt-6">
-        <PayAsYouGoForm />
-      </TabsContent>
-      
-      <TabsContent value="flat-recurring" className="mt-6">
-        <FlatRecurringForm />
-      </TabsContent>
-      
-      <TabsContent value="fixed-overage" className="mt-6">
-        <FixedOverageForm />
-      </TabsContent>
-      
-      <TabsContent value="per-seat" className="mt-6">
-        <PerSeatForm />
-      </TabsContent>
-    </Tabs>
+    <div className="flex space-x-1 bg-muted p-1 rounded-lg">
+      <Button variant="secondary" size="sm" className="flex-1">
+        💰 Pay As You Go
+      </Button>
+      <Button variant="ghost" size="sm" className="flex-1">
+        🔄 Flat Recurring
+      </Button>
+      <Button variant="ghost" size="sm" className="flex-1">
+        ⚡ Fixed Fee & Overage
+      </Button>
+      <Button variant="ghost" size="sm" className="flex-1">
+        💺 Per Seat
+      </Button>
+    </div>
   );
 };
 
