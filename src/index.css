@@ -108,25 +108,37 @@
 
   /* Ensure white text for most content */
   p, span, div, label {
-    color: white;
+    color: white !important;
   }
 
   /* Special styling for cards on gradient background */
   .card-on-gradient {
-    background: rgba(30, 41, 59, 0.9);
+    background: rgba(30, 41, 59, 0.9) !important;
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
   }
 
   /* Button styling to match theme */
   .btn-primary {
-    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-    border: none;
-    color: white;
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%) !important;
+    border: none !important;
+    color: white !important;
   }
 
   .btn-primary:hover {
-    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%) !important;
+  }
+
+  /* Global button overrides */
+  button {
+    background: rgba(59, 130, 246, 0.8) !important;
+    color: white !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  }
+
+  button:hover {
+    background: rgba(59, 130, 246, 1) !important;
   }
 
   /* Input styling */
@@ -143,6 +155,7 @@
   /* Tab styling */
   [role="tab"] {
     color: white !important;
+    background: rgba(30, 41, 59, 0.6) !important;
   }
 
   [role="tab"][data-state="active"] {
@@ -152,8 +165,56 @@
 
   /* Badge styling */
   .badge {
-    background: rgba(59, 130, 246, 0.8);
+    background: rgba(59, 130, 246, 0.8) !important;
+    color: white !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  }
+
+  /* Card component overrides */
+  [class*="card"] {
+    background: rgba(30, 41, 59, 0.9) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+  }
+
+  /* Popover and dropdown styling */
+  [role="dialog"], [role="menu"], [role="listbox"] {
+    background: rgba(30, 41, 59, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: white !important;
+    backdrop-filter: blur(10px) !important;
+  }
+
+  /* Progress bar styling */
+  [role="progressbar"] {
+    background: rgba(51, 65, 85, 0.5) !important;
+  }
+
+  [role="progressbar"] > div {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%) !important;
+  }
+
+  /* Form elements */
+  label {
+    color: white !important;
+  }
+
+  /* Links */
+  a {
+    color: #60a5fa !important;
+  }
+
+  a:hover {
+    color: #93c5fd !important;
+  }
+
+  /* Ensure all text content is white by default */
+  * {
     color: white;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  /* Override for specific semantic elements that should be black */
+  h1, h2, h3, h4, h5, h6 {
+    color: #000000 !important;
   }
 }
