@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Card } from '@/components/ui/card';
-import { Upload, DollarSign, FileSpreadsheet, Settings } from 'lucide-react';
+import { Upload, DollarSign, FileSpreadsheet, Settings, CreditCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import UserMenu from './UserMenu';
 
@@ -16,6 +15,7 @@ const DashboardLayout = ({ children, title, description }: DashboardLayoutProps)
     { href: '/', icon: Upload, label: 'Data Upload', description: 'Upload and configure from spreadsheet' },
     { href: '/billing-models', icon: DollarSign, label: 'Billing Models', description: 'Set up common billing patterns' },
     { href: '/products', icon: FileSpreadsheet, label: 'Products', description: 'Manage existing products' },
+    { href: '/pricing', icon: CreditCard, label: 'Pricing', description: 'View and select pricing plans' },
     { href: '/settings', icon: Settings, label: 'Settings', description: 'API keys and preferences' },
   ];
 
