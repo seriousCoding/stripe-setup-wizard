@@ -6,225 +6,265 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, DollarSign, Package } from 'lucide-react';
+import { Plus, Trash2, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { billingModelService } from '@/services/billingModelService';
+
+interface RecurringPlan {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  interval: string;
+  description: string;
+}
 
 const FlatRecurringForm = () => {
-  const [formData, setFormData] = useState({
-    productName: '',
-    productDescription: '',
-    price: '',
-    currency: 'usd',
-    interval: 'month',
-    intervalCount: '1',
-    existingProductId: '',
-    useExistingProduct: false
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modelName, setModelName] = useState('');
+  const [modelDescription, setModelDescription] = useState('');
+  const [plans, setPlans] = useState<RecurringPlan[]>([
+    {
+      id: '1',
+      name: 'Basic Plan',
+      price: 9.99,
+      currency: 'USD',
+      interval: 'month',
+      description: 'Basic features for getting started'
+    }
+  ]);
   const { toast } = useToast();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const addPlan = () => {
+    const newPlan: RecurringPlan = {
+      id: Date.now().toString(),
+      name: '',
+      price: 0,
+      currency: 'USD',
+      interval: 'month',
+      description: ''
+    };
+    setPlans([...plans, newPlan]);
+  };
 
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      toast({
-        title: "Subscription Created Successfully!",
-        description: `${formData.productName} has been set up with ${formData.currency.toUpperCase()} ${formData.price}/${formData.interval} pricing.`,
-      });
-      
-      // Reset form
-      setFormData({
-        productName: '',
-        productDescription: '',
-        price: '',
-        currency: 'usd',
-        interval: 'month',
-        intervalCount: '1',
-        existingProductId: '',
-        useExistingProduct: false
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create subscription. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
+  const updatePlan = (id: string, field: keyof RecurringPlan, value: any) => {
+    setPlans(plans.map(plan => 
+      plan.id === id ? { ...plan, [field]: value } : plan
+    ));
+  };
+
+  const removePlan = (id: string) => {
+    if (plans.length > 1) {
+      setPlans(plans.filter(plan => plan.id !== id));
     }
   };
 
-  const formatPreview = () => {
-    if (!formData.price) return '';
-    const count = parseInt(formData.intervalCount) || 1;
-    const intervalText = count === 1 ? formData.interval : `${count} ${formData.interval}s`;
-    return `${formData.currency.toUpperCase()} $${formData.price} per ${intervalText}`;
+  const saveModel = async () => {
+    if (!modelName || plans.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please provide a model name and at least one plan.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const billingItems = plans.map(plan => ({
+      id: plan.id,
+      product: plan.name,
+      price: plan.price,
+      currency: plan.currency,
+      type: 'recurring' as const,
+      interval: plan.interval,
+      description: plan.description
+    }));
+
+    const model = {
+      name: modelName,
+      description: modelDescription,
+      type: 'flat-recurring' as const,
+      items: billingItems
+    };
+
+    const { model: savedModel, error } = await billingModelService.saveBillingModel(model);
+    
+    if (error) {
+      toast({
+        title: "Error",
+        description: error,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Model Saved!",
+      description: `${modelName} has been saved successfully.`,
+    });
   };
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Calendar className="h-5 w-5" />
-            <span>Flat Recurring Subscription</span>
-          </CardTitle>
+          <CardTitle>Flat Recurring Billing Model</CardTitle>
           <CardDescription>
-            Create a simple subscription with fixed recurring payments
+            Create subscription plans with fixed recurring prices. Perfect for SaaS products with predictable pricing tiers.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex items-center space-x-2 mb-4">
-              <Switch
-                id="use-existing"
-                checked={formData.useExistingProduct}
-                onCheckedChange={(checked) => 
-                  setFormData(prev => ({ ...prev, useExistingProduct: checked }))
-                }
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="model-name">Model Name</Label>
+              <Input
+                id="model-name"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                placeholder="e.g., SaaS Subscription Plans"
               />
-              <Label htmlFor="use-existing">Use existing Stripe product</Label>
             </div>
-
-            {formData.useExistingProduct ? (
-              <div className="space-y-2">
-                <Label htmlFor="existing-product">Existing Product ID</Label>
-                <Input
-                  id="existing-product"
-                  value={formData.existingProductId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, existingProductId: e.target.value }))}
-                  placeholder="prod_..."
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Enter the Product ID from your Stripe dashboard
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="product-name">Product Name</Label>
-                  <Input
-                    id="product-name"
-                    value={formData.productName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, productName: e.target.value }))}
-                    placeholder="Premium Subscription"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="product-description">Product Description</Label>
-                  <Textarea
-                    id="product-description"
-                    value={formData.productDescription}
-                    onChange={(e) => setFormData(prev => ({ ...prev, productDescription: e.target.value }))}
-                    placeholder="Access to premium features and priority support"
-                    rows={3}
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Price</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.price}
-                  onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
-                  placeholder="29.99"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="currency">Currency</Label>
-                <Select
-                  value={formData.currency}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, currency: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="usd">USD - US Dollar</SelectItem>
-                    <SelectItem value="eur">EUR - Euro</SelectItem>
-                    <SelectItem value="gbp">GBP - British Pound</SelectItem>
-                    <SelectItem value="cad">CAD - Canadian Dollar</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="interval">Billing Interval</Label>
-                <Select
-                  value={formData.interval}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, interval: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">Day</SelectItem>
-                    <SelectItem value="week">Week</SelectItem>
-                    <SelectItem value="month">Month</SelectItem>
-                    <SelectItem value="year">Year</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="interval-count">Interval Count</Label>
-                <Input
-                  id="interval-count"
-                  type="number"
-                  min="1"
-                  value={formData.intervalCount}
-                  onChange={(e) => setFormData(prev => ({ ...prev, intervalCount: e.target.value }))}
-                  placeholder="1"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Bill every X {formData.interval}s
-                </p>
-              </div>
-            </div>
-
-            {formData.price && (
-              <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-                <CardContent className="pt-6">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <DollarSign className="h-4 w-4 text-blue-600" />
-                    <span className="font-medium text-blue-900">Pricing Preview</span>
-                  </div>
-                  <Badge variant="secondary" className="text-blue-700 bg-blue-100">
-                    {formatPreview()}
-                  </Badge>
-                </CardContent>
-              </Card>
-            )}
-
-            <Button 
-              type="submit" 
-              disabled={isSubmitting || !formData.price}
-              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600"
-            >
-              {isSubmitting ? 'Creating Subscription...' : 'Create Subscription'}
-            </Button>
-          </form>
+          </div>
+          
+          <div>
+            <Label htmlFor="model-description">Description</Label>
+            <Textarea
+              id="model-description"
+              value={modelDescription}
+              onChange={(e) => setModelDescription(e.target.value)}
+              placeholder="Describe your subscription model..."
+              rows={3}
+            />
+          </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Subscription Plans ({plans.length})</CardTitle>
+              <CardDescription>
+                Define your subscription tiers and pricing
+              </CardDescription>
+            </div>
+            <Button onClick={addPlan} variant="outline">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Plan
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {plans.map((plan) => (
+              <div key={plan.id} className="p-4 border rounded-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium">Plan Configuration</h4>
+                  {plans.length > 1 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removePlan(plan.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <Label>Plan Name</Label>
+                    <Input
+                      value={plan.name}
+                      onChange={(e) => updatePlan(plan.id, 'name', e.target.value)}
+                      placeholder="e.g., Basic Plan"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label>Price</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={plan.price}
+                      onChange={(e) => updatePlan(plan.id, 'price', parseFloat(e.target.value) || 0)}
+                      placeholder="9.99"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label>Currency</Label>
+                    <Select value={plan.currency} onValueChange={(value) => updatePlan(plan.id, 'currency', value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="GBP">GBP</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label>Billing Interval</Label>
+                    <Select value={plan.interval} onValueChange={(value) => updatePlan(plan.id, 'interval', value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="month">Monthly</SelectItem>
+                        <SelectItem value="year">Yearly</SelectItem>
+                        <SelectItem value="week">Weekly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div>
+                  <Label>Description</Label>
+                  <Textarea
+                    value={plan.description}
+                    onChange={(e) => updatePlan(plan.id, 'description', e.target.value)}
+                    placeholder="Describe what's included in this plan..."
+                    rows={2}
+                  />
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline">
+                    ${plan.price} {plan.currency}/{plan.interval}
+                  </Badge>
+                  <Badge variant="secondary">Recurring</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+        <CardHeader>
+          <CardTitle>Model Summary</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <p><strong>Total Plans:</strong> {plans.length}</p>
+            <p><strong>Price Range:</strong> ${Math.min(...plans.map(p => p.price)).toFixed(2)} - ${Math.max(...plans.map(p => p.price)).toFixed(2)}</p>
+            <p><strong>Model Type:</strong> Flat Recurring Subscription</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex space-x-3">
+        <Button
+          onClick={saveModel}
+          disabled={!modelName || plans.length === 0}
+          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+        >
+          <Save className="h-4 w-4 mr-2" />
+          Save Billing Model
+        </Button>
+      </div>
     </div>
   );
 };

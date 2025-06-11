@@ -1,19 +1,20 @@
 
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Wand2 } from 'lucide-react';
+import { Edit, Check } from 'lucide-react';
 
 interface ModelHeaderProps {
   modelName: string;
-  setModelName: (value: string) => void;
+  setModelName: (name: string) => void;
   modelDescription: string;
-  setModelDescription: (value: string) => void;
+  setModelDescription: (description: string) => void;
   isEditing: boolean;
-  setIsEditing: (value: boolean) => void;
+  setIsEditing: (editing: boolean) => void;
   modelType: string;
 }
 
@@ -27,46 +28,71 @@ const ModelHeader = ({
   modelType
 }: ModelHeaderProps) => {
   return (
-    <Card>
+    <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
       <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Wand2 className="h-5 w-5 text-indigo-600" />
-          <span>Generated Billing Model</span>
-          <Badge variant="secondary">{modelType}</Badge>
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <CardTitle className="text-xl">Billing Model Configuration</CardTitle>
+            <Badge variant="outline" className="bg-white">
+              {modelType}
+            </Badge>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsEditing(!isEditing)}
+            className="flex items-center space-x-2"
+          >
+            {isEditing ? (
+              <>
+                <Check className="h-4 w-4" />
+                <span>Done Editing</span>
+              </>
+            ) : (
+              <>
+                <Edit className="h-4 w-4" />
+                <span>Edit Details</span>
+              </>
+            )}
+          </Button>
+        </div>
         <CardDescription>
-          Edit and customize your billing model based on the uploaded data
+          Configure your billing model details and review the generated configuration
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="model-name">Model Name</Label>
-            <Input
-              id="model-name"
-              value={modelName}
-              onChange={(e) => setModelName(e.target.value)}
-              placeholder="e.g., API Service Pricing Model"
-            />
+        {isEditing ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="model-name">Model Name</Label>
+              <Input
+                id="model-name"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                placeholder="Enter a descriptive name for your billing model"
+                className="bg-white"
+              />
+            </div>
+            <div>
+              <Label htmlFor="model-description">Description</Label>
+              <Textarea
+                id="model-description"
+                value={modelDescription}
+                onChange={(e) => setModelDescription(e.target.value)}
+                placeholder="Describe how this billing model works"
+                className="bg-white"
+                rows={2}
+              />
+            </div>
           </div>
+        ) : (
           <div className="space-y-2">
-            <Label htmlFor="model-description">Model Description</Label>
-            <Input
-              id="model-description"
-              value={modelDescription}
-              onChange={(e) => setModelDescription(e.target.value)}
-              placeholder="Brief description of this billing model"
-            />
+            <div>
+              <h3 className="font-semibold text-lg">{modelName || 'Untitled Billing Model'}</h3>
+              <p className="text-gray-600">{modelDescription || 'No description provided'}</p>
+            </div>
           </div>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Switch
-            checked={isEditing}
-            onCheckedChange={setIsEditing}
-          />
-          <Label>Enable editing mode</Label>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

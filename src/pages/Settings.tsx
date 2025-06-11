@@ -5,256 +5,268 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Eye, EyeOff, Copy, RefreshCw, Key, Bell, Shield } from 'lucide-react';
+import { Save, Key, Bell, Shield, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 const Settings = () => {
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [stripeApiKey, setStripeApiKey] = useState('sk_test_...');
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [notifications, setNotifications] = useState({
-    email: true,
-    push: false,
-    webhooks: true
-  });
+  const { user, profile } = useAuth();
   const { toast } = useToast();
+  
+  const [settings, setSettings] = useState({
+    companyName: profile?.company_name || '',
+    defaultCurrency: 'USD',
+    stripeApiKey: '',
+    webhookEndpoint: '',
+    notifications: {
+      emailAlerts: true,
+      billingUpdates: true,
+      systemMaintenance: false
+    },
+    preferences: {
+      autoSave: true,
+      darkMode: false,
+      compactView: false
+    }
+  });
 
-  const handleCopyApiKey = () => {
-    navigator.clipboard.writeText(stripeApiKey);
+  const handleSave = () => {
     toast({
-      title: "Copied to clipboard",
-      description: "API key has been copied to your clipboard.",
+      title: "Settings Saved",
+      description: "Your preferences have been updated successfully.",
     });
   };
 
-  const handleSaveSettings = () => {
+  const handleStripeConnection = () => {
     toast({
-      title: "Settings saved",
-      description: "Your settings have been successfully updated.",
+      title: "Stripe Connection",
+      description: "Stripe OAuth flow would be initiated here.",
     });
+  };
+
+  const handleDeleteAccount = () => {
+    if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+      toast({
+        title: "Account Deletion",
+        description: "Account deletion process would be initiated here.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
     <DashboardLayout
       title="Settings"
-      description="Configure your API keys, preferences, and integrations"
+      description="Manage your account preferences and integrations"
     >
-      <Tabs defaultValue="api" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="api">API Keys</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="api" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Key className="h-5 w-5" />
-                <span>Stripe API Configuration</span>
-              </CardTitle>
-              <CardDescription>
-                Configure your Stripe API keys to enable product and billing management
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="stripe-key">Stripe Secret Key</Label>
-                <div className="flex space-x-2">
-                  <div className="relative flex-1">
-                    <Input
-                      id="stripe-key"
-                      type={showApiKey ? "text" : "password"}
-                      value={stripeApiKey}
-                      onChange={(e) => setStripeApiKey(e.target.value)}
-                      placeholder="sk_test_..."
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                  >
-                    {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                  <Button variant="outline" size="icon" onClick={handleCopyApiKey}>
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Find your API keys in your Stripe Dashboard under Developers → API keys
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="webhook-url">Webhook Endpoint URL (Optional)</Label>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Shield className="h-5 w-5" />
+              <span>Account Information</span>
+            </CardTitle>
+            <CardDescription>
+              Basic account details and company information
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="email">Email Address</Label>
                 <Input
-                  id="webhook-url"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  placeholder="https://yourapp.com/webhook"
+                  id="email"
+                  type="email"
+                  value={user?.email || ''}
+                  disabled
+                  className="bg-gray-50"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Configure webhooks to receive real-time updates from Stripe
+              </div>
+              <div>
+                <Label htmlFor="company">Company Name</Label>
+                <Input
+                  id="company"
+                  value={settings.companyName}
+                  onChange={(e) => setSettings({...settings, companyName: e.target.value})}
+                  placeholder="Enter your company name"
+                />
+              </div>
+            </div>
+            
+            <div>
+              <Label htmlFor="default-currency">Default Currency</Label>
+              <select
+                id="default-currency"
+                value={settings.defaultCurrency}
+                onChange={(e) => setSettings({...settings, defaultCurrency: e.target.value})}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="USD">USD - US Dollar</option>
+                <option value="EUR">EUR - Euro</option>
+                <option value="GBP">GBP - British Pound</option>
+              </select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Key className="h-5 w-5" />
+              <span>Stripe Integration</span>
+            </CardTitle>
+            <CardDescription>
+              Connect your Stripe account to enable billing model deployment
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <h4 className="font-medium">Stripe Account</h4>
+                <p className="text-sm text-gray-600">Not connected</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Badge variant="secondary">Disconnected</Badge>
+                <Button onClick={handleStripeConnection}>
+                  Connect Stripe
+                </Button>
+              </div>
+            </div>
+            
+            <div>
+              <Label htmlFor="webhook-endpoint">Webhook Endpoint (Optional)</Label>
+              <Input
+                id="webhook-endpoint"
+                value={settings.webhookEndpoint}
+                onChange={(e) => setSettings({...settings, webhookEndpoint: e.target.value})}
+                placeholder="https://your-app.com/webhooks/stripe"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Configure webhook endpoint for real-time payment notifications
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Bell className="h-5 w-5" />
+              <span>Notifications</span>
+            </CardTitle>
+            <CardDescription>
+              Configure how you want to receive updates and alerts
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-4">
+              {Object.entries({
+                emailAlerts: 'Email Alerts',
+                billingUpdates: 'Billing Updates',
+                systemMaintenance: 'System Maintenance'
+              }).map(([key, label]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor={key}>{label}</Label>
+                    <p className="text-sm text-gray-600">
+                      {key === 'emailAlerts' && 'Receive important notifications via email'}
+                      {key === 'billingUpdates' && 'Get notified about billing model changes'}
+                      {key === 'systemMaintenance' && 'Alerts about scheduled maintenance'}
+                    </p>
+                  </div>
+                  <Switch
+                    id={key}
+                    checked={settings.notifications[key as keyof typeof settings.notifications]}
+                    onCheckedChange={(checked) => 
+                      setSettings({
+                        ...settings,
+                        notifications: {
+                          ...settings.notifications,
+                          [key]: checked
+                        }
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Preferences</CardTitle>
+            <CardDescription>
+              Customize your application experience
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-4">
+              {Object.entries({
+                autoSave: 'Auto-save billing models',
+                darkMode: 'Dark mode interface',
+                compactView: 'Compact view layout'
+              }).map(([key, label]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <Label htmlFor={key}>{label}</Label>
+                  <Switch
+                    id={key}
+                    checked={settings.preferences[key as keyof typeof settings.preferences]}
+                    onCheckedChange={(checked) => 
+                      setSettings({
+                        ...settings,
+                        preferences: {
+                          ...settings.preferences,
+                          [key]: checked
+                        }
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-red-200">
+          <CardHeader>
+            <CardTitle className="text-red-600">Danger Zone</CardTitle>
+            <CardDescription>
+              Irreversible actions that will permanently affect your account
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between p-4 border border-red-200 rounded-lg">
+              <div>
+                <h4 className="font-medium text-red-600">Delete Account</h4>
+                <p className="text-sm text-gray-600">
+                  Permanently delete your account and all associated data
                 </p>
               </div>
-
-              <div className="flex items-center space-x-2 pt-4">
-                <div className="flex-1">
-                  <Badge variant="secondary" className="mr-2">Test Mode</Badge>
-                  <span className="text-sm text-muted-foreground">
-                    Currently using Stripe test environment
-                  </span>
-                </div>
-                <Button onClick={handleSaveSettings}>Save API Settings</Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Connection Status</CardTitle>
-              <CardDescription>Current status of your integrations</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm">Stripe API</span>
-                  </div>
-                  <Badge variant="outline">Connected</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="h-2 w-2 bg-yellow-500 rounded-full"></div>
-                    <span className="text-sm">Webhooks</span>
-                  </div>
-                  <Badge variant="secondary">Not Configured</Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="notifications" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Bell className="h-5 w-5" />
-                <span>Notification Preferences</span>
-              </CardTitle>
-              <CardDescription>
-                Choose how you want to be notified about important events
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="email-notifications">Email Notifications</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Receive email updates for successful operations and errors
-                  </p>
-                </div>
-                <Switch
-                  id="email-notifications"
-                  checked={notifications.email}
-                  onCheckedChange={(checked) => 
-                    setNotifications(prev => ({ ...prev, email: checked }))
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="push-notifications">Push Notifications</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Get browser notifications for real-time updates
-                  </p>
-                </div>
-                <Switch
-                  id="push-notifications"
-                  checked={notifications.push}
-                  onCheckedChange={(checked) => 
-                    setNotifications(prev => ({ ...prev, push: checked }))
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="webhook-notifications">Webhook Events</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Forward important events to your webhook endpoint
-                  </p>
-                </div>
-                <Switch
-                  id="webhook-notifications"
-                  checked={notifications.webhooks}
-                  onCheckedChange={(checked) => 
-                    setNotifications(prev => ({ ...prev, webhooks: checked }))
-                  }
-                />
-              </div>
-
-              <Button onClick={handleSaveSettings} className="w-full">
-                Save Notification Settings
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteAccount}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Account
               </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="security" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Shield className="h-5 w-5" />
-                <span>Security Settings</span>
-              </CardTitle>
-              <CardDescription>
-                Manage your account security and data protection settings
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <Label>API Key Security</Label>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Your API keys are encrypted and stored securely
-                  </p>
-                  <Button variant="outline" className="w-full">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Rotate API Keys
-                  </Button>
-                </div>
-
-                <div>
-                  <Label>Data Export</Label>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Download your configuration data and audit logs
-                  </p>
-                  <Button variant="outline" className="w-full">
-                    Export Data
-                  </Button>
-                </div>
-
-                <div>
-                  <Label>Account Deletion</Label>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Permanently delete your account and all associated data
-                  </p>
-                  <Button variant="destructive" className="w-full">
-                    Delete Account
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        <div className="flex space-x-3">
+          <Button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700">
+            <Save className="h-4 w-4 mr-2" />
+            Save Settings
+          </Button>
+          <Button variant="outline">
+            Reset to Defaults
+          </Button>
+        </div>
+      </div>
     </DashboardLayout>
   );
 };

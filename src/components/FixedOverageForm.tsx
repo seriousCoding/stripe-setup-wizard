@@ -6,308 +6,379 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { billingModelService } from '@/services/billingModelService';
 
-interface OverageService {
+interface BasePlan {
+  name: string;
+  price: number;
+  currency: string;
+  interval: string;
+  description: string;
+  includedUsage: number;
+  usageUnit: string;
+}
+
+interface OverageItem {
   id: string;
-  displayName: string;
+  name: string;
+  pricePerUnit: number;
+  currency: string;
   eventName: string;
-  pricePerUnit: string;
+  description: string;
 }
 
 const FixedOverageForm = () => {
-  const [formData, setFormData] = useState({
-    productName: '',
-    productDescription: '',
-    basePrice: '',
-    currency: 'usd',
+  const [modelName, setModelName] = useState('');
+  const [modelDescription, setModelDescription] = useState('');
+  const [basePlan, setBasePlan] = useState<BasePlan>({
+    name: 'Professional Plan',
+    price: 49.99,
+    currency: 'USD',
     interval: 'month',
-    existingProductId: '',
-    useExistingProduct: false
+    description: 'Base plan with included usage',
+    includedUsage: 1000,
+    usageUnit: 'API calls'
   });
-  
-  const [overageServices, setOverageServices] = useState<OverageService[]>([
-    { id: '1', displayName: '', eventName: '', pricePerUnit: '' }
+  const [overageItems, setOverageItems] = useState<OverageItem[]>([
+    {
+      id: '1',
+      name: 'Additional API Calls',
+      pricePerUnit: 0.01,
+      currency: 'USD',
+      eventName: 'api_call_overage',
+      description: 'Extra API calls beyond included limit'
+    }
   ]);
-  
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
-  const addOverageService = () => {
-    const newService: OverageService = {
+  const addOverageItem = () => {
+    const newItem: OverageItem = {
       id: Date.now().toString(),
-      displayName: '',
+      name: '',
+      pricePerUnit: 0,
+      currency: 'USD',
       eventName: '',
-      pricePerUnit: ''
+      description: ''
     };
-    setOverageServices(prev => [...prev, newService]);
+    setOverageItems([...overageItems, newItem]);
   };
 
-  const removeOverageService = (id: string) => {
-    setOverageServices(prev => prev.filter(service => service.id !== id));
-  };
-
-  const updateOverageService = (id: string, field: keyof OverageService, value: string) => {
-    setOverageServices(prev => 
-      prev.map(service => 
-        service.id === id ? { ...service, [field]: value } : service
+  const updateOverageItem = (id: string, field: keyof OverageItem, value: any) => {
+    setOverageItems(items => 
+      items.map(item => 
+        item.id === id ? { ...item, [field]: value } : item
       )
     );
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const removeOverageItem = (id: string) => {
+    if (overageItems.length > 1) {
+      setOverageItems(items => items.filter(item => item.id !== id));
+    }
+  };
 
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+  const saveModel = async () => {
+    if (!modelName || !basePlan.name) {
       toast({
-        title: "Fixed + Overage Plan Created!",
-        description: `${formData.productName} has been set up with base pricing and overage charges.`,
-      });
-      
-      // Reset form
-      setFormData({
-        productName: '',
-        productDescription: '',
-        basePrice: '',
-        currency: 'usd',
-        interval: 'month',
-        existingProductId: '',
-        useExistingProduct: false
-      });
-      setOverageServices([{ id: '1', displayName: '', eventName: '', pricePerUnit: '' }]);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create plan. Please try again.",
+        title: "Validation Error",
+        description: "Please provide a model name and base plan details.",
         variant: "destructive",
       });
-    } finally {
-      setIsSubmitting(false);
+      return;
     }
+
+    const billingItems = [
+      {
+        id: 'base-plan',
+        product: basePlan.name,
+        price: basePlan.price,
+        currency: basePlan.currency,
+        type: 'recurring' as const,
+        interval: basePlan.interval,
+        description: basePlan.description
+      },
+      ...overageItems.map(item => ({
+        id: item.id,
+        product: item.name,
+        price: item.pricePerUnit,
+        currency: item.currency,
+        type: 'metered' as const,
+        eventName: item.eventName,
+        description: item.description
+      }))
+    ];
+
+    const model = {
+      name: modelName,
+      description: modelDescription,
+      type: 'fixed-overage' as const,
+      items: billingItems
+    };
+
+    const { model: savedModel, error } = await billingModelService.saveBillingModel(model);
+    
+    if (error) {
+      toast({
+        title: "Error",
+        description: error,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Model Saved!",
+      description: `${modelName} has been saved successfully.`,
+    });
   };
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <TrendingUp className="h-5 w-5" />
-            <span>Fixed Fee + Overage Model</span>
-          </CardTitle>
+          <CardTitle>Fixed + Overage Billing Model</CardTitle>
           <CardDescription>
-            Create a base subscription with included usage plus metered overage charges
+            Create a hybrid model with a base subscription fee plus usage-based charges for overages. Perfect for services with predictable base usage and variable overages.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex items-center space-x-2 mb-4">
-              <Switch
-                id="use-existing"
-                checked={formData.useExistingProduct}
-                onCheckedChange={(checked) => 
-                  setFormData(prev => ({ ...prev, useExistingProduct: checked }))
-                }
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="model-name">Model Name</Label>
+              <Input
+                id="model-name"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                placeholder="e.g., Professional + Overages"
               />
-              <Label htmlFor="use-existing">Use existing Stripe product</Label>
             </div>
-
-            {formData.useExistingProduct ? (
-              <div className="space-y-2">
-                <Label htmlFor="existing-product">Existing Product ID</Label>
-                <Input
-                  id="existing-product"
-                  value={formData.existingProductId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, existingProductId: e.target.value }))}
-                  placeholder="prod_..."
-                  required
-                />
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="product-name">Product Name</Label>
-                  <Input
-                    id="product-name"
-                    value={formData.productName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, productName: e.target.value }))}
-                    placeholder="Business Plan"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="product-description">Product Description</Label>
-                  <Textarea
-                    id="product-description"
-                    value={formData.productDescription}
-                    onChange={(e) => setFormData(prev => ({ ...prev, productDescription: e.target.value }))}
-                    placeholder="Base plan with included usage and overage billing"
-                    rows={3}
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="base-price">Base Price</Label>
-                <Input
-                  id="base-price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.basePrice}
-                  onChange={(e) => setFormData(prev => ({ ...prev, basePrice: e.target.value }))}
-                  placeholder="99.00"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="currency">Currency</Label>
-                <Select
-                  value={formData.currency}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, currency: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="usd">USD</SelectItem>
-                    <SelectItem value="eur">EUR</SelectItem>
-                    <SelectItem value="gbp">GBP</SelectItem>
-                    <SelectItem value="cad">CAD</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="interval">Billing Interval</Label>
-                <Select
-                  value={formData.interval}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, interval: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="month">Monthly</SelectItem>
-                    <SelectItem value="year">Yearly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </form>
+          </div>
+          
+          <div>
+            <Label htmlFor="model-description">Description</Label>
+            <Textarea
+              id="model-description"
+              value={modelDescription}
+              onChange={(e) => setModelDescription(e.target.value)}
+              placeholder="Describe your fixed + overage model..."
+              rows={3}
+            />
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Overage Services</CardTitle>
+          <CardTitle>Base Subscription Plan</CardTitle>
           <CardDescription>
-            Define metered services that will be charged beyond the base plan
+            Define the fixed recurring component of your billing model
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {overageServices.map((service, index) => (
-              <Card key={service.id} className="bg-gray-50">
-                <CardContent className="pt-4">
-                  <div className="flex items-start justify-between mb-4">
-                    <h4 className="font-medium">Overage Service {index + 1}</h4>
-                    {overageServices.length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeOverageService(service.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Display Name</Label>
-                      <Input
-                        value={service.displayName}
-                        onChange={(e) => updateOverageService(service.id, 'displayName', e.target.value)}
-                        placeholder="Extra API Calls"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label>Event Name</Label>
-                      <Input
-                        value={service.eventName}
-                        onChange={(e) => updateOverageService(service.id, 'eventName', e.target.value)}
-                        placeholder="api_call_overage"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label>Price per Unit</Label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        value={service.pricePerUnit}
-                        onChange={(e) => updateOverageService(service.id, 'pricePerUnit', e.target.value)}
-                        placeholder="0.01"
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <Label>Plan Name</Label>
+              <Input
+                value={basePlan.name}
+                onChange={(e) => setBasePlan({...basePlan, name: e.target.value})}
+                placeholder="e.g., Professional Plan"
+              />
+            </div>
             
-            <Button
-              type="button"
-              variant="outline"
-              onClick={addOverageService}
-              className="w-full"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Another Overage Service
-            </Button>
+            <div>
+              <Label>Monthly Price</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={basePlan.price}
+                onChange={(e) => setBasePlan({...basePlan, price: parseFloat(e.target.value) || 0})}
+                placeholder="49.99"
+              />
+            </div>
+            
+            <div>
+              <Label>Currency</Label>
+              <Select value={basePlan.currency} onValueChange={(value) => setBasePlan({...basePlan, currency: value})}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="GBP">GBP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Included Usage</Label>
+              <Input
+                type="number"
+                value={basePlan.includedUsage}
+                onChange={(e) => setBasePlan({...basePlan, includedUsage: parseInt(e.target.value) || 0})}
+                placeholder="1000"
+              />
+            </div>
+            
+            <div>
+              <Label>Usage Unit</Label>
+              <Input
+                value={basePlan.usageUnit}
+                onChange={(e) => setBasePlan({...basePlan, usageUnit: e.target.value})}
+                placeholder="e.g., API calls, GB storage"
+              />
+            </div>
+          </div>
+          
+          <div>
+            <Label>Plan Description</Label>
+            <Textarea
+              value={basePlan.description}
+              onChange={(e) => setBasePlan({...basePlan, description: e.target.value})}
+              placeholder="Describe what's included in the base plan..."
+              rows={2}
+            />
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Badge variant="default">
+              ${basePlan.price} {basePlan.currency}/{basePlan.interval}
+            </Badge>
+            <Badge variant="secondary">
+              Includes {basePlan.includedUsage} {basePlan.usageUnit}
+            </Badge>
           </div>
         </CardContent>
       </Card>
 
-      {formData.basePrice && (
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
-          <CardContent className="pt-6">
-            <div className="space-y-2">
-              <h4 className="font-medium text-green-900">Plan Preview</h4>
-              <div className="space-y-1">
-                <Badge variant="secondary" className="text-green-700 bg-green-100">
-                  Base: {formData.currency.toUpperCase()} ${formData.basePrice}/{formData.interval}
-                </Badge>
-                {overageServices.filter(s => s.displayName && s.pricePerUnit).map((service, index) => (
-                  <Badge key={service.id} variant="outline" className="text-green-700 border-green-300">
-                    {service.displayName}: ${service.pricePerUnit} per unit
-                  </Badge>
-                ))}
-              </div>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Overage Charges ({overageItems.length})</CardTitle>
+              <CardDescription>
+                Define usage-based charges that apply beyond the included limits
+              </CardDescription>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <Button onClick={addOverageItem} variant="outline">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Overage Item
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {overageItems.map((item) => (
+              <div key={item.id} className="p-4 border rounded-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium">Overage Item Configuration</h4>
+                  {overageItems.length > 1 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeOverageItem(item.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <Label>Item Name</Label>
+                    <Input
+                      value={item.name}
+                      onChange={(e) => updateOverageItem(item.id, 'name', e.target.value)}
+                      placeholder="e.g., Additional API Calls"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label>Price per Unit</Label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={item.pricePerUnit}
+                      onChange={(e) => updateOverageItem(item.id, 'pricePerUnit', parseFloat(e.target.value) || 0)}
+                      placeholder="0.01"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label>Currency</Label>
+                    <Select value={item.currency} onValueChange={(value) => updateOverageItem(item.id, 'currency', value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="GBP">GBP</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label>Event Name</Label>
+                    <Input
+                      value={item.eventName}
+                      onChange={(e) => updateOverageItem(item.id, 'eventName', e.target.value)}
+                      placeholder="e.g., api_call_overage"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label>Description</Label>
+                  <Textarea
+                    value={item.description}
+                    onChange={(e) => updateOverageItem(item.id, 'description', e.target.value)}
+                    placeholder="Describe this overage charge..."
+                    rows={2}
+                  />
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline">
+                    ${item.pricePerUnit} {item.currency} per unit
+                  </Badge>
+                  <Badge variant="secondary">Metered</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-      <Button 
-        onClick={handleSubmit}
-        disabled={isSubmitting || !formData.basePrice}
-        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600"
-      >
-        {isSubmitting ? 'Creating Plan...' : 'Create Fixed + Overage Plan'}
-      </Button>
+      <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+        <CardHeader>
+          <CardTitle>Model Summary</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <p><strong>Base Plan:</strong> ${basePlan.price} {basePlan.currency}/{basePlan.interval}</p>
+            <p><strong>Included Usage:</strong> {basePlan.includedUsage} {basePlan.usageUnit}</p>
+            <p><strong>Overage Items:</strong> {overageItems.length}</p>
+            <p><strong>Model Type:</strong> Fixed + Overage Hybrid</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex space-x-3">
+        <Button
+          onClick={saveModel}
+          disabled={!modelName || !basePlan.name}
+          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+        >
+          <Save className="h-4 w-4 mr-2" />
+          Save Billing Model
+        </Button>
+      </div>
     </div>
   );
 };
