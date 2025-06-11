@@ -18,6 +18,9 @@ interface StripePricingTier {
   isMonthly?: boolean;
   meterRate?: number;
   packageCredits?: number;
+  includedUsage?: number;
+  usageUnit?: string;
+  tierStructure?: 'graduated' | 'volume' | 'flat';
 }
 
 interface UseStripePricingOptions {
@@ -94,62 +97,167 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
 };
 
 const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
-  // Start with all default tiers
+  // Start with default tiers structure but override with Stripe data
   const defaultTiers = getDefaultPricingTiers();
-  const tiers: StripePricingTier[] = [...defaultTiers];
+  const tiers: StripePricingTier[] = [];
 
-  // Override with Stripe products where available
+  // Process Stripe products and map to tiers
   products.forEach((product) => {
     const defaultPrice = product.default_price;
     if (!defaultPrice) return;
 
-    const tierId = product.metadata?.tier_id;
-    if (!tierId) return;
-
     const priceAmount = defaultPrice.unit_amount ? defaultPrice.unit_amount / 100 : 0;
     const isRecurring = defaultPrice.recurring?.interval === 'month';
-
-    let tierUpdate: Partial<StripePricingTier> = {};
-
-    switch (tierId) {
-      case 'professional':
-        tierUpdate = {
-          price: priceAmount,
-          meterRate: 0.04,
-          packageCredits: 1200
-        };
-        break;
-
-      case 'business':
-        tierUpdate = {
-          price: priceAmount,
-          isMonthly: isRecurring
-        };
-        break;
-
-      case 'enterprise':
-        tierUpdate = {
-          price: priceAmount,
-          isMonthly: isRecurring
-        };
-        break;
-
-      default:
-        return;
+    const usageLimits = product.usage_limits || {};
+    
+    // Determine tier ID from metadata or price range
+    let tierId = product.metadata?.tier_id;
+    if (!tierId) {
+      // Auto-assign tier based on price
+      if (priceAmount === 0) tierId = 'trial';
+      else if (priceAmount <= 10) tierId = 'starter';
+      else if (priceAmount <= 50) tierId = 'professional';
+      else if (priceAmount <= 100) tierId = 'business';
+      else tierId = 'enterprise';
     }
 
-    // Find and update the corresponding tier
-    const existingIndex = tiers.findIndex(t => t.id === tierId);
-    if (existingIndex >= 0) {
-      tiers[existingIndex] = { ...tiers[existingIndex], ...tierUpdate };
+    // Create dynamic usage limits array
+    const dynamicUsageLimits = [];
+    if (usageLimits.transactions > 0) {
+      dynamicUsageLimits.push({ 
+        name: 'Transactions', 
+        value: usageLimits.transactions.toLocaleString() 
+      });
+    }
+    if (usageLimits.ai_processing > 0) {
+      dynamicUsageLimits.push({ 
+        name: 'AI Processing', 
+        value: usageLimits.ai_processing.toLocaleString() 
+      });
+    }
+    if (usageLimits.data_exports > 0) {
+      dynamicUsageLimits.push({ 
+        name: 'Data Exports', 
+        value: usageLimits.data_exports.toLocaleString() 
+      });
+    }
+    if (usageLimits.api_calls > 0) {
+      dynamicUsageLimits.push({ 
+        name: 'API Calls', 
+        value: usageLimits.api_calls.toLocaleString() 
+      });
+    }
+
+    // Create tier from Stripe product data
+    const tier: StripePricingTier = {
+      id: tierId,
+      name: product.name || 'Custom Plan',
+      subtitle: product.metadata?.billing_model_type || (isRecurring ? 'Monthly Plan' : 'Pay-as-you-go'),
+      description: product.description || 'Custom pricing plan',
+      price: priceAmount,
+      currency: defaultPrice.currency?.toUpperCase() || 'USD',
+      icon: getIconForTier(tierId),
+      features: generateFeaturesFromMetadata(product.metadata, usageLimits),
+      usageLimits: dynamicUsageLimits.length > 0 ? dynamicUsageLimits : undefined,
+      buttonText: 'Select Plan',
+      popular: product.metadata?.popular === 'true',
+      badge: product.metadata?.badge,
+      isMonthly: isRecurring,
+      meterRate: usageLimits.meter_rate || 0,
+      packageCredits: usageLimits.package_credits || 0,
+      includedUsage: usageLimits.included_usage || 0,
+      usageUnit: usageLimits.usage_unit || 'units',
+      tierStructure: product.graduated_pricing ? 'graduated' : 'flat'
+    };
+
+    tiers.push(tier);
+  });
+
+  // If no Stripe products found, return default tiers
+  if (tiers.length === 0) {
+    return defaultTiers;
+  }
+
+  // Merge with defaults for any missing standard tiers
+  const tierIds = new Set(tiers.map(t => t.id));
+  defaultTiers.forEach(defaultTier => {
+    if (!tierIds.has(defaultTier.id)) {
+      tiers.push(defaultTier);
     }
   });
 
-  return tiers;
+  // Sort tiers by price
+  return tiers.sort((a, b) => a.price - b.price);
+};
+
+const generateFeaturesFromMetadata = (metadata: any, usageLimits: any): string[] => {
+  const features = [];
+  
+  if (usageLimits.included_usage > 0) {
+    features.push(`${usageLimits.included_usage.toLocaleString()} ${usageLimits.usage_unit} included`);
+  }
+  
+  if (usageLimits.meter_rate > 0) {
+    features.push(`$${usageLimits.meter_rate} per additional ${usageLimits.usage_unit || 'unit'}`);
+  }
+  
+  if (usageLimits.package_credits > 0) {
+    features.push(`${usageLimits.package_credits.toLocaleString()} prepaid credits`);
+  }
+  
+  if (metadata?.features) {
+    try {
+      const additionalFeatures = JSON.parse(metadata.features);
+      features.push(...additionalFeatures);
+    } catch {
+      // If features isn't valid JSON, add as single feature
+      features.push(metadata.features);
+    }
+  }
+  
+  // Add default features if none specified
+  if (features.length === 0) {
+    features.push('Full access to platform', 'Email support', 'Standard features');
+  }
+  
+  return features;
+};
+
+const getIconForTier = (tierId: string): string => {
+  const iconMap: { [key: string]: string } = {
+    trial: '🎁',
+    starter: '📄',
+    professional: '💼',
+    business: '⚡',
+    enterprise: '👥'
+  };
+  return iconMap[tierId] || '📦';
 };
 
 const getDefaultPricingTiers = (): StripePricingTier[] => {
   return [
+    {
+      id: 'trial',
+      name: 'Free Trial',
+      subtitle: 'Trial',
+      description: 'Try all features risk-free before committing.',
+      price: 0,
+      currency: 'USD',
+      badge: 'Free Trial',
+      icon: '🎁',
+      features: [
+        'Full access to all features',
+        'Basic AI processing',
+        'Email support'
+      ],
+      usageLimits: [
+        { name: 'Transactions', value: '500' },
+        { name: 'AI Processing', value: '50' }
+      ],
+      buttonText: 'Start Free Trial',
+      packageCredits: 500,
+      meterRate: 0.05
+    },
     {
       id: 'starter',
       name: 'Starter',
@@ -164,94 +272,7 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
         'Basic AI data extraction',
         'Standard support'
       ],
-      usageLimits: [
-        { name: 'Transactions', value: '20' },
-        { name: 'AI Processing', value: '5' }
-      ],
       buttonText: 'Select Plan',
-      meterRate: 0.05
-    },
-    {
-      id: 'professional',
-      name: 'Professional',
-      subtitle: 'Credit Burndown',
-      description: 'Buy credits in advance for better rates and flexibility.',
-      price: 49,
-      currency: 'USD',
-      popular: true,
-      icon: '💼',
-      features: [
-        '1,200 transaction credits',
-        '15% discount on bulk purchases',
-        'Advanced AI processing',
-        'Priority support',
-        'Usage analytics'
-      ],
-      usageLimits: [
-        { name: 'Transactions', value: '1,200' },
-        { name: 'AI Processing', value: '300' }
-      ],
-      buttonText: 'Select Plan',
-      meterRate: 0.04,
-      packageCredits: 1200
-    },
-    {
-      id: 'business',
-      name: 'Business',
-      subtitle: 'Flat Fee',
-      description: 'Unlimited transactions with predictable monthly costs.',
-      price: 99,
-      currency: 'USD',
-      icon: '⚡',
-      features: [
-        'Unlimited transactions',
-        'Unlimited AI processing',
-        'Advanced analytics',
-        'Dedicated support',
-        'Custom integrations'
-      ],
-      buttonText: 'Select Plan',
-      isMonthly: true
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      subtitle: 'Per Seat',
-      description: 'Scale with your team size and organizational needs.',
-      price: 25,
-      currency: 'USD',
-      icon: '👥',
-      features: [
-        'Unlimited everything',
-        'Multi-user management',
-        'Advanced security',
-        'SLA guarantee',
-        'Custom development'
-      ],
-      buttonText: 'Select Plan',
-      isMonthly: true
-    },
-    {
-      id: 'trial',
-      name: 'Free Trial',
-      subtitle: 'Trial',
-      description: 'Try all features risk-free before committing.',
-      price: 0,
-      currency: 'USD',
-      badge: 'Free Trial',
-      icon: '🎁',
-      features: [
-        'Full access to all features',
-        '500 transaction limit',
-        'Basic AI processing',
-        'Email support'
-      ],
-      usageLimits: [
-        { name: 'Transactions', value: '500' },
-        { name: 'AI Processing', value: '50' }
-      ],
-      buttonText: 'Select Plan',
-      packageCredits: 500,
       meterRate: 0.05
     }
   ];

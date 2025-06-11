@@ -69,84 +69,56 @@ const FixedOverageForm = () => {
         return;
       }
 
-      if (data?.success) {
+      if (data?.success && data.products) {
         console.log('Live Stripe data fetched:', data);
         
-        // Process fetched products and prices
-        if (data.products && data.products.length > 0) {
-          const recurringProduct = data.products.find((p: any) => 
-            p.default_price?.recurring || 
-            p.name.toLowerCase().includes('plan') ||
-            p.name.toLowerCase().includes('subscription')
-          );
-          
-          if (recurringProduct && recurringProduct.default_price) {
-            setBasePlan({
-              name: recurringProduct.name,
-              price: recurringProduct.default_price.unit_amount / 100,
-              currency: recurringProduct.default_price.currency.toUpperCase(),
-              interval: recurringProduct.default_price.recurring?.interval || 'month',
-              description: recurringProduct.description || 'Base subscription plan',
-              includedUsage: 1000,
-              usageUnit: 'units'
-            });
-          }
-
-          // Set overage items from metered products
-          const meteredProducts = data.products.filter((p: any) => 
-            p.default_price?.recurring?.usage_type === 'metered' ||
-            p.name.toLowerCase().includes('usage') ||
-            p.name.toLowerCase().includes('call') ||
-            p.name.toLowerCase().includes('overage')
-          );
-
-          if (meteredProducts.length > 0) {
-            const newOverageItems = meteredProducts.map((product: any) => ({
-              id: product.id,
-              name: product.name,
-              pricePerUnit: product.default_price ? product.default_price.unit_amount / 100 : 0.01,
-              currency: product.default_price ? product.default_price.currency.toUpperCase() : 'USD',
-              eventName: product.name.toLowerCase().replace(/\s+/g, '_'),
-              description: product.description || `Usage-based ${product.name}`
-            }));
-            setOverageItems(newOverageItems);
-          } else {
-            // Add default overage item if none found
-            setOverageItems([{
-              id: '1',
-              name: 'Additional Usage',
-              pricePerUnit: 0.01,
-              currency: 'USD',
-              eventName: 'additional_usage',
-              description: 'Extra usage beyond included limit'
-            }]);
-          }
-        } else {
-          // Set default values if no products found
+        // Process fetched products and extract dynamic data
+        const products = data.products;
+        
+        // Find base plan (recurring product with included usage)
+        const baseProduct = products.find((p: any) => 
+          p.default_price?.recurring && 
+          p.usage_limits?.included_usage > 0
+        );
+        
+        if (baseProduct && baseProduct.default_price) {
           setBasePlan({
-            name: 'Professional Plan',
-            price: 49.99,
-            currency: 'USD',
-            interval: 'month',
-            description: 'Base plan with included usage',
-            includedUsage: 1000,
-            usageUnit: 'API calls'
+            name: baseProduct.name,
+            price: baseProduct.default_price.unit_amount / 100,
+            currency: baseProduct.default_price.currency.toUpperCase(),
+            interval: baseProduct.default_price.recurring?.interval || 'month',
+            description: baseProduct.description || 'Base subscription plan',
+            includedUsage: baseProduct.usage_limits.included_usage,
+            usageUnit: baseProduct.usage_limits.usage_unit || 'units'
           });
-          
-          setOverageItems([{
-            id: '1',
-            name: 'Additional API Calls',
-            pricePerUnit: 0.01,
-            currency: 'USD',
-            eventName: 'api_call_overage',
-            description: 'Extra API calls beyond included limit'
-          }]);
+        }
+
+        // Set overage items from metered products
+        const meteredProducts = products.filter((p: any) => 
+          p.usage_limits?.meter_rate > 0 || 
+          p.meter_info || 
+          p.graduated_pricing
+        );
+
+        if (meteredProducts.length > 0) {
+          const newOverageItems = meteredProducts.map((product: any, index: number) => ({
+            id: product.id || `${index + 1}`,
+            name: product.name,
+            pricePerUnit: product.usage_limits?.meter_rate || 0.01,
+            currency: product.default_price?.currency?.toUpperCase() || 'USD',
+            eventName: product.meter_info?.event_name || product.name.toLowerCase().replace(/\s+/g, '_'),
+            description: product.description || `Usage-based ${product.name}`
+          }));
+          setOverageItems(newOverageItems);
         }
 
         toast({
           title: "Data Loaded",
-          description: `Loaded ${data.products?.length || 0} products from Stripe.`,
+          description: `Loaded ${products.length} products from Stripe with dynamic usage limits.`,
         });
+      } else {
+        // Set defaults if no dynamic data available
+        setDefaultValues();
       }
     } catch (error: any) {
       console.error('Error in fetchStripeData:', error);
@@ -155,29 +127,31 @@ const FixedOverageForm = () => {
         description: "Failed to fetch Stripe data. Using default values.",
         variant: "destructive",
       });
-      
-      // Set default values on error
-      setBasePlan({
-        name: 'Professional Plan',
-        price: 49.99,
-        currency: 'USD',
-        interval: 'month',
-        description: 'Base plan with included usage',
-        includedUsage: 1000,
-        usageUnit: 'API calls'
-      });
-      
-      setOverageItems([{
-        id: '1',
-        name: 'Additional API Calls',
-        pricePerUnit: 0.01,
-        currency: 'USD',
-        eventName: 'api_call_overage',
-        description: 'Extra API calls beyond included limit'
-      }]);
+      setDefaultValues();
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const setDefaultValues = () => {
+    setBasePlan({
+      name: 'Professional Plan',
+      price: 49.99,
+      currency: 'USD',
+      interval: 'month',
+      description: 'Base plan with included usage',
+      includedUsage: 1000,
+      usageUnit: 'API calls'
+    });
+    
+    setOverageItems([{
+      id: '1',
+      name: 'Additional API Calls',
+      pricePerUnit: 0.01,
+      currency: 'USD',
+      eventName: 'api_call_overage',
+      description: 'Extra API calls beyond included limit'
+    }]);
   };
 
   const addOverageItem = () => {
@@ -220,7 +194,7 @@ const FixedOverageForm = () => {
       {
         id: 'base-plan',
         product: basePlan.name,
-        unit_amount: Math.round(basePlan.price * 100), // Convert to cents
+        unit_amount: Math.round(basePlan.price * 100),
         currency: basePlan.currency.toLowerCase(),
         type: 'recurring' as const,
         interval: basePlan.interval,
@@ -229,13 +203,15 @@ const FixedOverageForm = () => {
         metadata: {
           plan_type: 'base_plan',
           included_usage: basePlan.includedUsage.toString(),
-          usage_unit: basePlan.usageUnit
+          usage_unit: basePlan.usageUnit,
+          usage_limit_api_calls: basePlan.includedUsage.toString(),
+          tier_id: 'professional'
         }
       },
       ...overageItems.map(item => ({
         id: item.id,
         product: item.name,
-        unit_amount: Math.round(item.pricePerUnit * 100), // Convert to cents
+        unit_amount: Math.round(item.pricePerUnit * 100),
         currency: item.currency.toLowerCase(),
         type: 'metered' as const,
         eventName: item.eventName,
@@ -245,7 +221,10 @@ const FixedOverageForm = () => {
         aggregate_usage: 'sum' as const,
         metadata: {
           overage_item: 'true',
-          base_plan_id: 'base-plan'
+          base_plan_id: 'base-plan',
+          meter_rate: item.pricePerUnit.toString(),
+          usage_unit: basePlan.usageUnit,
+          included_usage: basePlan.includedUsage.toString()
         }
       }))
     ];
@@ -270,7 +249,7 @@ const FixedOverageForm = () => {
 
     toast({
       title: "Model Saved!",
-      description: `${modelName} has been saved successfully.`,
+      description: `${modelName} has been saved with dynamic usage limits from Stripe.`,
     });
   };
 
@@ -518,9 +497,11 @@ const FixedOverageForm = () => {
         <CardContent>
           <div className="space-y-2">
             <p><strong>Base Plan:</strong> ${basePlan.price} {basePlan.currency}/{basePlan.interval}</p>
-            <p><strong>Included Usage:</strong> {basePlan.includedUsage} {basePlan.usageUnit}</p>
+            <p><strong>Included Usage:</strong> {basePlan.includedUsage.toLocaleString()} {basePlan.usageUnit}</p>
             <p><strong>Overage Items:</strong> {overageItems.length}</p>
-            <p><strong>Model Type:</strong> Fixed + Overage Hybrid</p>
+            <p><strong>Model Type:</strong> Fixed + Overage with Graduated Pricing</p>
+            <p><strong>Auto-Meter Activation:</strong> When usage exceeds {basePlan.includedUsage.toLocaleString()} {basePlan.usageUnit}</p>
+            <p><strong>Overage Rate:</strong> ${overageItems[0]?.pricePerUnit || 0} per {basePlan.usageUnit}</p>
           </div>
         </CardContent>
       </Card>
@@ -540,3 +521,5 @@ const FixedOverageForm = () => {
 };
 
 export default FixedOverageForm;
+
+}

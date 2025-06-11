@@ -65,10 +65,83 @@ serve(async (req) => {
 
     logStep("Products fetched from Stripe", { count: products.data.length });
 
+    // Enhance products with meter information and usage limits
+    const enhancedProducts = await Promise.all(
+      products.data.map(async (product) => {
+        const enhanced = {
+          ...product,
+          usage_limits: {},
+          meter_info: null,
+          graduated_pricing: null
+        };
+
+        // Parse usage limits from metadata
+        if (product.metadata) {
+          enhanced.usage_limits = {
+            transactions: parseInt(product.metadata.usage_limit_transactions || '0'),
+            ai_processing: parseInt(product.metadata.usage_limit_ai_processing || '0'),
+            data_exports: parseInt(product.metadata.usage_limit_data_exports || '0'),
+            api_calls: parseInt(product.metadata.usage_limit_api_calls || '0'),
+            meter_rate: parseFloat(product.metadata.meter_rate || '0'),
+            package_credits: parseInt(product.metadata.package_credits || '0'),
+            included_usage: parseInt(product.metadata.included_usage || '0'),
+            usage_unit: product.metadata.usage_unit || 'units',
+            tier_id: product.metadata.tier_id || '',
+            billing_model_type: product.metadata.billing_model_type || ''
+          };
+        }
+
+        // If this is a metered product, try to find associated meter
+        if (product.metadata?.meter_name) {
+          try {
+            const meters = await stripe.billing.meters.list({
+              limit: 100
+            });
+            
+            const associatedMeter = meters.data.find(
+              meter => meter.event_name === product.metadata.meter_name ||
+                      meter.display_name === product.name
+            );
+            
+            if (associatedMeter) {
+              enhanced.meter_info = {
+                id: associatedMeter.id,
+                event_name: associatedMeter.event_name,
+                display_name: associatedMeter.display_name,
+                status: associatedMeter.status,
+                aggregation: associatedMeter.default_aggregation
+              };
+            }
+          } catch (meterError) {
+            logStep("Error fetching meter info", { productId: product.id, error: meterError.message });
+          }
+        }
+
+        // If this has a default price with graduated pricing, fetch tier details
+        if (product.default_price && typeof product.default_price === 'object') {
+          const price = product.default_price as any;
+          if (price.billing_scheme === 'tiered' && price.tiers) {
+            enhanced.graduated_pricing = {
+              billing_scheme: price.billing_scheme,
+              tiers: price.tiers,
+              tiers_mode: price.tiers_mode
+            };
+          }
+        }
+
+        return enhanced;
+      })
+    );
+
+    logStep("Enhanced products with usage limits and meter info", { 
+      enhancedCount: enhancedProducts.length 
+    });
+
     return new Response(
       JSON.stringify({ 
         success: true,
-        products: products.data 
+        products: enhancedProducts,
+        total_count: products.data.length
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

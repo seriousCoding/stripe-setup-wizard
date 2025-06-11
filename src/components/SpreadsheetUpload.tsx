@@ -3,149 +3,96 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Upload, FileSpreadsheet, Brain, Loader2, CheckCircle, AlertCircle, Trash2, Plus } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { stripeService } from '@/services/stripeService';
-import { billingModelService } from '@/services/billingModelService';
-import ProductSetup from './ProductSetup';
-import MeteredServices from './MeteredServices';
 
-interface MeteredService {
-  id: string;
-  displayName: string;
-  eventName: string;
-  pricePerUnit: number;
-  currency: string;
-  billingScheme: 'per_unit' | 'tiered';
-  usageType: 'metered' | 'licensed';
-  aggregateUsage: 'sum' | 'last_during_period' | 'last_ever' | 'max';
-  interval: 'month' | 'year' | 'week' | 'day';
-  intervalCount: number;
-  trialPeriodDays?: number;
-  metadata?: Record<string, string>;
-  tiers?: Array<{
-    upTo: number | 'inf';
-    unitAmount: number;
-    flatAmount?: number;
-  }>;
-  description?: string;
+interface ParsedRow {
+  [key: string]: string | number;
 }
 
-interface BillingItem {
-  id: string;
-  product: string;
-  unit_amount: number; // Amount in cents (Stripe format)
-  currency: string;
-  type: 'metered' | 'recurring' | 'one_time';
-  interval?: string;
-  eventName?: string;
-  description?: string;
-  billing_scheme?: 'per_unit' | 'tiered';
-  usage_type?: 'metered' | 'licensed';
-  aggregate_usage?: 'sum' | 'last_during_period' | 'last_ever' | 'max';
-  metadata?: Record<string, string>;
+interface SpreadsheetUploadProps {
+  onDataUploaded: (data: ParsedRow[]) => void;
 }
 
-interface AIAnalysisResults {
-  recommendedModel: string;
-  confidence: number;
-  reasoning: string;
-  optimizedItems: BillingItem[];
-}
-
-const SpreadsheetUpload = () => {
+const SpreadsheetUpload = ({ onDataUploaded }: SpreadsheetUploadProps) => {
   const [file, setFile] = useState<File | null>(null);
-  const [parsedData, setParsedData] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [analysisResults, setAnalysisResults] = useState<AIAnalysisResults | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [deploySuccess, setDeploySuccess] = useState(false);
-  const [deployError, setDeployError] = useState<string | null>(null);
-  const [productSetup, setProductSetup] = useState<'new' | 'existing'>('new');
-  const [existingProduct, setExistingProduct] = useState('');
-  const [meteredServices, setMeteredServices] = useState<MeteredService[]>([
-    {
-      id: `ms_${Date.now()}`,
-      displayName: 'Example Service',
-      eventName: 'example_usage',
-      pricePerUnit: 0.01,
-      currency: 'USD',
-      billingScheme: 'per_unit',
-      usageType: 'metered',
-      aggregateUsage: 'sum',
-      interval: 'month',
-      intervalCount: 1,
-      trialPeriodDays: 0,
-      metadata: {},
-      tiers: [],
-      description: 'Tracked usage of an example service'
-    }
-  ]);
+  const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
   const { toast } = useToast();
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0] || null;
-    setFile(selectedFile);
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      setUploadStatus('idle');
+      setErrorMessage('');
+    }
   };
 
-  const parseCSV = useCallback(async (file: File) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        const lines = text.split('\n');
-        const headers = lines[0].split(',');
-
-        const data = [];
-        for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(',');
-          const row: { [key: string]: string } = {};
-          for (let j = 0; j < headers.length; j++) {
-            row[headers[j].trim()] = values[j] ? values[j].trim() : '';
-          }
-          data.push(row);
-        }
-
-        resolve(data);
-      };
-
-      reader.onerror = (error) => {
-        reject(error);
-      };
-
-      reader.readAsText(file);
-    });
-  }, []);
+  const parseCSV = (csvText: string): ParsedRow[] => {
+    const lines = csvText.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return [];
+    
+    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    const rows: ParsedRow[] = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      const row: ParsedRow = {};
+      
+      headers.forEach((header, index) => {
+        const value = values[index] || '';
+        // Try to parse as number, otherwise keep as string
+        const numValue = parseFloat(value);
+        row[header] = !isNaN(numValue) && value !== '' ? numValue : value;
+      });
+      
+      rows.push(row);
+    }
+    
+    return rows;
+  };
 
   const handleUpload = async () => {
-    if (!file) {
-      setUploadError('Please select a file');
-      return;
-    }
-
+    if (!file) return;
+    
     setIsUploading(true);
-    setUploadError(null);
-
+    
     try {
-      const data = await parseCSV(file);
+      const text = await file.text();
+      let data: ParsedRow[] = [];
+      
+      if (file.name.endsWith('.csv')) {
+        data = parseCSV(text);
+      } else if (file.name.endsWith('.json')) {
+        const jsonData = JSON.parse(text);
+        data = Array.isArray(jsonData) ? jsonData : [jsonData];
+      } else {
+        throw new Error('Unsupported file format. Please upload CSV or JSON files.');
+      }
+      
+      if (data.length === 0) {
+        throw new Error('No valid data found in the file.');
+      }
+      
       setParsedData(data);
+      setUploadStatus('success');
+      onDataUploaded(data);
+      
       toast({
-        title: "File Uploaded",
-        description: "Spreadsheet successfully parsed.",
+        title: "Upload Successful",
+        description: `Successfully parsed ${data.length} rows from ${file.name}`,
       });
+      
     } catch (error: any) {
-      console.error('Error parsing CSV:', error);
-      setUploadError('Error parsing CSV file. Please ensure it is a valid CSV.');
+      setUploadStatus('error');
+      setErrorMessage(error.message);
       toast({
-        title: "Upload Error",
-        description: "Failed to parse the spreadsheet. Please check the file format.",
+        title: "Upload Failed",
+        description: error.message,
         variant: "destructive",
       });
     } finally {
@@ -153,253 +100,128 @@ const SpreadsheetUpload = () => {
     }
   };
 
-  const handleAnalyzeData = async () => {
-    if (!parsedData.length) {
-      toast({
-        title: "Analysis Error",
-        description: "No data to analyze. Please upload a file first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsAnalyzing(true);
-    try {
-      const results = billingModelService.analyzeDataAndRecommend(parsedData);
-      setAnalysisResults(results);
-      toast({
-        title: "Analysis Complete",
-        description: "AI analysis complete. Review the recommendations below.",
-      });
-    } catch (error: any) {
-      console.error('Error during AI analysis:', error);
-      toast({
-        title: "Analysis Error",
-        description: "Failed to analyze data. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  const handleDeployModel = async () => {
-    if (!analysisResults) {
-      toast({
-        title: "Deployment Error",
-        description: "No analysis results available. Please analyze the data first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsDeploying(true);
-    setDeployError(null);
-
-    try {
-      // Consolidate all billing items from AI analysis and MeteredServices
-      const allItems = [...analysisResults.optimizedItems, ...meteredServices.map(ms => ({
-        id: ms.id,
-        product: ms.displayName,
-        unit_amount: Math.round(ms.pricePerUnit * 100), // Convert to cents
-        currency: ms.currency.toLowerCase(),
-        type: ms.usageType === 'metered' ? 'metered' : 'recurring',
-        interval: ms.interval,
-        eventName: ms.eventName,
-        description: ms.description,
-        billing_scheme: ms.billingScheme,
-        usage_type: ms.usageType,
-        aggregate_usage: ms.aggregateUsage,
-        metadata: ms.metadata
-      }))];
-
-      const billingModel = {
-        name: 'AI-Driven Billing Model',
-        description: analysisResults.reasoning,
-        type: analysisResults.recommendedModel,
-        items: allItems
-      };
-
-      const { results, error } = await stripeService.deployBillingModel(billingModel);
-
-      if (error) {
-        setDeployError(error);
-        toast({
-          title: "Deployment Failed",
-          description: `Failed to deploy billing model: ${error}`,
-          variant: "destructive",
-        });
-      } else {
-        setDeploySuccess(true);
-        toast({
-          title: "Deployment Successful",
-          description: "Billing model deployed successfully!",
-        });
-      }
-    } catch (error: any) {
-      console.error('Error deploying billing model:', error);
-      setDeployError(error.message);
-      toast({
-        title: "Deployment Error",
-        description: `An unexpected error occurred: ${error.message}`,
-        variant: "destructive",
-      });
-    } finally {
-      setIsDeploying(false);
-    }
-  };
-
-  const updateMeteredService = (id: string, field: keyof MeteredService, value: any) => {
-    setMeteredServices(services =>
-      services.map(service =>
-        service.id === id ? { ...service, [field]: value } : service
-      )
-    );
-  };
-
-  const removeMeteredService = (id: string) => {
-    setMeteredServices(services => services.filter(service => service.id !== id));
-  };
-
-  const addMeteredService = () => {
-    const newService: MeteredService = {
-      id: `ms_${Date.now()}`,
-      displayName: 'New Service',
-      eventName: 'new_service_usage',
-      pricePerUnit: 0.01,
-      currency: 'USD',
-      billingScheme: 'per_unit',
-      usageType: 'metered',
-      aggregateUsage: 'sum',
-      interval: 'month',
-      intervalCount: 1,
-      trialPeriodDays: 0,
-      metadata: {},
-      tiers: [],
-      description: 'Description for the new service'
-    };
-    setMeteredServices(services => [...services, newService]);
+  const downloadSample = () => {
+    const sampleData = `product,price,currency,type,interval,description
+"API Calls",0.01,USD,metered,,Pay per API call
+"Premium Plan",29.99,USD,recurring,month,Monthly subscription
+"Data Export",0.05,USD,metered,,Per export charge`;
+    
+    const blob = new Blob([sampleData], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'billing_model_sample.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-5 w-5" />
-            Upload Spreadsheet
+          <CardTitle className="flex items-center space-x-2">
+            <Upload className="h-5 w-5" />
+            <span>Upload Billing Data</span>
           </CardTitle>
           <CardDescription>
-            Upload a CSV file containing your billing data to get started.
+            Upload a CSV or JSON file containing your billing model data to automatically generate Stripe configurations.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {uploadError && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{uploadError}</AlertDescription>
-            </Alert>
-          )}
           <div className="flex items-center space-x-4">
-            <Input type="file" id="upload" onChange={handleFileChange} className="hidden" />
-            <Label htmlFor="upload" className="cursor-pointer bg-secondary hover:bg-secondary/80 text-secondary-foreground font-medium py-2 px-4 rounded-md">
-              <Upload className="h-4 w-4 mr-2 inline-block" />
-              {file ? file.name : 'Select File'}
-            </Label>
-            <Button onClick={handleUpload} disabled={isUploading}>
-              {isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                'Upload'
-              )}
+            <Button variant="outline" onClick={downloadSample}>
+              <Download className="h-4 w-4 mr-2" />
+              Download Sample CSV
             </Button>
           </div>
-          {parsedData.length > 0 && (
-            <Badge variant="outline">
-              <CheckCircle className="h-4 w-4 mr-2" />
-              {parsedData.length} rows parsed
-            </Badge>
+          
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <Label htmlFor="file-upload">Select File</Label>
+              <Input
+                id="file-upload"
+                type="file"
+                accept=".csv,.json"
+                onChange={handleFileSelect}
+                className="cursor-pointer"
+              />
+            </div>
+          </div>
+          
+          {file && (
+            <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+              <FileText className="h-4 w-4 text-gray-500" />
+              <span className="text-sm">{file.name}</span>
+              <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
+            </div>
+          )}
+          
+          <Button 
+            onClick={handleUpload}
+            disabled={!file || isUploading}
+            className="w-full"
+          >
+            {isUploading ? 'Processing...' : 'Upload & Parse Data'}
+          </Button>
+          
+          {uploadStatus === 'success' && (
+            <Alert>
+              <CheckCircle className="h-4 w-4" />
+              <AlertDescription>
+                Successfully uploaded and parsed {parsedData.length} rows. Ready to generate billing model.
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {uploadStatus === 'error' && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{errorMessage}</AlertDescription>
+            </Alert>
           )}
         </CardContent>
       </Card>
-
-      {/* AI Analysis Results */}
-      {analysisResults && (
+      
+      {parsedData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Brain className="h-5 w-5" />
-              AI Analysis & Recommendations
-            </CardTitle>
-            <CardDescription>
-              Our AI has analyzed your data and suggests the optimal billing structure
-            </CardDescription>
+            <CardTitle>Data Preview</CardTitle>
+            <CardDescription>Preview of uploaded data (first 5 rows)</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label>Recommended Billing Model</Label>
-              <Badge variant="secondary">{analysisResults.recommendedModel}</Badge>
-              <p className="text-sm text-gray-500">{analysisResults.reasoning}</p>
-              <Label>Confidence</Label>
-              <Badge variant="outline">{analysisResults.confidence}%</Badge>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {Object.keys(parsedData[0]).map((header) => (
+                      <th key={header} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {parsedData.slice(0, 5).map((row, index) => (
+                    <tr key={index}>
+                      {Object.values(row).map((value, cellIndex) => (
+                        <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {String(value)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-
-            {/* Enhanced MeteredServices component */}
-            <MeteredServices
-              meteredServices={meteredServices}
-              updateMeteredService={updateMeteredService}
-              removeMeteredService={removeMeteredService}
-              addMeteredService={addMeteredService}
-            />
-
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={handleAnalyzeData} disabled={isAnalyzing}>
-                Re-analyze Data
-              </Button>
-              <Button onClick={handleDeployModel} disabled={isDeploying || deploySuccess}>
-                {isDeploying ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Deploying...
-                  </>
-                ) : deploySuccess ? (
-                  <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Deployed!
-                  </>
-                ) : (
-                  'Deploy Billing Model'
-                )}
-              </Button>
-            </div>
-            {deployError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{deployError}</AlertDescription>
-              </Alert>
+            {parsedData.length > 5 && (
+              <p className="mt-2 text-sm text-gray-500">
+                ... and {parsedData.length - 5} more rows
+              </p>
             )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Analyze Data Button */}
-      {parsedData.length > 0 && !analysisResults && (
-        <Button onClick={handleAnalyzeData} disabled={isAnalyzing}>
-          {isAnalyzing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              <Brain className="mr-2 h-4 w-4" />
-              Analyze Data
-            </>
-          )}
-        </Button>
       )}
     </div>
   );

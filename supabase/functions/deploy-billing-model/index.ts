@@ -67,52 +67,122 @@ serve(async (req) => {
       try {
         logStep("Processing billing item", { product: item.product, type: item.type });
 
+        // Enhanced metadata with usage limits and billing configuration
+        const productMetadata = {
+          user_id: user.id,
+          billing_model_type: billingModel.type,
+          created_by: 'stripe-setup-pilot',
+          tier_id: item.metadata?.tier_id || '',
+          usage_limit_transactions: item.metadata?.usage_limit_transactions || '0',
+          usage_limit_ai_processing: item.metadata?.usage_limit_ai_processing || '0',
+          usage_limit_data_exports: item.metadata?.usage_limit_data_exports || '0',
+          usage_limit_api_calls: item.metadata?.usage_limit_api_calls || '0',
+          meter_rate: item.metadata?.meter_rate || '0',
+          package_credits: item.metadata?.package_credits || '0',
+          included_usage: item.metadata?.included_usage || '0',
+          usage_unit: item.metadata?.usage_unit || 'units',
+          meter_name: item.eventName || '',
+          features: item.metadata?.features || '',
+          ...item.metadata
+        };
+
         // Create product
         const product = await stripe.products.create({
           name: item.product,
           description: item.description || `${item.product} - ${item.type} billing`,
           type: 'service',
-          metadata: {
-            user_id: user.id,
-            billing_model_type: billingModel.type,
-            created_by: 'stripe-setup-pilot'
-          }
+          metadata: productMetadata
         });
 
         results.products.push(product);
         logStep("Product created", { productId: product.id, name: product.name });
 
-        // Create price
-        const priceData: any = {
-          product: product.id,
-          unit_amount: Math.round(item.unit_amount), // Already in cents
-          currency: item.currency.toLowerCase(),
-          metadata: {
-            event_name: item.eventName,
-            description: item.description,
-            user_id: user.id
+        // Create price based on billing type
+        if (billingModel.type === 'fixed-overage' && item.type === 'recurring') {
+          // Create flat rate price for base plan
+          const flatPrice = await stripe.prices.create({
+            product: product.id,
+            unit_amount: Math.round(item.unit_amount),
+            currency: item.currency.toLowerCase(),
+            recurring: {
+              interval: item.interval || 'month'
+            },
+            metadata: {
+              ...productMetadata,
+              price_type: 'base_plan'
+            }
+          });
+          results.prices.push(flatPrice);
+          logStep("Flat rate price created", { priceId: flatPrice.id });
+          
+        } else if (billingModel.type === 'fixed-overage' && item.type === 'metered') {
+          // Create graduated pricing for overage charges
+          const includedUsage = parseInt(productMetadata.included_usage || '0');
+          const meterRate = parseFloat(productMetadata.meter_rate || '0');
+          
+          if (includedUsage > 0 && meterRate > 0) {
+            const graduatedPrice = await stripe.prices.create({
+              product: product.id,
+              currency: item.currency.toLowerCase(),
+              billing_scheme: 'tiered',
+              recurring: {
+                interval: 'month',
+                usage_type: 'metered',
+                aggregate_usage: item.aggregate_usage || 'sum'
+              },
+              tiers_mode: 'graduated',
+              tiers: [
+                {
+                  up_to: includedUsage,
+                  unit_amount: 0, // Free within included usage
+                  flat_amount: 0
+                },
+                {
+                  up_to: 'inf',
+                  unit_amount: Math.round(meterRate * 100), // Convert to cents
+                  flat_amount: 0
+                }
+              ],
+              metadata: {
+                ...productMetadata,
+                price_type: 'overage_pricing'
+              }
+            });
+            results.prices.push(graduatedPrice);
+            logStep("Graduated overage price created", { priceId: graduatedPrice.id });
           }
-        };
-
-        if (item.type === 'recurring' && item.interval) {
-          priceData.recurring = {
-            interval: item.interval
+        } else {
+          // Standard price creation for other billing types
+          const priceData: any = {
+            product: product.id,
+            unit_amount: Math.round(item.unit_amount),
+            currency: item.currency.toLowerCase(),
+            metadata: {
+              ...productMetadata,
+              event_name: item.eventName
+            }
           };
-        }
 
-        if (item.type === 'metered') {
-          priceData.billing_scheme = 'per_unit';
-          priceData.usage_type = 'metered';
-          priceData.recurring = {
-            interval: 'month',
-            usage_type: 'metered',
-            aggregate_usage: item.aggregate_usage || 'sum'
-          };
-        }
+          if (item.type === 'recurring' && item.interval) {
+            priceData.recurring = {
+              interval: item.interval
+            };
+          }
 
-        const price = await stripe.prices.create(priceData);
-        results.prices.push(price);
-        logStep("Price created", { priceId: price.id, amount: price.unit_amount });
+          if (item.type === 'metered') {
+            priceData.billing_scheme = 'per_unit';
+            priceData.usage_type = 'metered';
+            priceData.recurring = {
+              interval: 'month',
+              usage_type: 'metered',
+              aggregate_usage: item.aggregate_usage || 'sum'
+            };
+          }
+
+          const price = await stripe.prices.create(priceData);
+          results.prices.push(price);
+          logStep("Standard price created", { priceId: price.id, amount: price.unit_amount });
+        }
 
         // Create meter for metered items
         if (item.type === 'metered' && item.eventName) {
