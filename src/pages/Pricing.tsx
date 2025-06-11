@@ -16,10 +16,10 @@ const Pricing = () => {
     {
       id: 'starter',
       name: 'Starter',
+      subtitle: 'Pay As-You-Go',
       description: 'Perfect for getting started with transaction-based billing.',
       price: 0.05,
       currency: 'USD',
-      badge: 'Pay As-You-Go',
       icon: '📄',
       features: [
         'Pay only for what you use',
@@ -31,15 +31,16 @@ const Pricing = () => {
         { name: 'Transactions', value: '1,000' },
         { name: 'AI Processing', value: '100' }
       ],
-      buttonText: 'Select Plan'
+      buttonText: 'Select Plan',
+      meterRate: 0.05 // Rate after package limit
     },
     {
       id: 'professional',
       name: 'Professional',
+      subtitle: 'Credit Burndown',
       description: 'Buy credits in advance for better rates and flexibility.',
       price: 49,
       currency: 'USD',
-      badge: 'Credit Burndown',
       popular: true,
       icon: '💼',
       features: [
@@ -53,15 +54,17 @@ const Pricing = () => {
         { name: 'Transactions', value: '1,200' },
         { name: 'AI Processing', value: '300' }
       ],
-      buttonText: 'Select Plan'
+      buttonText: 'Select Plan',
+      meterRate: 0.04,
+      packageCredits: 1200
     },
     {
       id: 'business',
       name: 'Business',
+      subtitle: 'Flat Fee',
       description: 'Unlimited transactions with predictable monthly costs.',
       price: 99,
       currency: 'USD',
-      badge: 'Flat Fee',
       icon: '⚡',
       features: [
         'Unlimited transactions',
@@ -70,15 +73,16 @@ const Pricing = () => {
         'Dedicated support',
         'Custom integrations'
       ],
-      buttonText: 'Select Plan'
+      buttonText: 'Select Plan',
+      isMonthly: true
     },
     {
       id: 'enterprise',
       name: 'Enterprise',
+      subtitle: 'Per Seat',
       description: 'Scale with your team size and organizational needs.',
       price: 25,
       currency: 'USD',
-      badge: 'Per Seat',
       icon: '👥',
       features: [
         'Unlimited everything',
@@ -87,11 +91,13 @@ const Pricing = () => {
         'SLA guarantee',
         'Custom development'
       ],
-      buttonText: 'Select Plan'
+      buttonText: 'Select Plan',
+      isMonthly: true
     },
     {
       id: 'trial',
       name: 'Free Trial',
+      subtitle: 'Trial',
       description: 'Try all features risk-free before committing.',
       price: 0,
       currency: 'USD',
@@ -107,7 +113,9 @@ const Pricing = () => {
         { name: 'Transactions', value: '500' },
         { name: 'AI Processing', value: '50' }
       ],
-      buttonText: 'Select Plan'
+      buttonText: 'Select Plan',
+      packageCredits: 500,
+      meterRate: 0.05
     }
   ];
 
@@ -129,7 +137,6 @@ const Pricing = () => {
   };
 
   useEffect(() => {
-    // Create products in Stripe when component mounts
     createStripeProducts();
   }, []);
 
@@ -147,7 +154,7 @@ const Pricing = () => {
       if (tierId === 'trial') {
         toast({
           title: "Free Trial Activated!",
-          description: "You now have access to all features for 14 days.",
+          description: `You now have ${selectedTier.packageCredits} transaction credits. After the limit, meter rate of $${selectedTier.meterRate} per transaction applies.`,
         });
         return;
       }
@@ -156,7 +163,7 @@ const Pricing = () => {
       if (tierId === 'starter') {
         toast({
           title: "Pay-As-You-Go Plan Activated!",
-          description: "You'll only be charged for what you use.",
+          description: `Rate: $${selectedTier.price} per transaction. No package limits.`,
         });
         return;
       }
@@ -168,7 +175,9 @@ const Pricing = () => {
           planName: selectedTier.name,
           amount: selectedTier.price * 100,
           currency: selectedTier.currency.toLowerCase(),
-          mode: tierId === 'business' || tierId === 'enterprise' ? 'subscription' : 'payment'
+          mode: selectedTier.isMonthly ? 'subscription' : 'payment',
+          packageCredits: selectedTier.packageCredits,
+          meterRate: selectedTier.meterRate
         }
       });
 
@@ -178,6 +187,13 @@ const Pricing = () => {
 
       if (data?.url) {
         window.open(data.url, '_blank');
+      }
+
+      if (selectedTier.packageCredits) {
+        toast({
+          title: `${selectedTier.name} Plan Selected!`,
+          description: `Package includes ${selectedTier.packageCredits} credits. After limit, meter rate of $${selectedTier.meterRate} per transaction applies with auto-renewal.`,
+        });
       }
     } catch (error: any) {
       console.error('Error selecting plan:', error);
@@ -198,20 +214,19 @@ const Pricing = () => {
   };
 
   const getPriceSubtext = (tier: any) => {
-    if (tier.price === 0) return '14 days free';
+    if (tier.price === 0 && tier.id === 'trial') return '14 days free';
     if (tier.id === 'starter') return 'per transaction';
     if (tier.id === 'professional') return 'prepaid credits';
-    if (tier.id === 'business') return 'per month';
-    if (tier.id === 'enterprise') return 'per user/month';
+    if (tier.isMonthly) return tier.id === 'enterprise' ? 'per user/month' : 'per month';
     return '';
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white py-12 px-4">
+    <div className="min-h-screen bg-slate-900 text-slate-50 py-12 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4">Choose Your Plan</h1>
-          <p className="text-gray-400 max-w-2xl mx-auto text-lg">
+          <h1 className="text-4xl font-bold mb-4 text-slate-50">Choose Your Plan</h1>
+          <p className="text-slate-400 max-w-2xl mx-auto text-lg">
             Select the perfect plan for your business needs
           </p>
         </div>
@@ -220,39 +235,46 @@ const Pricing = () => {
           {pricingTiers.map((tier) => (
             <Card 
               key={tier.id} 
-              className={`relative bg-gray-800 border-gray-700 text-white h-full flex flex-col ${
-                tier.popular ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' : ''
+              className={`relative bg-slate-800 border-slate-700 text-slate-50 h-full flex flex-col ${
+                tier.popular 
+                  ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' 
+                  : 'border border-slate-700'
               }`}
             >
-              {tier.badge && (
+              {tier.popular && (
                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <Badge className={`${
-                    tier.popular 
-                      ? 'bg-blue-600 text-white border-blue-600' 
-                      : tier.id === 'trial'
-                      ? 'bg-green-600 text-white border-green-600'
-                      : 'bg-gray-600 text-gray-200 border-gray-600'
-                  }`}>
+                  <Badge className="bg-blue-600 text-white border-blue-600">
+                    Most Popular
+                  </Badge>
+                </div>
+              )}
+
+              {tier.badge && tier.id === 'trial' && (
+                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                  <Badge className="bg-green-600 text-white border-green-600">
                     {tier.badge}
                   </Badge>
                 </div>
               )}
 
               <CardHeader className="text-center pb-4">
-                <div className="flex items-center justify-center space-x-3 mb-3">
-                  <div className="text-2xl">{tier.icon}</div>
-                  <h3 className="text-xl font-semibold">{tier.name}</h3>
+                <div className="flex items-center justify-start space-x-3 mb-3">
+                  <div className="text-lg">{tier.icon}</div>
+                  <div className="text-left">
+                    <h3 className="text-lg font-semibold text-slate-50">{tier.name}</h3>
+                    <p className="text-xs text-slate-400">{tier.subtitle}</p>
+                  </div>
                 </div>
                 
-                <p className="text-gray-400 text-sm mb-6 min-h-[40px]">
+                <p className="text-slate-400 text-sm mb-6 min-h-[40px] text-left">
                   {tier.description}
                 </p>
                 
-                <div className="mb-4">
-                  <div className="text-4xl font-bold text-blue-400 mb-1">
+                <div className="mb-4 text-left">
+                  <div className="text-3xl font-bold text-blue-400 mb-1">
                     {formatPrice(tier)}
                   </div>
-                  <div className="text-gray-400 text-sm">
+                  <div className="text-slate-400 text-sm">
                     {getPriceSubtext(tier)}
                   </div>
                 </div>
@@ -263,24 +285,32 @@ const Pricing = () => {
                   {tier.features.map((feature, index) => (
                     <div key={index} className="flex items-center space-x-3">
                       <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
-                      <span className="text-sm text-gray-300">{feature}</span>
+                      <span className="text-sm text-slate-300">{feature}</span>
                     </div>
                   ))}
                 </div>
                 
                 {tier.usageLimits && (
-                  <div className="bg-gray-700/50 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-gray-300 mb-3 uppercase tracking-wide">
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-slate-300 mb-3 uppercase tracking-wide">
                       Usage Limits
                     </h4>
                     <div className="space-y-2">
                       {tier.usageLimits.map((limit, index) => (
                         <div key={index} className="flex justify-between text-sm">
-                          <span className="text-gray-400">{limit.name}</span>
-                          <span className="text-white font-medium">{limit.value}</span>
+                          <span className="text-slate-400">{limit.name}</span>
+                          <span className="text-slate-50 font-medium">{limit.value}</span>
                         </div>
                       ))}
                     </div>
+                    {tier.meterRate && (
+                      <div className="mt-2 pt-2 border-t border-slate-600">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-400">After limit</span>
+                          <span className="text-slate-50">${tier.meterRate}/transaction</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -294,6 +324,13 @@ const Pricing = () => {
               </CardContent>
             </Card>
           ))}
+        </div>
+
+        <div className="mt-12 text-center">
+          <p className="text-slate-400 text-sm max-w-3xl mx-auto">
+            All packages auto-renew unless you opt out. After package limits are reached, meter rates apply automatically. 
+            No service interruption - we'll continue processing your transactions at the meter rate.
+          </p>
         </div>
       </div>
     </div>

@@ -29,7 +29,7 @@ serve(async (req) => {
       throw new Error('User not authenticated');
     }
 
-    const { priceId, planName, amount, currency, interval } = await req.json();
+    const { priceId, planName, amount, currency, mode, packageCredits, meterRate } = await req.json();
 
     if (!priceId || !planName || !amount) {
       throw new Error('Missing required parameters');
@@ -64,18 +64,23 @@ serve(async (req) => {
       customerId = customer.id;
     }
 
-    // Create price object
+    // Create price object with package and meter rate information
     const priceData: any = {
       currency: currency,
       unit_amount: amount,
       product_data: {
         name: `${planName} Plan`,
-        description: `${planName} subscription plan`,
+        description: `${planName} subscription plan${packageCredits ? ` - ${packageCredits} credits included` : ''}${meterRate ? ` - $${meterRate} per transaction after limit` : ''}`,
+        metadata: {
+          package_credits: packageCredits?.toString() || '0',
+          meter_rate: meterRate?.toString() || '0',
+          plan_type: mode === 'subscription' ? 'recurring' : 'package'
+        }
       },
     };
 
-    if (interval) {
-      priceData.recurring = { interval };
+    if (mode === 'subscription') {
+      priceData.recurring = { interval: 'month' };
     }
 
     const price = await stripe.prices.create(priceData);
@@ -90,14 +95,23 @@ serve(async (req) => {
           quantity: 1,
         },
       ],
-      mode: interval ? 'subscription' : 'payment',
+      mode: mode || 'payment',
       success_url: `${req.headers.get('origin')}/pricing?success=true&plan=${priceId}`,
       cancel_url: `${req.headers.get('origin')}/pricing?canceled=true`,
       metadata: {
         user_id: user.id,
         plan_id: priceId,
         plan_name: planName,
+        package_credits: packageCredits?.toString() || '0',
+        meter_rate: meterRate?.toString() || '0',
+        auto_renewal: mode === 'subscription' ? 'true' : 'false'
       },
+      subscription_data: mode === 'subscription' ? {
+        metadata: {
+          package_credits: packageCredits?.toString() || '0',
+          meter_rate: meterRate?.toString() || '0'
+        }
+      } : undefined,
     });
 
     return new Response(
@@ -107,7 +121,7 @@ serve(async (req) => {
         status: 200,
       }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating checkout session:', error);
     
     return new Response(
