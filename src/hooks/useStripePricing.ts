@@ -72,7 +72,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       name: 'Starter',
       subtitle: 'Pay As-You-Go',
       description: 'Perfect for getting started with transaction-based billing.',
-      price: 0.05,
+      price: 0.99,
       currency: 'USD',
       icon: '📄',
       features: [
@@ -82,8 +82,8 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
         'Standard support'
       ],
       usageLimits: [
-        { name: 'Transactions', value: '1,000' },
-        { name: 'AI Processing', value: '100' }
+        { name: 'Transactions', value: '20' },
+        { name: 'AI Processing', value: '5' }
       ],
       buttonText: 'Select Plan',
       meterRate: 0.05
@@ -219,7 +219,7 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Starter',
       subtitle: 'Pay As-You-Go',
       description: 'Perfect for getting started with transaction-based billing.',
-      price: 0.05,
+      price: 0.99,
       currency: 'USD',
       icon: '📄',
       features: [
@@ -229,8 +229,8 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
         'Standard support'
       ],
       usageLimits: [
-        { name: 'Transactions', value: '1,000' },
-        { name: 'AI Processing', value: '100' }
+        { name: 'Transactions', value: '20' },
+        { name: 'AI Processing', value: '5' }
       ],
       buttonText: 'Select Plan',
       meterRate: 0.05
