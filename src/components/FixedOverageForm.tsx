@@ -305,6 +305,7 @@ const FixedOverageForm = () => {
         </CardContent>
       </Card>
 
+      
       <Card>
         <CardHeader>
           <CardTitle>Base Subscription Plan</CardTitle>
@@ -391,6 +392,7 @@ const FixedOverageForm = () => {
         </CardContent>
       </Card>
 
+      
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -490,6 +492,7 @@ const FixedOverageForm = () => {
         </CardContent>
       </Card>
 
+      
       <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
         <CardHeader>
           <CardTitle>Model Summary</CardTitle>
@@ -521,5 +524,3 @@ const FixedOverageForm = () => {
 };
 
 export default FixedOverageForm;
-
-}
