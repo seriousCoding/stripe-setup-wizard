@@ -49,26 +49,10 @@ const BillingModelTypeTabs = ({ activeTab, onTabChange }: BillingModelTypeTabsPr
         </TabsList>
       </Tabs>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {tabs.map((tab) => (
-          <div
-            key={tab.value}
-            className={`p-4 border rounded-lg transition-all duration-200 cursor-pointer ${
-              activeTab === tab.value
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-            onClick={() => onTabChange(tab.value)}
-          >
-            <div className="flex items-center space-x-2 mb-2">
-              <tab.icon className={`h-5 w-5 ${
-                activeTab === tab.value ? 'text-blue-600' : 'text-gray-600'
-              }`} />
-              <h3 className="font-medium">{tab.label}</h3>
-            </div>
-            <p className="text-sm text-gray-600">{tab.description}</p>
-          </div>
-        ))}
+      <div className="text-center p-4 bg-gray-50 rounded-lg">
+        <p className="text-sm text-gray-600">
+          {tabs.find(tab => tab.value === activeTab)?.description}
+        </p>
       </div>
     </div>
   );
