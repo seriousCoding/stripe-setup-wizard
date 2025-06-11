@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,7 +26,7 @@ const Pricing = () => {
 
       console.log('Selected tier details:', selectedTier);
 
-      // Handle special cases for free/trial plans
+      // Handle special case for free trial plan only
       if (tierId === 'trial') {
         toast({
           title: "Free Trial Activated!",
@@ -36,15 +35,7 @@ const Pricing = () => {
         return;
       }
 
-      if (tierId === 'starter') {
-        toast({
-          title: "Pay-As-You-Go Plan Activated!",
-          description: `Rate: $${selectedTier.price} per transaction. No package limits.`,
-        });
-        return;
-      }
-
-      // Create checkout session for paid plans
+      // Create checkout session for all other plans (including starter)
       console.log('Creating checkout session...');
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: {
@@ -78,13 +69,6 @@ const Pricing = () => {
         throw new Error('No checkout URL received');
       }
 
-      // Show success message for package plans
-      if (selectedTier.packageCredits) {
-        toast({
-          title: `${selectedTier.name} Plan Selected!`,
-          description: `Package includes ${selectedTier.packageCredits} credits. After limit, meter rate of $${selectedTier.meterRate} per transaction applies with auto-renewal.`,
-        });
-      }
     } catch (error: any) {
       console.error('Error selecting plan:', error);
       toast({
