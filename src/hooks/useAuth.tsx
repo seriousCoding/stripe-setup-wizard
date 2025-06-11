@@ -1,15 +1,22 @@
 
-import { useState, useEffect, ReactNode } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { UserProfile } from '@/types/auth';
-import { AuthContext, useAuthContext } from './useAuthContext';
-import { 
-  handleSignUp, 
-  handleSignIn, 
-  handleSignInWithEmailOrUsername, 
-  handleSignOut 
-} from '@/utils/authHelpers';
+import { SignUpData, SignInData, SignInWithEmailOrUsernameData, UserProfile } from '@/types/auth';
+
+interface AuthContextType {
+  user: User | null;
+  session: Session | null;
+  profile: UserProfile | null;
+  loading: boolean;
+  signUp: (data: SignUpData) => Promise<{ error: any }>;
+  signIn: (data: SignInData) => Promise<{ error: any }>;
+  signInWithEmailOrUsername: (data: SignInWithEmailOrUsernameData) => Promise<{ error: any }>;
+  signOut: () => Promise<{ error: any }>;
+  fetchProfile: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -73,12 +80,92 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  const signUp = async (data: SignUpData) => {
+    console.log('Signing up with data:', data);
+    const redirectUrl = `${window.location.origin}/`;
+    
+    const { error } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        emailRedirectTo: redirectUrl,
+        data: {
+          first_name: data.firstName,
+          last_name: data.lastName,
+          company_name: data.companyName || null,
+          phone: data.phone,
+          country: data.country,
+          username: data.username || null,
+        },
+      },
+    });
+    
+    if (error) {
+      console.error('Sign up error:', error);
+    } else {
+      console.log('Sign up successful - check email for confirmation');
+    }
+    
+    return { error };
+  };
+
+  const signIn = async (data: SignInData) => {
+    console.log('Signing in with email:', data.email);
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email: data.email,
+      password: data.password,
+    });
+    
+    if (error) {
+      console.error('Sign in error:', error);
+    } else {
+      console.log('Sign in successful');
+    }
+    
+    return { error };
+  };
+
+  const signInWithEmailOrUsername = async (data: SignInWithEmailOrUsernameData) => {
+    console.log('Signing in with email or username:', data.emailOrUsername);
+    
+    const isEmail = data.emailOrUsername.includes('@');
+    
+    if (isEmail) {
+      // If it's an email, use regular email sign in
+      return signIn({ email: data.emailOrUsername, password: data.password });
+    } else {
+      // If it's a username, we need to look up the email first
+      console.log('Looking up email for username:', data.emailOrUsername);
+      
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('username', data.emailOrUsername)
+          .single();
+        
+        if (profileError || !profileData) {
+          console.error('Username not found:', profileError);
+          return { error: { message: 'Invalid login credentials' } };
+        }
+        
+        console.log('Found email for username:', profileData.email);
+        return signIn({ email: profileData.email, password: data.password });
+      } catch (error) {
+        console.error('Error looking up username:', error);
+        return { error: { message: 'Invalid login credentials' } };
+      }
+    }
+  };
+
   const signOut = async () => {
-    const result = await handleSignOut();
-    if (!result.error) {
+    console.log('Signing out');
+    const { error } = await supabase.auth.signOut();
+    if (!error) {
       setProfile(null);
     }
-    return result;
+    return { error };
   };
 
   return (
@@ -87,9 +174,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       session,
       profile,
       loading,
-      signUp: handleSignUp,
-      signIn: handleSignIn,
-      signInWithEmailOrUsername: handleSignInWithEmailOrUsername,
+      signUp,
+      signIn,
+      signInWithEmailOrUsername,
       signOut,
       fetchProfile,
     }}>
@@ -98,4 +185,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useAuth = useAuthContext;
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
