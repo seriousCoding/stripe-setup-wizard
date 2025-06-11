@@ -1,12 +1,15 @@
 
-import React, { useState } from 'react';
-import DashboardLayout from '@/components/DashboardLayout';
-import PricingCard from '@/components/PricingCard';
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
 const Pricing = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const { toast } = useToast();
 
   const pricingTiers = [
@@ -17,6 +20,7 @@ const Pricing = () => {
       price: 0.05,
       currency: 'USD',
       badge: 'Pay As-You-Go',
+      icon: '📄',
       features: [
         'Pay only for what you use',
         'No monthly commitment',
@@ -35,8 +39,9 @@ const Pricing = () => {
       description: 'Buy credits in advance for better rates and flexibility.',
       price: 49,
       currency: 'USD',
-      badge: 'Most Popular',
+      badge: 'Credit Burndown',
       popular: true,
+      icon: '💼',
       features: [
         '1,200 transaction credits',
         '15% discount on bulk purchases',
@@ -56,8 +61,8 @@ const Pricing = () => {
       description: 'Unlimited transactions with predictable monthly costs.',
       price: 99,
       currency: 'USD',
-      interval: 'month' as const,
       badge: 'Flat Fee',
+      icon: '⚡',
       features: [
         'Unlimited transactions',
         'Unlimited AI processing',
@@ -73,8 +78,8 @@ const Pricing = () => {
       description: 'Scale with your team size and organizational needs.',
       price: 25,
       currency: 'USD',
-      interval: 'month' as const,
       badge: 'Per Seat',
+      icon: '👥',
       features: [
         'Unlimited everything',
         'Multi-user management',
@@ -91,6 +96,7 @@ const Pricing = () => {
       price: 0,
       currency: 'USD',
       badge: 'Free Trial',
+      icon: '🎁',
       features: [
         'Full access to all features',
         '500 transaction limit',
@@ -105,19 +111,31 @@ const Pricing = () => {
     }
   ];
 
-  const handleSelectPlan = async (tierId: string) => {
-    // Check if Stripe API key is configured
-    const apiKey = localStorage.getItem('stripe_api_key');
-    if (!apiKey) {
-      toast({
-        title: "Stripe Not Connected",
-        description: "Please configure your Stripe API key in the Billing section first.",
-        variant: "destructive",
+  const createStripeProducts = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('create-subscription-products', {
+        body: { products: pricingTiers }
       });
-      return;
-    }
 
+      if (error) {
+        console.error('Error creating products:', error);
+        return;
+      }
+
+      console.log('Products created successfully:', data);
+    } catch (error) {
+      console.error('Error creating Stripe products:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Create products in Stripe when component mounts
+    createStripeProducts();
+  }, []);
+
+  const handleSelectPlan = async (tierId: string) => {
     setIsLoading(true);
+    setSelectedPlan(tierId);
     
     try {
       const selectedTier = pricingTiers.find(tier => tier.id === tierId);
@@ -131,7 +149,6 @@ const Pricing = () => {
           title: "Free Trial Activated!",
           description: "You now have access to all features for 14 days.",
         });
-        setIsLoading(false);
         return;
       }
 
@@ -141,7 +158,6 @@ const Pricing = () => {
           title: "Pay-As-You-Go Plan Activated!",
           description: "You'll only be charged for what you use.",
         });
-        setIsLoading(false);
         return;
       }
 
@@ -150,9 +166,9 @@ const Pricing = () => {
         body: {
           priceId: tierId,
           planName: selectedTier.name,
-          amount: selectedTier.price * 100, // Convert to cents
+          amount: selectedTier.price * 100,
           currency: selectedTier.currency.toLowerCase(),
-          interval: selectedTier.interval || null
+          mode: tierId === 'business' || tierId === 'enterprise' ? 'subscription' : 'payment'
         }
       });
 
@@ -161,7 +177,6 @@ const Pricing = () => {
       }
 
       if (data?.url) {
-        // Redirect to Stripe Checkout in new tab
         window.open(data.url, '_blank');
       }
     } catch (error: any) {
@@ -173,44 +188,112 @@ const Pricing = () => {
       });
     } finally {
       setIsLoading(false);
+      setSelectedPlan(null);
     }
   };
 
+  const formatPrice = (tier: any) => {
+    if (tier.price === 0) return '$0';
+    return `$${tier.price}`;
+  };
+
+  const getPriceSubtext = (tier: any) => {
+    if (tier.price === 0) return '14 days free';
+    if (tier.id === 'starter') return 'per transaction';
+    if (tier.id === 'professional') return 'prepaid credits';
+    if (tier.id === 'business') return 'per month';
+    if (tier.id === 'enterprise') return 'per user/month';
+    return '';
+  };
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-900 text-white py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4">Simple, Transparent Pricing</h1>
+          <h1 className="text-4xl font-bold mb-4">Choose Your Plan</h1>
           <p className="text-gray-400 max-w-2xl mx-auto text-lg">
-            Choose from flexible pricing options designed to scale with your business needs.
-            From pay-as-you-go to enterprise solutions.
+            Select the perfect plan for your business needs
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {pricingTiers.map((tier) => (
-            <PricingCard
-              key={tier.id}
-              tier={tier}
-              onSelectPlan={handleSelectPlan}
-              isLoading={isLoading}
-            />
-          ))}
-        </div>
+            <Card 
+              key={tier.id} 
+              className={`relative bg-gray-800 border-gray-700 text-white h-full flex flex-col ${
+                tier.popular ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' : ''
+              }`}
+            >
+              {tier.badge && (
+                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                  <Badge className={`${
+                    tier.popular 
+                      ? 'bg-blue-600 text-white border-blue-600' 
+                      : tier.id === 'trial'
+                      ? 'bg-green-600 text-white border-green-600'
+                      : 'bg-gray-600 text-gray-200 border-gray-600'
+                  }`}>
+                    {tier.badge}
+                  </Badge>
+                </div>
+              )}
 
-        <div className="bg-gray-800 rounded-lg p-8 text-center">
-          <h3 className="text-xl font-semibold mb-4">Need a Custom Solution?</h3>
-          <p className="text-gray-400 mb-6">
-            Have specific requirements or need volume pricing? We'd love to work with you.
-          </p>
-          <div className="flex justify-center space-x-4">
-            <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-              Contact Sales
-            </button>
-            <button className="border border-gray-600 text-gray-300 px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors">
-              Schedule Demo
-            </button>
-          </div>
+              <CardHeader className="text-center pb-4">
+                <div className="flex items-center justify-center space-x-3 mb-3">
+                  <div className="text-2xl">{tier.icon}</div>
+                  <h3 className="text-xl font-semibold">{tier.name}</h3>
+                </div>
+                
+                <p className="text-gray-400 text-sm mb-6 min-h-[40px]">
+                  {tier.description}
+                </p>
+                
+                <div className="mb-4">
+                  <div className="text-4xl font-bold text-blue-400 mb-1">
+                    {formatPrice(tier)}
+                  </div>
+                  <div className="text-gray-400 text-sm">
+                    {getPriceSubtext(tier)}
+                  </div>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="flex-1 flex flex-col space-y-6">
+                <div className="space-y-3 flex-1">
+                  {tier.features.map((feature, index) => (
+                    <div key={index} className="flex items-center space-x-3">
+                      <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                      <span className="text-sm text-gray-300">{feature}</span>
+                    </div>
+                  ))}
+                </div>
+                
+                {tier.usageLimits && (
+                  <div className="bg-gray-700/50 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-300 mb-3 uppercase tracking-wide">
+                      Usage Limits
+                    </h4>
+                    <div className="space-y-2">
+                      {tier.usageLimits.map((limit, index) => (
+                        <div key={index} className="flex justify-between text-sm">
+                          <span className="text-gray-400">{limit.name}</span>
+                          <span className="text-white font-medium">{limit.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <Button 
+                  className="w-full mt-auto bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => handleSelectPlan(tier.id)}
+                  disabled={isLoading && selectedPlan === tier.id}
+                >
+                  {isLoading && selectedPlan === tier.id ? 'Processing...' : tier.buttonText}
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     </div>
