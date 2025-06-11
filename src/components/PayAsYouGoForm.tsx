@@ -7,13 +7,27 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import ProductSetup from '@/components/ProductSetup';
 import ServiceDefinition from '@/components/ServiceDefinition';
+import MeteredServices from '@/components/MeteredServices';
 
 interface MeteredService {
   id: string;
   displayName: string;
-  apiEventName: string;
+  eventName: string;
   pricePerUnit: number;
   currency: string;
+  billingScheme: 'per_unit' | 'tiered';
+  usageType: 'metered' | 'licensed';
+  aggregateUsage: 'sum' | 'last_during_period' | 'last_ever' | 'max';
+  interval: 'month' | 'year' | 'week' | 'day';
+  intervalCount: number;
+  trialPeriodDays?: number;
+  metadata?: Record<string, string>;
+  tiers?: Array<{
+    upTo: number | 'inf';
+    unitAmount: number;
+    flatAmount?: number;
+  }>;
+  description?: string;
 }
 
 const PayAsYouGoForm = () => {
@@ -23,13 +37,18 @@ const PayAsYouGoForm = () => {
   const [productDescription, setProductDescription] = useState('');
   const [pasteData, setPasteData] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
-  const [services, setServices] = useState<MeteredService[]>([
+  const [meteredServices, setMeteredServices] = useState<MeteredService[]>([
     { 
       id: '1', 
       displayName: 'API Calls', 
-      apiEventName: 'api_call', 
+      eventName: 'api_call_usage', 
       pricePerUnit: 0.001, 
-      currency: 'USD' 
+      currency: 'USD',
+      billingScheme: 'per_unit',
+      usageType: 'metered',
+      aggregateUsage: 'sum',
+      interval: 'month',
+      intervalCount: 1
     }
   ]);
 
@@ -46,6 +65,34 @@ const PayAsYouGoForm = () => {
   const handleFileUpload = (file: File) => {
     console.log('Uploading file:', file.name);
     // Add file upload logic
+  };
+
+  const updateMeteredService = (id: string, field: keyof MeteredService, value: any) => {
+    setMeteredServices(services => 
+      services.map(service => 
+        service.id === id ? { ...service, [field]: value } : service
+      )
+    );
+  };
+
+  const removeMeteredService = (id: string) => {
+    setMeteredServices(services => services.filter(service => service.id !== id));
+  };
+
+  const addMeteredService = () => {
+    const newService: MeteredService = {
+      id: Date.now().toString(),
+      displayName: '',
+      eventName: '',
+      pricePerUnit: 0,
+      currency: 'USD',
+      billingScheme: 'per_unit',
+      usageType: 'metered',
+      aggregateUsage: 'sum',
+      interval: 'month',
+      intervalCount: 1
+    };
+    setMeteredServices(services => [...services, newService]);
   };
 
   return (
@@ -114,91 +161,12 @@ const PayAsYouGoForm = () => {
       </Card>
 
       {/* Metered Services Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Metered Services</CardTitle>
-          <CardDescription>
-            Review and configure your metered services
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {services.map((service, index) => (
-              <div key={service.id} className="border rounded-lg p-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <Label>Display Name</Label>
-                    <Input
-                      value={service.displayName}
-                      onChange={(e) => {
-                        const updatedServices = [...services];
-                        updatedServices[index].displayName = e.target.value;
-                        setServices(updatedServices);
-                      }}
-                      placeholder="e.g., API Calls"
-                    />
-                  </div>
-                  <div>
-                    <Label>API Event Name</Label>
-                    <Input
-                      value={service.apiEventName}
-                      onChange={(e) => {
-                        const updatedServices = [...services];
-                        updatedServices[index].apiEventName = e.target.value;
-                        setServices(updatedServices);
-                      }}
-                      placeholder="e.g., api_call"
-                    />
-                  </div>
-                  <div>
-                    <Label>Price Per Unit</Label>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      value={service.pricePerUnit}
-                      onChange={(e) => {
-                        const updatedServices = [...services];
-                        updatedServices[index].pricePerUnit = parseFloat(e.target.value);
-                        setServices(updatedServices);
-                      }}
-                      placeholder="0.001"
-                    />
-                  </div>
-                  <div>
-                    <Label>Currency</Label>
-                    <Input
-                      value={service.currency}
-                      onChange={(e) => {
-                        const updatedServices = [...services];
-                        updatedServices[index].currency = e.target.value;
-                        setServices(updatedServices);
-                      }}
-                      placeholder="USD"
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-            
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                const newService: MeteredService = {
-                  id: Date.now().toString(),
-                  displayName: '',
-                  apiEventName: '',
-                  pricePerUnit: 0,
-                  currency: 'USD'
-                };
-                setServices([...services, newService]);
-              }}
-              className="w-full"
-            >
-              Add Service
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <MeteredServices
+        meteredServices={meteredServices}
+        updateMeteredService={updateMeteredService}
+        removeMeteredService={removeMeteredService}
+        addMeteredService={addMeteredService}
+      />
 
       {/* Action Buttons */}
       <div className="flex space-x-4">
