@@ -56,7 +56,7 @@ serve(async (req) => {
       apiVersion: '2023-10-16',
     });
 
-    // Fetch products with their default prices - filter by our app's metadata
+    // Fetch products with their default prices
     const products = await stripe.products.list({
       expand: ['data.default_price'],
       active: true,
@@ -65,28 +65,13 @@ serve(async (req) => {
 
     logStep("All products fetched from Stripe", { count: products.data.length });
 
-    // Filter products to only include those created by this billing app
+    // Use STRICT filtering - only products with billing_app_v1 identifier
     const appProducts = products.data.filter(product => {
       const metadata = product.metadata || {};
-      return (
-        metadata.created_via === 'stripe_setup_pilot' ||
-        metadata.billing_model_type ||
-        metadata.tier_id ||
-        metadata.usage_limit_api_calls ||
-        metadata.meter_rate ||
-        metadata.package_credits ||
-        metadata.included_usage ||
-        // Also include if product name matches common billing patterns
-        product.name.toLowerCase().includes('trial') ||
-        product.name.toLowerCase().includes('starter') ||
-        product.name.toLowerCase().includes('professional') ||
-        product.name.toLowerCase().includes('business') ||
-        product.name.toLowerCase().includes('enterprise') ||
-        product.name.toLowerCase().includes('premium')
-      );
+      return metadata.created_via === 'billing_app_v1';
     });
 
-    logStep("Filtered to app-specific products", { 
+    logStep("Filtered to billing app products", { 
       originalCount: products.data.length,
       filteredCount: appProducts.length 
     });
@@ -168,7 +153,8 @@ serve(async (req) => {
         success: true,
         products: enhancedProducts,
         total_count: enhancedProducts.length,
-        filtered_from: products.data.length
+        filtered_from: products.data.length,
+        app_products_only: true
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

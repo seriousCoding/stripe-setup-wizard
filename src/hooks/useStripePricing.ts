@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -50,12 +51,13 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
         throw new Error(error.message);
       }
 
-      if (data?.products && data.products.length > 0) {
+      if (data?.success && data.products && data.products.length > 0) {
         const tiers = mapStripeProductsToTiers(data.products);
         setPricingTiers(tiers);
+        console.log('Loaded billing app products:', data.products.length);
       } else {
-        // Only use fallback if no products found
-        console.log('No Stripe products found, using default pricing');
+        // No billing app products found, use default
+        console.log('No billing app products found, using default pricing');
         setPricingTiers(getDefaultPricingTiers());
       }
     } catch (err: any) {
@@ -107,42 +109,35 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     const priceAmount = defaultPrice.unit_amount ? defaultPrice.unit_amount / 100 : 0;
     const isRecurring = defaultPrice.recurring?.interval === 'month';
     const usageLimits = product.usage_limits || {};
+    const metadata = product.metadata || {};
     
-    // Determine tier ID from metadata or price range
-    let tierId = product.metadata?.tier_id;
-    if (!tierId) {
-      // Auto-assign tier based on price
-      if (priceAmount === 0) tierId = 'trial';
-      else if (priceAmount <= 10) tierId = 'starter';
-      else if (priceAmount <= 50) tierId = 'professional';
-      else if (priceAmount <= 100) tierId = 'business';
-      else tierId = 'enterprise';
-    }
+    // Get tier ID from metadata
+    const tierId = metadata.tier_id || 'custom';
 
     // Create dynamic usage limits array
     const dynamicUsageLimits = [];
     if (usageLimits.transactions > 0) {
       dynamicUsageLimits.push({ 
         name: 'Transactions', 
-        value: usageLimits.transactions.toLocaleString() 
+        value: usageLimits.transactions === 999999 ? 'Unlimited' : usageLimits.transactions.toLocaleString() 
       });
     }
     if (usageLimits.ai_processing > 0) {
       dynamicUsageLimits.push({ 
         name: 'AI Processing', 
-        value: usageLimits.ai_processing.toLocaleString() 
+        value: usageLimits.ai_processing === 999999 ? 'Unlimited' : usageLimits.ai_processing.toLocaleString() 
       });
     }
     if (usageLimits.data_exports > 0) {
       dynamicUsageLimits.push({ 
         name: 'Data Exports', 
-        value: usageLimits.data_exports.toLocaleString() 
+        value: usageLimits.data_exports === 999999 ? 'Unlimited' : usageLimits.data_exports.toLocaleString() 
       });
     }
     if (usageLimits.api_calls > 0) {
       dynamicUsageLimits.push({ 
         name: 'API Calls', 
-        value: usageLimits.api_calls.toLocaleString() 
+        value: usageLimits.api_calls === 999999 ? 'Unlimited' : usageLimits.api_calls.toLocaleString() 
       });
     }
 
@@ -150,16 +145,16 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     const tier: StripePricingTier = {
       id: tierId,
       name: product.name || 'Custom Plan',
-      subtitle: product.metadata?.billing_model_type || (isRecurring ? 'Monthly Plan' : 'Pay-as-you-go'),
+      subtitle: getSubtitleFromBillingType(metadata.billing_model_type, isRecurring),
       description: product.description || 'Custom pricing plan',
       price: priceAmount,
       currency: defaultPrice.currency?.toUpperCase() || 'USD',
       icon: getIconForTier(tierId),
-      features: generateFeaturesFromMetadata(product.metadata, usageLimits),
+      features: generateFeaturesFromMetadata(metadata, usageLimits),
       usageLimits: dynamicUsageLimits.length > 0 ? dynamicUsageLimits : undefined,
-      buttonText: 'Select Plan',
-      popular: product.metadata?.popular === 'true',
-      badge: product.metadata?.badge,
+      buttonText: priceAmount === 0 ? 'Start Free Trial' : 'Select Plan',
+      popular: metadata.popular === 'true' || tierId === 'professional',
+      badge: getBadgeFromTier(tierId, metadata),
       isMonthly: isRecurring,
       meterRate: usageLimits.meter_rate || 0,
       packageCredits: usageLimits.package_credits || 0,
@@ -171,13 +166,26 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     tiers.push(tier);
   });
 
-  // If no Stripe products found, return default tiers
-  if (tiers.length === 0) {
-    return getDefaultPricingTiers();
-  }
-
   // Sort tiers by price
   return tiers.sort((a, b) => a.price - b.price);
+};
+
+const getSubtitleFromBillingType = (billingType: string, isRecurring: boolean): string => {
+  switch (billingType) {
+    case 'free_trial': return 'Free Trial';
+    case 'pay_as_you_go': return 'Pay As-You-Go';
+    case 'credit_burndown': return 'Credit Package';
+    case 'flat_recurring': return 'Monthly Plan';
+    case 'per_seat': return 'Per Seat';
+    default: return isRecurring ? 'Monthly Plan' : 'Pay-as-you-go';
+  }
+};
+
+const getBadgeFromTier = (tierId: string, metadata: any): string | undefined => {
+  if (tierId === 'trial') return 'Free Trial';
+  if (tierId === 'professional') return 'Most Popular';
+  if (metadata.badge) return metadata.badge;
+  return undefined;
 };
 
 const generateFeaturesFromMetadata = (metadata: any, usageLimits: any): string[] => {
@@ -194,15 +202,35 @@ const generateFeaturesFromMetadata = (metadata: any, usageLimits: any): string[]
   if (usageLimits.package_credits > 0) {
     features.push(`${usageLimits.package_credits.toLocaleString()} prepaid credits`);
   }
+
+  // Check for unlimited features
+  if (metadata.usage_limit_transactions === 'unlimited') {
+    features.push('Unlimited transactions');
+  }
+  if (metadata.usage_limit_ai_processing === 'unlimited') {
+    features.push('Unlimited AI processing');
+  }
+  if (metadata.usage_limit_api_calls === 'unlimited') {
+    features.push('Unlimited API calls');
+  }
   
-  if (metadata?.features) {
-    try {
-      const additionalFeatures = JSON.parse(metadata.features);
-      features.push(...additionalFeatures);
-    } catch {
-      // If features isn't valid JSON, add as single feature
-      features.push(metadata.features);
-    }
+  // Add tier-specific features
+  switch (metadata.tier_id) {
+    case 'trial':
+      features.push('Full feature access', 'Email support');
+      break;
+    case 'starter':
+      features.push('Pay only for what you use', 'No monthly commitment', 'Email support');
+      break;
+    case 'professional':
+      features.push('Better rates', 'Flexible credit system', 'Priority support');
+      break;
+    case 'business':
+      features.push('Predictable costs', 'Advanced features', 'Phone support');
+      break;
+    case 'enterprise':
+      features.push('Team management', 'Custom integrations', 'Dedicated support');
+      break;
   }
   
   // Add default features if none specified
@@ -227,43 +255,19 @@ const getIconForTier = (tierId: string): string => {
 const getDefaultPricingTiers = (): StripePricingTier[] => {
   return [
     {
-      id: 'trial',
-      name: 'Free Trial',
-      subtitle: 'Trial',
-      description: 'Try all features risk-free before committing.',
+      id: 'default',
+      name: 'Default Plan',
+      subtitle: 'Setup Required',
+      description: 'Please run the Stripe cleanup and reseed process to see proper billing tiers.',
       price: 0,
       currency: 'USD',
-      badge: 'Free Trial',
-      icon: '🎁',
+      icon: '⚙️',
       features: [
-        'Full access to all features',
-        'Basic AI processing',
-        'Email support'
+        'Use the management tools above',
+        'Clean up existing products',
+        'Reseed with proper structure'
       ],
-      usageLimits: [
-        { name: 'Transactions', value: '500' },
-        { name: 'AI Processing', value: '50' }
-      ],
-      buttonText: 'Start Free Trial',
-      packageCredits: 500,
-      meterRate: 0.05
-    },
-    {
-      id: 'starter',
-      name: 'Starter',
-      subtitle: 'Pay As-You-Go',
-      description: 'Perfect for getting started with transaction-based billing.',
-      price: 0.99,
-      currency: 'USD',
-      icon: '📄',
-      features: [
-        'Pay only for what you use',
-        'No monthly commitment',
-        'Basic AI data extraction',
-        'Standard support'
-      ],
-      buttonText: 'Select Plan',
-      meterRate: 0.05
+      buttonText: 'Setup Required',
     }
   ];
 };

@@ -7,6 +7,7 @@ import FlatRecurringForm from '@/components/FlatRecurringForm';
 import FixedOverageForm from '@/components/FixedOverageForm';
 import PerSeatForm from '@/components/PerSeatForm';
 import StripeConnectionStatus from '@/components/StripeConnectionStatus';
+import StripeManagement from '@/components/StripeManagement';
 
 const BillingModels = () => {
   const [activeTab, setActiveTab] = useState('pay-as-you-go');
@@ -38,6 +39,7 @@ const BillingModels = () => {
     >
       <div className="space-y-6">
         <StripeConnectionStatus />
+        <StripeManagement />
         <BillingModelTypeTabs activeTab={activeTab} onTabChange={setActiveTab} />
         {renderContent()}
       </div>
