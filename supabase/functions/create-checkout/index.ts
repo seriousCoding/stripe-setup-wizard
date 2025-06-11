@@ -115,13 +115,49 @@ serve(async (req) => {
       }
     }
 
+    // If no price found, create a subscription price for this plan
     if (!targetPrice) {
-      throw new Error(`No matching price found for plan: ${planName} (${priceId}). Please ensure the Stripe products are properly seeded.`);
+      logStep("No existing price found, creating subscription price");
+      
+      const priceAmount = {
+        'trial': 0,
+        'starter': 99, // $0.99
+        'professional': 4900, // $49
+        'business': 9900, // $99
+        'enterprise': 2500 // $25
+      }[priceId] || 99;
+
+      // Create product first
+      const product = await stripe.products.create({
+        name: `${planName} Plan`,
+        metadata: {
+          tier: priceId,
+          created_via: 'billing_app_v1'
+        }
+      });
+
+      // Create recurring price for subscription
+      targetPrice = await stripe.prices.create({
+        currency: 'usd',
+        unit_amount: priceAmount,
+        product: product.id,
+        recurring: { interval: 'month' }, // Always create as subscription
+        metadata: {
+          tier: priceId,
+          plan_name: planName
+        }
+      });
+      
+      logStep("Created new subscription price", { 
+        priceId: targetPrice.id, 
+        amount: priceAmount,
+        recurring: true
+      });
     }
 
-    // Determine mode based on whether the price has recurring billing
-    const mode = targetPrice.recurring ? 'subscription' : 'payment';
-    logStep("Determined checkout mode", { mode, isRecurring: !!targetPrice.recurring });
+    // Always use subscription mode for recurring plans
+    const mode = 'subscription';
+    logStep("Using subscription mode", { mode, priceId: targetPrice.id });
     
     // Create checkout session
     const sessionData: any = {
@@ -141,19 +177,14 @@ serve(async (req) => {
         plan_id: priceId,
         plan_name: planName,
       },
-    };
-
-    // Add subscription-specific data if it's a subscription
-    if (mode === 'subscription') {
-      sessionData.subscription_data = {
+      subscription_data: {
         metadata: {
           plan_id: priceId,
           plan_name: planName,
           user_id: data.user.id,
         }
-      };
-      logStep("Added subscription metadata");
-    }
+      }
+    };
 
     const session = await stripe.checkout.sessions.create(sessionData);
 
