@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import SpreadsheetUpload from './SpreadsheetUpload';
+import PayAsYouGoForm from './PayAsYouGoForm';
 import FlatRecurringForm from './FlatRecurringForm';
 import FixedOverageForm from './FixedOverageForm';
 import PerSeatForm from './PerSeatForm';
@@ -45,7 +45,7 @@ const BillingModelTypeTabs = ({ onTabChange, defaultValue = "pay-as-you-go" }: B
       </TabsList>
       
       <TabsContent value="pay-as-you-go" className="mt-6">
-        <SpreadsheetUpload />
+        <PayAsYouGoForm />
       </TabsContent>
       
       <TabsContent value="flat-recurring" className="mt-6">
