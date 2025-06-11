@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, RefreshCw, AlertCircle, Database, Activity } from 'lucide-react';
+import { Check, RefreshCw, AlertCircle, Database, Activity, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useStripePricing } from '@/hooks/useStripePricing';
+import { Link } from 'react-router-dom';
 import UsageDashboard from '@/components/UsageDashboard';
 
 const Pricing = () => {
@@ -161,6 +162,16 @@ const Pricing = () => {
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
           <div className="flex items-center justify-center space-x-4 mb-4">
+            <Link to="/">
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Dashboard
+              </Button>
+            </Link>
             <h1 className="text-4xl font-bold text-purple-500">Choose Your Plan</h1>
             <div className="flex space-x-2">
               <Button
