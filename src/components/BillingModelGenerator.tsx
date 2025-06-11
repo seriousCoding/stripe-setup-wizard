@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,7 +13,7 @@ interface BillingItem {
   product: string;
   unit_amount: number; // Price in cents (Stripe format)
   currency: string;
-  type: 'metered' | 'recurring' | 'one_time';
+  type: 'metered' | 'recurring' | 'one-time';
   interval?: string;
   eventName?: string;
   description?: string;
