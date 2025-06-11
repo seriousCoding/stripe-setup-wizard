@@ -1,13 +1,13 @@
+
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Wand2, Camera, FileText, Plus } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import BillingModelGenerator from './BillingModelGenerator';
+import StripeConnectionStatus from './StripeConnectionStatus';
+import BillingModelTypeTabs from './BillingModelTypeTabs';
+import ProductSetup from './ProductSetup';
+import ServiceDefinition from './ServiceDefinition';
+import MeteredServices from './MeteredServices';
 
 interface UploadedFile {
   name: string;
@@ -62,15 +62,6 @@ const SpreadsheetUpload = () => {
     }, 1500);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      handleFileUpload(files[0]);
-    }
-  }, [handleFileUpload]);
-
   const handlePasteData = () => {
     // Simulate parsing pasted data
     const mockServices = [
@@ -90,7 +81,6 @@ const SpreadsheetUpload = () => {
   const handleScanImage = () => {
     // Simulate camera scan
     console.log('Opening camera for image scan...');
-    // In a real implementation, this would open camera or file picker for images
   };
 
   const addMeteredService = () => {
@@ -116,10 +106,6 @@ const SpreadsheetUpload = () => {
     setMeteredServices(services => services.filter(service => service.id !== id));
   };
 
-  const formatFileSize = (bytes: number) => {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  };
-
   const generateBillingModel = () => {
     setShowBillingGenerator(true);
   };
@@ -140,32 +126,8 @@ const SpreadsheetUpload = () => {
 
   return (
     <div className="space-y-6">
-      {/* Stripe Connection Status */}
-      <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-        <div className="flex items-center space-x-2">
-          <CheckCircle className="h-5 w-5 text-green-600" />
-          <span className="text-green-700 font-medium">Stripe Connected</span>
-        </div>
-        <Button variant="outline" size="sm">
-          Disconnect Stripe
-        </Button>
-      </div>
-
-      {/* Billing Model Type Tabs */}
-      <div className="flex space-x-1 bg-muted p-1 rounded-lg">
-        <Button variant="secondary" size="sm" className="flex-1">
-          💰 Pay As You Go
-        </Button>
-        <Button variant="ghost" size="sm" className="flex-1">
-          🔄 Flat Recurring
-        </Button>
-        <Button variant="ghost" size="sm" className="flex-1">
-          ⚡ Fixed Fee & Overage
-        </Button>
-        <Button variant="ghost" size="sm" className="flex-1">
-          💺 Per Seat
-        </Button>
-      </div>
+      <StripeConnectionStatus />
+      <BillingModelTypeTabs />
 
       <Card>
         <CardHeader>
@@ -175,212 +137,32 @@ const SpreadsheetUpload = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Product Setup */}
-          <div>
-            <Label className="text-base font-medium">Product Setup</Label>
-            <div className="flex space-x-4 mt-2">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  id="new-product"
-                  name="productSetup"
-                  checked={productSetup === 'new'}
-                  onChange={() => setProductSetup('new')}
-                  className="w-4 h-4"
-                />
-                <Label htmlFor="new-product">Create New Product</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  id="existing-product"
-                  name="productSetup"
-                  checked={productSetup === 'existing'}
-                  onChange={() => setProductSetup('existing')}
-                  className="w-4 h-4"
-                />
-                <Label htmlFor="existing-product">Use Existing Product</Label>
-              </div>
-            </div>
-          </div>
+          <ProductSetup
+            productSetup={productSetup}
+            setProductSetup={setProductSetup}
+            existingProduct={existingProduct}
+            setExistingProduct={setExistingProduct}
+          />
 
-          {/* Existing Product Selection */}
-          {productSetup === 'existing' && (
-            <div>
-              <Label>Existing Product</Label>
-              <Select value={existingProduct} onValueChange={setExistingProduct}>
-                <SelectTrigger>
-                  <SelectValue placeholder="None (or enter ID manually below)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None (or enter ID manually below)</SelectItem>
-                  <SelectItem value="prod_123">API Service Platform</SelectItem>
-                  <SelectItem value="prod_456">Analytics Dashboard</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" className="mt-2">
-                Disconnect Stripe
-              </Button>
-            </div>
-          )}
-
-          {/* Define Services Section */}
-          <div className="border rounded-lg p-4">
-            <div className="flex items-center space-x-2 mb-4">
-              <FileText className="h-4 w-4 text-blue-600" />
-              <Label className="font-medium">Define Services (Optional)</Label>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Define metered services by uploading a file, pasting data, or scanning with your camera. These will populate the service list below for review.
-            </p>
-            
-            {/* Service Definition Buttons */}
-            <div className="flex space-x-2 mb-4">
-              <Button variant="outline" size="sm">
-                📁 Upload File
-              </Button>
-              <Button variant="outline" size="sm" onClick={handlePasteData}>
-                📋 Paste Data
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleScanImage}>
-                📷 Scan Image
-              </Button>
-            </div>
-
-            {/* File Upload Area */}
-            <Card 
-              className={`border-2 border-dashed transition-all duration-200 ${
-                isDragOver 
-                  ? 'border-blue-500 bg-blue-50/50' 
-                  : 'border-border'
-              }`}
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-              onDragEnter={() => setIsDragOver(true)}
-              onDragLeave={() => setIsDragOver(false)}
-            >
-              <CardContent className="p-6">
-                <div className="text-center">
-                  <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-blue-600 mb-1">Click to upload</p>
-                  <p className="text-xs text-muted-foreground">or drag and drop</p>
-                  <p className="text-xs text-muted-foreground mt-1">CSV or XLSX files</p>
-                  
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                    className="hidden"
-                    id="file-upload"
-                  />
-                  <label htmlFor="file-upload">
-                    <Button asChild size="sm" className="mt-2">
-                      <span>Choose File</span>
-                    </Button>
-                  </label>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Paste Data Section */}
-          <div>
-            <Label>Paste Service Data</Label>
-            <Textarea
-              value={pasteData}
-              onChange={(e) => setPasteData(e.target.value)}
-              placeholder="Paste your service pricing data here..."
-              rows={3}
-            />
-            {pasteData && (
-              <Button size="sm" onClick={handlePasteData} className="mt-2">
-                Parse Data
-              </Button>
-            )}
-          </div>
+          <ServiceDefinition
+            pasteData={pasteData}
+            setPasteData={setPasteData}
+            handlePasteData={handlePasteData}
+            handleScanImage={handleScanImage}
+            handleFileUpload={handleFileUpload}
+            isDragOver={isDragOver}
+            setIsDragOver={setIsDragOver}
+          />
         </CardContent>
       </Card>
 
-      {/* Metered Services */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Metered Services</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {meteredServices.map((service, index) => (
-            <div key={service.id} className="border rounded-lg p-4 bg-blue-50">
-              <div className="flex items-center justify-between mb-4">
-                <Label className="text-blue-600 font-medium">Service #{index + 1}</Label>
-                {meteredServices.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeMeteredService(service.id)}
-                    className="text-red-600"
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label>Meter Display Name</Label>
-                  <Input
-                    value={service.displayName}
-                    onChange={(e) => updateMeteredService(service.id, 'displayName', e.target.value)}
-                    placeholder="e.g., API Calls"
-                  />
-                </div>
-                <div>
-                  <Label>Meter Event Name (Stripe API)</Label>
-                  <Input
-                    value={service.eventName}
-                    onChange={(e) => updateMeteredService(service.id, 'eventName', e.target.value)}
-                    placeholder="e.g., api_call_count"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    This is the 'event_name' you'll use to report usage to Stripe.
-                  </p>
-                </div>
-                <div>
-                  <Label>Price Per Unit</Label>
-                  <Input
-                    type="number"
-                    step="0.0001"
-                    value={service.pricePerUnit}
-                    onChange={(e) => updateMeteredService(service.id, 'pricePerUnit', parseFloat(e.target.value))}
-                    placeholder="e.g., 0.05"
-                  />
-                </div>
-                <div>
-                  <Label>Currency</Label>
-                  <Select 
-                    value={service.currency} 
-                    onValueChange={(value) => updateMeteredService(service.id, 'currency', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
-                      <SelectItem value="GBP">GBP</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          ))}
-          
-          <Button onClick={addMeteredService} variant="outline" className="w-full">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Another Metered Service
-          </Button>
-        </CardContent>
-      </Card>
+      <MeteredServices
+        meteredServices={meteredServices}
+        updateMeteredService={updateMeteredService}
+        removeMeteredService={removeMeteredService}
+        addMeteredService={addMeteredService}
+      />
 
-      {/* Create Model Button */}
       <Card>
         <CardContent className="p-6">
           <Button 
@@ -393,7 +175,6 @@ const SpreadsheetUpload = () => {
         </CardContent>
       </Card>
 
-      {/* Processing State */}
       {isProcessing && (
         <Card>
           <CardContent className="p-6">
@@ -405,7 +186,6 @@ const SpreadsheetUpload = () => {
         </Card>
       )}
 
-      {/* Generated Model Result */}
       {generatedModel && (
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardHeader>
