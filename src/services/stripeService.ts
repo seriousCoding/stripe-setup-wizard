@@ -155,7 +155,7 @@ class StripeService {
     };
     value_settings?: {
       event_payload_key: string;
-    };\
+    };
   }): Promise<{ meter?: any; error?: string }> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
