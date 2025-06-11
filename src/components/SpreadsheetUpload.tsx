@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -5,6 +6,7 @@ import BillingModelGenerator from './BillingModelGenerator';
 import ProductSetup from './ProductSetup';
 import ServiceDefinition from './ServiceDefinition';
 import MeteredServices from './MeteredServices';
+import BillingModelAnalyzer from './BillingModelAnalyzer';
 
 interface UploadedFile {
   name: string;
@@ -26,6 +28,7 @@ const SpreadsheetUpload = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showBillingGenerator, setShowBillingGenerator] = useState(false);
+  const [showAnalyzer, setShowAnalyzer] = useState(false);
   const [generatedModel, setGeneratedModel] = useState<any>(null);
   
   // Product setup state
@@ -41,21 +44,24 @@ const SpreadsheetUpload = () => {
   const handleFileUpload = useCallback(async (file: File) => {
     setIsProcessing(true);
     
-    // Simulate file processing
+    // Simulate file processing with more realistic data
     setTimeout(() => {
+      const mockData = [
+        { product: 'API Calls', price: 0.001, currency: 'USD', type: 'metered', eventName: 'api_call', description: 'REST API requests' },
+        { product: 'Storage GB', price: 0.05, currency: 'USD', type: 'metered', eventName: 'storage_gb', description: 'Data storage per GB' },
+        { product: 'Pro Plan', price: 29.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Monthly subscription' },
+        { product: 'Enterprise Support', price: 199.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Premium support tier' },
+        { product: 'Data Processing', price: 0.002, currency: 'USD', type: 'metered', eventName: 'data_process', description: 'Per record processed' }
+      ];
+      
       setUploadedFile({
         name: file.name,
         size: file.size,
         type: file.type,
-        data: [
-          { product: 'API Calls', price: 0.001, currency: 'USD', type: 'metered', eventName: 'api_call', description: 'REST API requests' },
-          { product: 'Storage GB', price: 0.05, currency: 'USD', type: 'metered', eventName: 'storage_gb', description: 'Data storage per GB' },
-          { product: 'Pro Plan', price: 29.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Monthly subscription' },
-          { product: 'Enterprise Support', price: 199.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Premium support tier' },
-          { product: 'Data Processing', price: 0.002, currency: 'USD', type: 'metered', eventName: 'data_process', description: 'Per record processed' }
-        ]
+        data: mockData
       });
       setIsProcessing(false);
+      setShowAnalyzer(true);
     }, 1500);
   }, []);
 
@@ -105,11 +111,18 @@ const SpreadsheetUpload = () => {
 
   const generateBillingModel = () => {
     setShowBillingGenerator(true);
+    setShowAnalyzer(false);
   };
 
   const handleModelGenerated = (model: any) => {
     setGeneratedModel(model);
     setShowBillingGenerator(false);
+  };
+
+  const handleModelSelect = (modelType: string) => {
+    console.log('Selected model type:', modelType);
+    setShowAnalyzer(false);
+    // Here you could redirect to the specific form or update the parent component
   };
 
   if (showBillingGenerator && uploadedFile?.data) {
@@ -118,6 +131,47 @@ const SpreadsheetUpload = () => {
         uploadedData={uploadedFile.data}
         onModelGenerated={handleModelGenerated}
       />
+    );
+  }
+
+  if (showAnalyzer && uploadedFile?.data) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold">Data Analysis Complete</h2>
+            <p className="text-muted-foreground">
+              We've analyzed your uploaded data and found the best billing model for your business
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              setShowAnalyzer(false);
+              setUploadedFile(null);
+            }}
+          >
+            Upload Different File
+          </Button>
+        </div>
+        
+        <BillingModelAnalyzer 
+          analyzedData={uploadedFile.data}
+          onModelSelect={handleModelSelect}
+        />
+        
+        <div className="flex space-x-3">
+          <Button 
+            onClick={generateBillingModel}
+            className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+          >
+            Configure This Model
+          </Button>
+          <Button variant="outline">
+            Try Different Model
+          </Button>
+        </div>
+      </div>
     );
   }
 
@@ -174,7 +228,7 @@ const SpreadsheetUpload = () => {
           <CardContent className="p-6">
             <div className="flex items-center space-x-3">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <span>Processing your file...</span>
+              <span>Analyzing your data and suggesting the best billing model...</span>
             </div>
           </CardContent>
         </Card>
