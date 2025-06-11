@@ -4,7 +4,7 @@ export interface UserProfile {
   email: string;
   first_name: string;
   last_name: string;
-  company_name: string;
+  company_name: string | null; // Made optional
   phone: string;
   country: string;
   created_at: string;
@@ -16,7 +16,7 @@ export interface SignUpData {
   password: string;
   firstName: string;
   lastName: string;
-  companyName: string;
+  companyName: string; // Can be empty string for optional
   phone: string;
   country: string;
 }

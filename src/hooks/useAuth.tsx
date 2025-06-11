@@ -26,6 +26,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchProfile = async () => {
     if (!user) return;
     
+    console.log('Fetching profile for user:', user.id);
+    
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -33,7 +35,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .single();
     
     if (!error && data) {
+      console.log('Profile fetched successfully:', data);
       setProfile(data);
+    } else {
+      console.error('Error fetching profile:', error);
     }
   };
 
@@ -41,6 +46,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -58,6 +64,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session check:', session?.user?.email);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -73,6 +80,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signUp = async (data: SignUpData) => {
+    console.log('Signing up with data:', data);
     const redirectUrl = `${window.location.origin}/`;
     
     const { error } = await supabase.auth.signUp({
@@ -83,26 +91,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         data: {
           first_name: data.firstName,
           last_name: data.lastName,
-          company_name: data.companyName,
+          company_name: data.companyName || null, // Handle optional company name
           phone: data.phone,
           country: data.country,
         },
       },
     });
     
+    if (error) {
+      console.error('Sign up error:', error);
+    } else {
+      console.log('Sign up successful');
+    }
+    
     return { error };
   };
 
   const signIn = async (data: SignInData) => {
+    console.log('Signing in with email:', data.email);
+    
     const { error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password,
     });
     
+    if (error) {
+      console.error('Sign in error:', error);
+    } else {
+      console.log('Sign in successful');
+    }
+    
     return { error };
   };
 
   const signOut = async () => {
+    console.log('Signing out');
     const { error } = await supabase.auth.signOut();
     if (!error) {
       setProfile(null);
