@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import PricingCard from '@/components/PricingCard';
@@ -15,6 +16,7 @@ const Pricing = () => {
       description: 'Perfect for getting started with transaction-based billing.',
       price: 0.05,
       currency: 'USD',
+      badge: 'Pay As-You-Go',
       features: [
         'Pay only for what you use',
         'No monthly commitment',
@@ -55,6 +57,7 @@ const Pricing = () => {
       price: 99,
       currency: 'USD',
       interval: 'month' as const,
+      badge: 'Flat Fee',
       features: [
         'Unlimited transactions',
         'Unlimited AI processing',
@@ -71,6 +74,7 @@ const Pricing = () => {
       price: 25,
       currency: 'USD',
       interval: 'month' as const,
+      badge: 'Per Seat',
       features: [
         'Unlimited everything',
         'Multi-user management',
@@ -102,6 +106,17 @@ const Pricing = () => {
   ];
 
   const handleSelectPlan = async (tierId: string) => {
+    // Check if Stripe API key is configured
+    const apiKey = localStorage.getItem('stripe_api_key');
+    if (!apiKey) {
+      toast({
+        title: "Stripe Not Connected",
+        description: "Please configure your Stripe API key in the Billing section first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     try {
@@ -146,7 +161,7 @@ const Pricing = () => {
       }
 
       if (data?.url) {
-        // Redirect to Stripe Checkout
+        // Redirect to Stripe Checkout in new tab
         window.open(data.url, '_blank');
       }
     } catch (error: any) {
@@ -162,20 +177,17 @@ const Pricing = () => {
   };
 
   return (
-    <DashboardLayout
-      title="Pricing Plans"
-      description="Choose the perfect plan for your billing needs"
-    >
-      <div className="space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold mb-4">Simple, Transparent Pricing</h1>
-          <p className="text-gray-600 max-w-2xl mx-auto">
+    <div className="min-h-screen bg-gray-900 text-white py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold mb-4">Simple, Transparent Pricing</h1>
+          <p className="text-gray-400 max-w-2xl mx-auto text-lg">
             Choose from flexible pricing options designed to scale with your business needs.
             From pay-as-you-go to enterprise solutions.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-12">
           {pricingTiers.map((tier) => (
             <PricingCard
               key={tier.id}
@@ -186,22 +198,22 @@ const Pricing = () => {
           ))}
         </div>
 
-        <div className="bg-gray-50 rounded-lg p-8 text-center">
+        <div className="bg-gray-800 rounded-lg p-8 text-center">
           <h3 className="text-xl font-semibold mb-4">Need a Custom Solution?</h3>
-          <p className="text-gray-600 mb-6">
+          <p className="text-gray-400 mb-6">
             Have specific requirements or need volume pricing? We'd love to work with you.
           </p>
           <div className="flex justify-center space-x-4">
-            <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+            <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
               Contact Sales
             </button>
-            <button className="border border-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-50">
+            <button className="border border-gray-600 text-gray-300 px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors">
               Schedule Demo
             </button>
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </div>
   );
 };
 
