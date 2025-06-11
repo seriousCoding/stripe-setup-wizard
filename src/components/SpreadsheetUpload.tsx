@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import BillingModelGenerator from './BillingModelGenerator';
 import StripeConnectionStatus from './StripeConnectionStatus';
-import BillingModelTypeTabs from './BillingModelTypeTabs';
 import ProductSetup from './ProductSetup';
 import ServiceDefinition from './ServiceDefinition';
 import MeteredServices from './MeteredServices';
@@ -127,7 +126,6 @@ const SpreadsheetUpload = () => {
   return (
     <div className="space-y-6">
       <StripeConnectionStatus />
-      <BillingModelTypeTabs />
 
       <Card>
         <CardHeader>
