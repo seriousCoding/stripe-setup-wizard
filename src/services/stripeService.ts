@@ -42,14 +42,23 @@ export interface BillingItem {
 }
 
 class StripeService {
+  private getApiKey(): string | null {
+    return localStorage.getItem('stripe_api_key');
+  }
+
   async createProduct(data: {
     name: string;
     description?: string;
     type?: 'service' | 'good';
   }): Promise<{ product?: any; error?: string }> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      return { error: 'Stripe API key not configured' };
+    }
+
     try {
       const { data: result, error } = await supabase.functions.invoke('create-stripe-product', {
-        body: data
+        body: { ...data, apiKey }
       });
 
       if (error) {
@@ -73,9 +82,14 @@ class StripeService {
     };
     billing_scheme?: 'per_unit' | 'tiered';
   }): Promise<{ price?: any; error?: string }> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      return { error: 'Stripe API key not configured' };
+    }
+
     try {
       const { data: result, error } = await supabase.functions.invoke('create-stripe-price', {
-        body: data
+        body: { ...data, apiKey }
       });
 
       if (error) {
@@ -94,9 +108,14 @@ class StripeService {
     display_name: string;
     event_name: string;
   }): Promise<{ meter?: any; error?: string }> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      return { error: 'Stripe API key not configured' };
+    }
+
     try {
       const { data: result, error } = await supabase.functions.invoke('create-stripe-meter', {
-        body: data
+        body: { ...data, apiKey }
       });
 
       if (error) {
@@ -112,9 +131,14 @@ class StripeService {
   }
 
   async deployBillingModel(billingModel: any): Promise<{ results?: any; error?: string }> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      return { error: 'Stripe API key not configured' };
+    }
+
     try {
       const { data: result, error } = await supabase.functions.invoke('deploy-billing-model', {
-        body: { billingModel }
+        body: { billingModel, apiKey }
       });
 
       if (error) {
@@ -130,6 +154,11 @@ class StripeService {
   }
 
   async listProducts(): Promise<{ products?: StripeProduct[]; error?: string }> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      return { error: 'Stripe API key not configured' };
+    }
+
     try {
       // For now, return empty array since we'd need another edge function to list products
       // In a real implementation, you'd create a list-stripe-products edge function
@@ -141,8 +170,15 @@ class StripeService {
   }
 
   async checkConnection(): Promise<{ connected?: boolean; error?: string }> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      return { connected: false, error: 'No API key provided' };
+    }
+
     try {
-      const { data: result, error } = await supabase.functions.invoke('check-stripe-connection');
+      const { data: result, error } = await supabase.functions.invoke('check-stripe-connection', {
+        body: { apiKey }
+      });
 
       if (error) {
         return { connected: false, error: error.message };

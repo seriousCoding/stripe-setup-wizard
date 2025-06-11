@@ -48,10 +48,18 @@ const Billing = () => {
   const [priceInterval, setPriceInterval] = useState<'month' | 'year'>('month');
 
   const loadStripeData = async () => {
+    const apiKey = localStorage.getItem('stripe_api_key');
+    if (!apiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please configure your Stripe API key first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      // Note: This would need a list-stripe-products edge function
-      // For now, we'll show mock data or handle gracefully
       toast({
         title: "Loading Stripe Data",
         description: "Fetching your products and prices from Stripe...",
@@ -71,10 +79,23 @@ const Billing = () => {
   };
 
   useEffect(() => {
-    loadStripeData();
+    const apiKey = localStorage.getItem('stripe_api_key');
+    if (apiKey) {
+      loadStripeData();
+    }
   }, []);
 
   const createProduct = async () => {
+    const apiKey = localStorage.getItem('stripe_api_key');
+    if (!apiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please configure your Stripe API key first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!productName || !priceAmount) {
       toast({
         title: "Validation Error",
@@ -91,7 +112,8 @@ const Billing = () => {
         body: {
           name: productName,
           description: productDescription,
-          type: 'service'
+          type: 'service',
+          apiKey
         }
       });
 
@@ -103,7 +125,8 @@ const Billing = () => {
       const priceData: any = {
         product: productData.product.id,
         unit_amount: Math.round(parseFloat(priceAmount) * 100),
-        currency: priceCurrency
+        currency: priceCurrency,
+        apiKey
       };
 
       if (priceType === 'recurring') {
