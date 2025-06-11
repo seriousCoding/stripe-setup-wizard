@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -103,14 +104,16 @@ const Pricing = () => {
 
   const formatPrice = (tier: any) => {
     if (tier.price === 0) return '$0';
-    return `$${tier.price}`;
+    if (tier.price < 100) return `$${(tier.price / 100).toFixed(2)}`;
+    return `$${tier.price / 100}`;
   };
 
   const getPriceSubtext = (tier: any) => {
     if (tier.price === 0 && tier.id === 'trial') return '14 days free';
     if (tier.id === 'starter') return 'per transaction';
     if (tier.id === 'professional') return 'prepaid credits';
-    if (tier.isMonthly) return tier.id === 'enterprise' ? 'per user/month' : 'per month';
+    if (tier.isMonthly && tier.id === 'enterprise') return 'per user/month';
+    if (tier.isMonthly) return 'per month';
     return '';
   };
 

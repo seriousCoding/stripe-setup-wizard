@@ -52,8 +52,33 @@ serve(async (req) => {
       apiVersion: '2023-10-16',
     });
 
-    // Define the products with exact usage limits from the image
+    // Define the products with exact pricing from the image
     const productDefinitions = [
+      {
+        id: 'trial',
+        name: 'Free Trial',
+        subtitle: 'Trial',
+        description: 'Try all features risk-free before committing.',
+        price: 0, // Free
+        metadata: {
+          tier_id: 'trial',
+          plan_type: 'trial',
+          billing_model_type: 'free_trial',
+          created_via: 'billing_app_v1',
+          popular: 'false',
+          badge: 'Free Trial'
+        },
+        usage_limits: {
+          transactions: 500,
+          ai_processing: 50,
+          data_exports: 10,
+          api_calls: 1000,
+          storage_gb: 5,
+          integrations: 1,
+          team_seats: 1,
+          meter_rate_after_limit: 0.05
+        }
+      },
       {
         id: 'starter',
         name: 'Starter',
@@ -74,6 +99,7 @@ serve(async (req) => {
           api_calls: 100,
           storage_gb: 1,
           integrations: 2,
+          team_seats: 1,
           meter_rate_after_limit: 0.05
         }
       },
@@ -98,6 +124,7 @@ serve(async (req) => {
           api_calls: 5000,
           storage_gb: 50,
           integrations: 10,
+          team_seats: 5,
           meter_rate_after_limit: 0.04
         }
       },
@@ -122,6 +149,7 @@ serve(async (req) => {
           api_calls: 'unlimited',
           storage_gb: 'unlimited',
           integrations: 'unlimited',
+          team_seats: 'unlimited',
           unlimited: true
         }
       },
@@ -149,30 +177,6 @@ serve(async (req) => {
           team_seats: 'unlimited',
           unlimited: true
         }
-      },
-      {
-        id: 'trial',
-        name: 'Free Trial',
-        subtitle: 'Trial',
-        description: 'Try all features risk-free before committing.',
-        price: 0, // Free
-        metadata: {
-          tier_id: 'trial',
-          plan_type: 'trial',
-          billing_model_type: 'free_trial',
-          created_via: 'billing_app_v1',
-          popular: 'false',
-          badge: 'Free Trial'
-        },
-        usage_limits: {
-          transactions: 500,
-          ai_processing: 50,
-          data_exports: 10,
-          api_calls: 1000,
-          storage_gb: 5,
-          integrations: 1,
-          meter_rate_after_limit: 0.05
-        }
       }
     ];
 
@@ -186,14 +190,14 @@ serve(async (req) => {
         const enhancedMetadata = {
           ...productDef.metadata,
           subtitle: productDef.subtitle,
-          // Usage limits as metadata - handle unlimited values
+          // Usage limits as metadata - handle unlimited values properly
           usage_limit_transactions: productDef.usage_limits.transactions.toString(),
           usage_limit_ai_processing: productDef.usage_limits.ai_processing.toString(),
           usage_limit_data_exports: productDef.usage_limits.data_exports.toString(),
           usage_limit_api_calls: productDef.usage_limits.api_calls.toString(),
-          usage_limit_storage_gb: productDef.usage_limits.storage_gb?.toString() || '0',
-          usage_limit_integrations: productDef.usage_limits.integrations?.toString() || '0',
-          usage_limit_team_seats: productDef.usage_limits.team_seats?.toString() || '0',
+          usage_limit_storage_gb: productDef.usage_limits.storage_gb.toString(),
+          usage_limit_integrations: productDef.usage_limits.integrations.toString(),
+          usage_limit_team_seats: productDef.usage_limits.team_seats.toString(),
           meter_rate: productDef.usage_limits.meter_rate_after_limit?.toString() || '0',
           unlimited_features: productDef.usage_limits.unlimited ? 'true' : 'false'
         };
@@ -257,7 +261,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: 'Stripe products reseeded successfully with exact usage limits from design',
+        message: 'Stripe products reseeded successfully with exact pricing from image',
         results,
         summary: {
           products_created: results.filter(r => r.status === 'success').length,

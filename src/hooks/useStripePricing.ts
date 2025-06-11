@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -108,7 +109,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     
     const tierId = metadata.tier_id || 'custom';
 
-    // Extract usage limits from metadata - handle unlimited values properly
+    // Extract usage limits from metadata - handle unlimited and numeric values properly
     const usageLimits = [];
     
     if (metadata.usage_limit_transactions) {
