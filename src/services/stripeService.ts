@@ -1,5 +1,5 @@
-
 import { supabase } from '@/integrations/supabase/client';
+import { billingCreditsService } from './billingCreditsService';
 
 export interface StripeProduct {
   id: string;
@@ -217,6 +217,7 @@ class StripeService {
           metadata: {
             billing_model_type: billingModel.type,
             created_via: 'stripe_setup_pilot',
+            auto_apply_credits: 'true', // Enable automatic credit application
             ...item.metadata
           }
         }))
@@ -285,6 +286,59 @@ class StripeService {
     }
   }
 
+  // New method to record usage with automatic credit application
+  async recordUsageWithCredits(
+    customerId: string,
+    eventName: string,
+    value: number,
+    pricePerUnit: number,
+    currency: string = 'usd',
+    metadata?: Record<string, string>
+  ): Promise<{ 
+    success: boolean;
+    totalCost: number;
+    appliedCredits: number;
+    finalCharge: number;
+    error?: string 
+  }> {
+    try {
+      const result = await billingCreditsService.recordUsageWithCredits(
+        customerId,
+        eventName,
+        value,
+        pricePerUnit,
+        currency,
+        metadata
+      );
+
+      if (result.error) {
+        return {
+          success: false,
+          totalCost: 0,
+          appliedCredits: 0,
+          finalCharge: 0,
+          error: result.error
+        };
+      }
+
+      return {
+        success: true,
+        totalCost: result.totalCost,
+        appliedCredits: result.appliedCredits,
+        finalCharge: result.finalCharge
+      };
+    } catch (error: any) {
+      console.error('Error recording usage with credits:', error);
+      return {
+        success: false,
+        totalCost: 0,
+        appliedCredits: 0,
+        finalCharge: 0,
+        error: error.message
+      };
+    }
+  }
+
   // Utility method to validate Stripe data format
   validateBillingItem(item: BillingItem): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
@@ -317,3 +371,5 @@ class StripeService {
 }
 
 export const stripeService = new StripeService();
+
+}
