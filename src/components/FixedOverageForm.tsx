@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,9 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Save } from 'lucide-react';
+import { Plus, Trash2, Save, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { billingModelService } from '@/services/billingModelService';
+import { supabase } from '@/integrations/supabase/client';
 
 interface BasePlan {
   name: string;
@@ -33,25 +34,110 @@ const FixedOverageForm = () => {
   const [modelName, setModelName] = useState('');
   const [modelDescription, setModelDescription] = useState('');
   const [basePlan, setBasePlan] = useState<BasePlan>({
-    name: 'Professional Plan',
-    price: 49.99,
+    name: '',
+    price: 0,
     currency: 'USD',
     interval: 'month',
-    description: 'Base plan with included usage',
-    includedUsage: 1000,
-    usageUnit: 'API calls'
+    description: '',
+    includedUsage: 0,
+    usageUnit: ''
   });
-  const [overageItems, setOverageItems] = useState<OverageItem[]>([
-    {
-      id: '1',
-      name: 'Additional API Calls',
-      pricePerUnit: 0.01,
-      currency: 'USD',
-      eventName: 'api_call_overage',
-      description: 'Extra API calls beyond included limit'
-    }
-  ]);
+  const [overageItems, setOverageItems] = useState<OverageItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetchStripeData();
+  }, []);
+
+  const fetchStripeData = async () => {
+    setIsLoading(true);
+    try {
+      // This will fetch existing Stripe data or create test data if none exists
+      const { data, error } = await supabase.functions.invoke('deploy-billing-model', {
+        body: { 
+          billingModel: { 
+            name: 'temp-fetch',
+            type: 'fixed-overage',
+            items: []
+          }
+        }
+      });
+
+      if (error) {
+        console.error('Error fetching Stripe data:', error);
+        // Set default values if fetch fails
+        setBasePlan({
+          name: 'Professional Plan',
+          price: 49.99,
+          currency: 'USD',
+          interval: 'month',
+          description: 'Base plan with included usage',
+          includedUsage: 1000,
+          usageUnit: 'API calls'
+        });
+        
+        setOverageItems([{
+          id: '1',
+          name: 'Additional API Calls',
+          pricePerUnit: 0.01,
+          currency: 'USD',
+          eventName: 'api_call_overage',
+          description: 'Extra API calls beyond included limit'
+        }]);
+      } else {
+        // If we have products from Stripe, use them to populate the form
+        if (data?.results?.products?.length > 0) {
+          const products = data.results.products;
+          const recurringProduct = products.find((p: any) => 
+            p.metadata?.billing_model_type === 'recurring' || 
+            p.name.toLowerCase().includes('plan') ||
+            p.name.toLowerCase().includes('subscription')
+          );
+          
+          if (recurringProduct) {
+            setBasePlan({
+              name: recurringProduct.name,
+              price: 49.99, // Default, will be updated when price is fetched
+              currency: 'USD',
+              interval: 'month',
+              description: recurringProduct.description || 'Base subscription plan',
+              includedUsage: 1000,
+              usageUnit: 'units'
+            });
+          }
+
+          // Set overage items from metered products
+          const meteredProducts = products.filter((p: any) => 
+            p.metadata?.billing_model_type === 'metered' ||
+            p.name.toLowerCase().includes('usage') ||
+            p.name.toLowerCase().includes('call') ||
+            p.name.toLowerCase().includes('overage')
+          );
+
+          if (meteredProducts.length > 0) {
+            const newOverageItems = meteredProducts.map((product: any, index: number) => ({
+              id: product.id,
+              name: product.name,
+              pricePerUnit: 0.01, // Default, will be updated when price is fetched
+              currency: 'USD',
+              eventName: product.name.toLowerCase().replace(/\s+/g, '_'),
+              description: product.description || `Usage-based ${product.name}`
+            }));
+            setOverageItems(newOverageItems);
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Error in fetchStripeData:', error);
+      toast({
+        title: "Info",
+        description: "Using default values. Connect to Stripe to fetch live data.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const addOverageItem = () => {
     const newItem: OverageItem = {
@@ -147,14 +233,31 @@ const FixedOverageForm = () => {
     });
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <span className="ml-2">Loading Stripe data...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Fixed + Overage Billing Model</CardTitle>
-          <CardDescription>
-            Create a hybrid model with a base subscription fee plus usage-based charges for overages. Perfect for services with predictable base usage and variable overages.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Fixed + Overage Billing Model</CardTitle>
+              <CardDescription>
+                Create a hybrid model with a base subscription fee plus usage-based charges for overages. Perfect for services with predictable base usage and variable overages.
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={fetchStripeData} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh Data
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -396,3 +499,5 @@ const FixedOverageForm = () => {
 };
 
 export default FixedOverageForm;
+
+</edits_to_apply>

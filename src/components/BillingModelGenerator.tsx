@@ -242,11 +242,20 @@ const BillingModelGenerator = ({ uploadedData, onModelGenerated }: BillingModelG
             {billingItems.map((item, index) => (
               <BillingItemCard
                 key={item.id}
-                item={item}
+                item={{
+                  ...item,
+                  price: item.unit_amount / 100 // Convert cents to dollars for display
+                }}
                 index={index}
                 isEditing={isEditing}
                 canRemove={billingItems.length > 1}
-                onUpdate={(field, value) => updateBillingItem(item.id, field, value)}
+                onUpdate={(field, value) => {
+                  if (field === 'price') {
+                    updateBillingItem(item.id, 'unit_amount', Math.round(value * 100));
+                  } else {
+                    updateBillingItem(item.id, field as keyof BillingItem, value);
+                  }
+                }}
                 onRemove={() => removeBillingItem(item.id)}
               />
             ))}
