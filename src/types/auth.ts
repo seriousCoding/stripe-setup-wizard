@@ -4,10 +4,9 @@ export interface UserProfile {
   email: string;
   first_name: string;
   last_name: string;
-  company_name: string | null;
+  company_name: string | null; // Made optional
   phone: string;
   country: string;
-  username?: string; // Added username field
   created_at: string;
   updated_at: string;
 }
@@ -17,18 +16,12 @@ export interface SignUpData {
   password: string;
   firstName: string;
   lastName: string;
-  companyName: string;
+  companyName: string; // Can be empty string for optional
   phone: string;
   country: string;
-  username?: string; // Added username field
 }
 
 export interface SignInData {
   email: string;
-  password: string;
-}
-
-export interface SignInWithEmailOrUsernameData {
-  emailOrUsername: string;
   password: string;
 }
