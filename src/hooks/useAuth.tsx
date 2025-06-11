@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         data: {
           first_name: data.firstName,
           last_name: data.lastName,
-          company_name: data.companyName || null, // Handle optional company name
+          company_name: data.companyName || null,
           phone: data.phone,
           country: data.country,
         },
@@ -101,7 +101,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (error) {
       console.error('Sign up error:', error);
     } else {
-      console.log('Sign up successful');
+      console.log('Sign up successful - check email for confirmation');
     }
     
     return { error };

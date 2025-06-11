@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
 
 const SignInForm = () => {
-  const [emailOrUsername, setEmailOrUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,24 +22,30 @@ const SignInForm = () => {
     e.preventDefault();
     setLoading(true);
 
-    console.log('Attempting sign in with:', emailOrUsername);
+    console.log('Attempting sign in with email:', email);
     
-    // Check if input is email or username by looking for @ symbol
-    const isEmail = emailOrUsername.includes('@');
-    const signInData = isEmail 
-      ? { email: emailOrUsername, password }
-      : { email: emailOrUsername, password }; // For now, treat as email regardless
-
-    const { error } = await signIn(signInData);
+    const { error } = await signIn({ email: email.trim(), password });
 
     if (error) {
       console.error('Sign in error:', error);
+      
+      let errorMessage = "Sign in failed. Please check your credentials.";
+      
+      if (error.message.includes('Invalid login credentials')) {
+        errorMessage = "Invalid email or password. Please check your credentials and try again.";
+      } else if (error.message.includes('Email not confirmed')) {
+        errorMessage = "Please check your email and click the confirmation link before signing in.";
+      } else if (error.message.includes('Too many requests')) {
+        errorMessage = "Too many attempts. Please wait a moment before trying again.";
+      }
+      
       toast({
         title: "Sign in failed",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } else {
+      console.log('Sign in successful');
       toast({
         title: "Welcome back!",
         description: "You have successfully signed in.",
@@ -58,20 +64,21 @@ const SignInForm = () => {
           <span>Sign In</span>
         </CardTitle>
         <CardDescription>
-          Enter your email or username and password to access your account
+          Enter your email and password to access your account
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="emailOrUsername">Email or Username</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
-              id="emailOrUsername"
-              type="text"
-              value={emailOrUsername}
-              onChange={(e) => setEmailOrUsername(e.target.value)}
-              placeholder="Enter your email or username"
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email"
               required
+              autoComplete="email"
             />
           </div>
           <div className="space-y-2">
@@ -84,6 +91,7 @@ const SignInForm = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
+                autoComplete="current-password"
               />
               <Button
                 type="button"
