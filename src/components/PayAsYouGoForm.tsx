@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Camera, FileText, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Camera, FileText, Sparkles, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface MeteredService {
   id: string;
@@ -18,9 +19,8 @@ interface MeteredService {
 }
 
 const PayAsYouGoForm = () => {
-  const [productName, setProductName] = useState('');
-  const [productDescription, setProductDescription] = useState('');
-  const [existingProductId, setExistingProductId] = useState('');
+  const [productSetup, setProductSetup] = useState('create-new');
+  const [existingProduct, setExistingProduct] = useState('');
   const [services, setServices] = useState<MeteredService[]>([
     { id: '1', displayName: 'API Calls', apiEventName: 'api_call', pricePerUnit: 0.001, currency: 'USD' }
   ]);
@@ -68,42 +68,94 @@ const PayAsYouGoForm = () => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Product Information</CardTitle>
+          <CardTitle>Pay As You Go Model</CardTitle>
           <CardDescription>
-            Set up your product details. You can create a new product or add meters to an existing one.
+            Charge customers based on the usage of one or more metered services. You can add these to a new or an existing Stripe product. Optionally, define services via file upload, pasting data (AI parsed), or scanning an image (AI parsed) when using an existing product.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="productName">Product Name</Label>
-              <Input
-                id="productName"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                placeholder="e.g., API Service, Analytics Platform"
-              />
-            </div>
-            <div>
-              <Label htmlFor="existingProductId">Or Use Existing Product ID</Label>
-              <Input
-                id="existingProductId"
-                value={existingProductId}
-                onChange={(e) => setExistingProductId(e.target.value)}
-                placeholder="prod_xxxxxxxxxxxxxx"
-              />
-            </div>
-          </div>
+        <CardContent className="space-y-6">
           <div>
-            <Label htmlFor="productDescription">Product Description</Label>
-            <Textarea
-              id="productDescription"
-              value={productDescription}
-              onChange={(e) => setProductDescription(e.target.value)}
-              placeholder="Describe what your product does..."
-              rows={3}
-            />
+            <Label className="text-base font-medium">Product Setup</Label>
+            <RadioGroup value={productSetup} onValueChange={setProductSetup} className="mt-3">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="create-new" id="create-new" />
+                <Label htmlFor="create-new">Create New Product</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="use-existing" id="use-existing" />
+                <Label htmlFor="use-existing">Use Existing Product</Label>
+              </div>
+            </RadioGroup>
           </div>
+
+          {productSetup === 'use-existing' && (
+            <div>
+              <Label htmlFor="existing-product">Existing Product</Label>
+              <Select value={existingProduct} onValueChange={setExistingProduct}>
+                <SelectTrigger>
+                  <SelectValue placeholder="None (or enter ID manually below)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None (or enter ID manually below)</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" className="mt-2">
+                Disconnect Stripe
+              </Button>
+            </div>
+          )}
+
+          {productSetup === 'use-existing' && (
+            <Card className="border-2 border-dashed border-muted-foreground/25">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center space-x-2 text-base">
+                  <FileText className="h-5 w-5" />
+                  <span>Define Services (Optional)</span>
+                </CardTitle>
+                <CardDescription>
+                  Define metered services by uploading a file, pasting data, or scanning with your camera. These will populate the service list below for review.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-center space-x-3">
+                  <Button variant="outline" className="flex items-center space-x-2">
+                    <Upload className="h-4 w-4" />
+                    <span>Upload File</span>
+                  </Button>
+                  <Button variant="outline" className="flex items-center space-x-2">
+                    <FileText className="h-4 w-4" />
+                    <span>Paste Data</span>
+                  </Button>
+                  <Button variant="outline" className="flex items-center space-x-2">
+                    <Camera className="h-4 w-4" />
+                    <span>Scan Image</span>
+                  </Button>
+                </div>
+                
+                <div className="text-center">
+                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
+                    <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground mb-2">Click to upload</p>
+                    <p className="text-xs text-muted-foreground">or drag and drop</p>
+                    <p className="text-xs text-muted-foreground">CSV or XLSX files</p>
+                    <Button className="mt-4" size="sm">
+                      Choose File
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="paste-data">Paste Service Data</Label>
+                  <Textarea
+                    id="paste-data"
+                    placeholder="Paste your service pricing data here..."
+                    rows={4}
+                    className="mt-1"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </CardContent>
       </Card>
 
@@ -118,10 +170,12 @@ const PayAsYouGoForm = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {services.map((service) => (
+          {services.map((service, index) => (
             <div key={service.id} className="p-4 border rounded-lg space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="font-medium">Service {services.indexOf(service) + 1}</h4>
+                <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-200">
+                  Service #{index + 1}
+                </Badge>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -134,7 +188,7 @@ const PayAsYouGoForm = () => {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Display Name</Label>
+                  <Label>Meter Display Name</Label>
                   <Input
                     value={service.displayName}
                     onChange={(e) => updateService(service.id, 'displayName', e.target.value)}
@@ -142,12 +196,15 @@ const PayAsYouGoForm = () => {
                   />
                 </div>
                 <div>
-                  <Label>API Event Name</Label>
+                  <Label>Meter Event Name (Stripe API)</Label>
                   <Input
                     value={service.apiEventName}
                     onChange={(e) => updateService(service.id, 'apiEventName', e.target.value)}
-                    placeholder="e.g., api_call"
+                    placeholder="e.g., api_call_count"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This is the 'event_name' you'll use to report usage to Stripe.
+                  </p>
                 </div>
                 <div>
                   <Label>Price Per Unit</Label>
@@ -181,47 +238,8 @@ const PayAsYouGoForm = () => {
           
           <Button onClick={addService} variant="outline" className="w-full">
             <Plus className="h-4 w-4 mr-2" />
-            Add Another Service
+            Add Another Metered Service
           </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Sparkles className="h-5 w-5 text-indigo-600" />
-            <span>AI-Powered Service Extraction</span>
-          </CardTitle>
-          <CardDescription>
-            Let AI extract services from text descriptions or images
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="extractionText">Paste Service Description</Label>
-            <Textarea
-              id="extractionText"
-              value={extractionText}
-              onChange={(e) => setExtractionText(e.target.value)}
-              placeholder="Describe your services... e.g., 'We charge for database queries at $0.0005 each, image processing at $0.02 per image, and email sends at $0.001 per email.'"
-              rows={4}
-            />
-          </div>
-          
-          <div className="flex space-x-3">
-            <Button 
-              onClick={extractServicesFromText}
-              disabled={!extractionText.trim()}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Extract from Text
-            </Button>
-            <Button variant="outline">
-              <Camera className="h-4 w-4 mr-2" />
-              Extract from Image
-            </Button>
-          </div>
         </CardContent>
       </Card>
 
