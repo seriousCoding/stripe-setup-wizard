@@ -2,7 +2,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { SignUpData, SignInData, UserProfile } from '@/types/auth';
+import { SignUpData, SignInData, SignInWithEmailOrUsernameData, UserProfile } from '@/types/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   signUp: (data: SignUpData) => Promise<{ error: any }>;
   signIn: (data: SignInData) => Promise<{ error: any }>;
+  signInWithEmailOrUsername: (data: SignInWithEmailOrUsernameData) => Promise<{ error: any }>;
   signOut: () => Promise<{ error: any }>;
   fetchProfile: () => Promise<void>;
 }
@@ -94,6 +95,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           company_name: data.companyName || null,
           phone: data.phone,
           country: data.country,
+          username: data.username || null,
         },
       },
     });
@@ -124,6 +126,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error };
   };
 
+  const signInWithEmailOrUsername = async (data: SignInWithEmailOrUsernameData) => {
+    console.log('Signing in with email or username:', data.emailOrUsername);
+    
+    const isEmail = data.emailOrUsername.includes('@');
+    
+    if (isEmail) {
+      // If it's an email, use regular email sign in
+      return signIn({ email: data.emailOrUsername, password: data.password });
+    } else {
+      // If it's a username, we need to look up the email first
+      console.log('Looking up email for username:', data.emailOrUsername);
+      
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('username', data.emailOrUsername)
+          .single();
+        
+        if (profileError || !profileData) {
+          console.error('Username not found:', profileError);
+          return { error: { message: 'Invalid login credentials' } };
+        }
+        
+        console.log('Found email for username:', profileData.email);
+        return signIn({ email: profileData.email, password: data.password });
+      } catch (error) {
+        console.error('Error looking up username:', error);
+        return { error: { message: 'Invalid login credentials' } };
+      }
+    }
+  };
+
   const signOut = async () => {
     console.log('Signing out');
     const { error } = await supabase.auth.signOut();
@@ -141,6 +176,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loading,
       signUp,
       signIn,
+      signInWithEmailOrUsername,
       signOut,
       fetchProfile,
     }}>

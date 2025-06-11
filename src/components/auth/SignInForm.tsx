@@ -11,18 +11,18 @@ import { LogIn, Eye, EyeOff, Mail } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const SignInForm = () => {
-  const [email, setEmail] = useState('');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
   const [showResendOption, setShowResendOption] = useState(false);
-  const { signIn } = useAuth();
+  const { signInWithEmailOrUsername } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   const handleResendConfirmation = async () => {
-    if (!email) {
+    if (!emailOrUsername) {
       toast({
         title: "Email required",
         description: "Please enter your email address first.",
@@ -31,12 +31,23 @@ const SignInForm = () => {
       return;
     }
 
+    // For resending confirmation, we need an email. If they entered a username, we can't resend.
+    const isEmail = emailOrUsername.includes('@');
+    if (!isEmail) {
+      toast({
+        title: "Email required for resend",
+        description: "Please enter your email address to resend confirmation.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setResendingConfirmation(true);
-    console.log('Resending confirmation email to:', email);
+    console.log('Resending confirmation email to:', emailOrUsername);
 
     const { error } = await supabase.auth.resend({
       type: 'signup',
-      email: email.trim(),
+      email: emailOrUsername.trim(),
       options: {
         emailRedirectTo: `${window.location.origin}/`
       }
@@ -65,9 +76,9 @@ const SignInForm = () => {
     setLoading(true);
     setShowResendOption(false);
 
-    console.log('Attempting sign in with email:', email);
+    console.log('Attempting sign in with email or username:', emailOrUsername);
     
-    const { error } = await signIn({ email: email.trim(), password });
+    const { error } = await signInWithEmailOrUsername({ emailOrUsername: emailOrUsername.trim(), password });
 
     if (error) {
       console.error('Sign in error:', error);
@@ -75,7 +86,7 @@ const SignInForm = () => {
       let errorMessage = "Sign in failed. Please check your credentials.";
       
       if (error.message.includes('Invalid login credentials')) {
-        errorMessage = "Invalid email or password. Please check your credentials and try again.";
+        errorMessage = "Invalid email/username or password. Please check your credentials and try again.";
       } else if (error.message.includes('Email not confirmed')) {
         errorMessage = "Please check your email and click the confirmation link before signing in.";
         setShowResendOption(true);
@@ -108,21 +119,21 @@ const SignInForm = () => {
           <span>Sign In</span>
         </CardTitle>
         <CardDescription>
-          Enter your email and password to access your account
+          Enter your email or username and password to access your account
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="emailOrUsername">Email or Username</Label>
             <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
+              id="emailOrUsername"
+              type="text"
+              value={emailOrUsername}
+              onChange={(e) => setEmailOrUsername(e.target.value)}
+              placeholder="Enter your email or username"
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
           <div className="space-y-2">
