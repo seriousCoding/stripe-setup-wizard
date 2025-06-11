@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
 
 export interface SpreadsheetUploadProps {
-  onDataUploaded: (data: any[]) => void;
+  onDataUploaded?: (data: any[]) => void;
 }
 
 const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded }) => {
@@ -66,7 +65,7 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
         setValidationResults(validation);
         
         if (validation.valid) {
-          onDataUploaded(data);
+          onDataUploaded?.(data);
           toast({
             title: "File processed successfully",
             description: `Processed ${data.length} rows of data.`,

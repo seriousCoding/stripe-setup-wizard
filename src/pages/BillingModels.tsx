@@ -11,10 +11,15 @@ import StripeConnectionStatus from '@/components/StripeConnectionStatus';
 const BillingModels = () => {
   const [activeTab, setActiveTab] = useState('pay-as-you-go');
 
+  const handleDataUploaded = (data: any[]) => {
+    console.log('Data uploaded in BillingModels:', data);
+    // Handle the uploaded data here
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'pay-as-you-go':
-        return <SpreadsheetUpload />;
+        return <SpreadsheetUpload onDataUploaded={handleDataUploaded} />;
       case 'flat-recurring':
         return <FlatRecurringForm />;
       case 'fixed-overage':
@@ -22,7 +27,7 @@ const BillingModels = () => {
       case 'per-seat':
         return <PerSeatForm />;
       default:
-        return <SpreadsheetUpload />;
+        return <SpreadsheetUpload onDataUploaded={handleDataUploaded} />;
     }
   };
 

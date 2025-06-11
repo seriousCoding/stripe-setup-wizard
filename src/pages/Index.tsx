@@ -14,6 +14,11 @@ const Index = () => {
     { label: 'Time Saved', value: '18hrs', icon: Users, change: 'This month' }
   ];
 
+  const handleDataUploaded = (data: any[]) => {
+    console.log('Data uploaded in Index:', data);
+    // Handle the uploaded data here
+  };
+
   return (
     <DashboardLayout
       title="Data Upload & Configuration"
@@ -39,7 +44,7 @@ const Index = () => {
           ))}
         </div>
 
-        <SpreadsheetUpload />
+        <SpreadsheetUpload onDataUploaded={handleDataUploaded} />
 
         <Card>
           <CardHeader>
