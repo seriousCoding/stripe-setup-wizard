@@ -1,10 +1,10 @@
-
 import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import BillingModelSelector from '@/components/BillingModelSelector';
 import PayAsYouGoForm from '@/components/PayAsYouGoForm';
 import FlatRecurringForm from '@/components/FlatRecurringForm';
 import FixedOverageForm from '@/components/FixedOverageForm';
+import PerSeatForm from '@/components/PerSeatForm';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 
@@ -30,6 +30,8 @@ const BillingModels = () => {
         return 'Flat Recurring Fee Setup';
       case 'fixed-overage':
         return 'Fixed Fee + Overage Setup';
+      case 'per-seat':
+        return 'Per Seat Pricing Setup';
       default:
         return '';
     }
@@ -43,6 +45,8 @@ const BillingModels = () => {
         return <FlatRecurringForm />;
       case 'fixed-overage':
         return <FixedOverageForm />;
+      case 'per-seat':
+        return <PerSeatForm />;
       default:
         return null;
     }

@@ -1,6 +1,10 @@
 
 import React, { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import PayAsYouGoForm from './PayAsYouGoForm';
+import FlatRecurringForm from './FlatRecurringForm';
+import FixedOverageForm from './FixedOverageForm';
+import PerSeatForm from './PerSeatForm';
 
 interface BillingModelTypeTabsProps {
   onTabChange?: (value: string) => void;
@@ -40,28 +44,20 @@ const BillingModelTypeTabs = ({ onTabChange, defaultValue = "pay-as-you-go" }: B
         </TabsTrigger>
       </TabsList>
       
-      <TabsContent value="pay-as-you-go" className="mt-4">
-        <div className="text-center p-4 bg-muted rounded-lg">
-          <p className="text-muted-foreground">Pay As You Go billing model selected</p>
-        </div>
+      <TabsContent value="pay-as-you-go" className="mt-6">
+        <PayAsYouGoForm />
       </TabsContent>
       
-      <TabsContent value="flat-recurring" className="mt-4">
-        <div className="text-center p-4 bg-muted rounded-lg">
-          <p className="text-muted-foreground">Flat Recurring billing model selected</p>
-        </div>
+      <TabsContent value="flat-recurring" className="mt-6">
+        <FlatRecurringForm />
       </TabsContent>
       
-      <TabsContent value="fixed-overage" className="mt-4">
-        <div className="text-center p-4 bg-muted rounded-lg">
-          <p className="text-muted-foreground">Fixed Fee & Overage billing model selected</p>
-        </div>
+      <TabsContent value="fixed-overage" className="mt-6">
+        <FixedOverageForm />
       </TabsContent>
       
-      <TabsContent value="per-seat" className="mt-4">
-        <div className="text-center p-4 bg-muted rounded-lg">
-          <p className="text-muted-foreground">Per Seat billing model selected</p>
-        </div>
+      <TabsContent value="per-seat" className="mt-6">
+        <PerSeatForm />
       </TabsContent>
     </Tabs>
   );
