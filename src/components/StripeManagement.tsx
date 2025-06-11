@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ const StripeManagement = () => {
     setCleanupResults(null);
     
     try {
+      console.log('Starting Stripe cleanup process...');
       const { data, error } = await supabase.functions.invoke('cleanup-stripe-products');
       
       if (error) {
@@ -31,6 +31,7 @@ const StripeManagement = () => {
           title: "Cleanup Successful",
           description: `Deactivated ${data.summary?.deactivated_products || 0} products and ${data.summary?.deactivated_prices || 0} prices.`,
         });
+        console.log('Cleanup completed successfully:', data);
       } else {
         throw new Error(data?.error || 'Cleanup failed');
       }
@@ -93,20 +94,20 @@ const StripeManagement = () => {
   };
 
   return (
-    <Card className="border-orange-200 bg-orange-50">
+    <Card className="border-red-200 bg-red-50">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <AlertTriangle className="h-6 w-6 text-orange-600" />
+            <AlertTriangle className="h-6 w-6 text-red-600" />
             <div>
-              <CardTitle className="text-lg">Stripe Product Management</CardTitle>
+              <CardTitle className="text-lg">Stripe Cleanup & Management</CardTitle>
               <CardDescription>
-                Clean up duplicate products and reseed with proper billing structure
+                Remove duplicates and clean up old products from your Stripe account
               </CardDescription>
             </div>
           </div>
-          <Badge variant="outline" className="bg-orange-100">
-            Admin Tools
+          <Badge variant="outline" className="bg-red-100">
+            Cleanup Tools
           </Badge>
         </div>
       </CardHeader>
@@ -114,7 +115,7 @@ const StripeManagement = () => {
       <CardContent className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Button 
-            variant="outline"
+            variant="destructive"
             onClick={handleCleanup}
             disabled={isCleaningUp || isReseeding}
             className="flex items-center space-x-2 h-auto p-4 flex-col"
@@ -125,9 +126,9 @@ const StripeManagement = () => {
               <Trash2 className="h-5 w-5" />
             )}
             <div className="text-center">
-              <div className="font-medium">Cleanup</div>
-              <div className="text-xs text-muted-foreground">
-                Deactivate old products
+              <div className="font-medium">Remove Duplicates</div>
+              <div className="text-xs opacity-90">
+                Deactivate duplicate products
               </div>
             </div>
           </Button>
@@ -154,7 +155,7 @@ const StripeManagement = () => {
           <Button 
             onClick={handleFullReset}
             disabled={isCleaningUp || isReseeding}
-            className="flex items-center space-x-2 h-auto p-4 flex-col bg-orange-600 hover:bg-orange-700"
+            className="flex items-center space-x-2 h-auto p-4 flex-col bg-red-600 hover:bg-red-700"
           >
             <CheckCircle className="h-5 w-5" />
             <div className="text-center">
@@ -167,8 +168,8 @@ const StripeManagement = () => {
         </div>
 
         {cleanupResults && (
-          <div className="p-4 bg-white rounded-lg border">
-            <h4 className="font-medium mb-2 flex items-center">
+          <div className="p-4 bg-white rounded-lg border border-green-200">
+            <h4 className="font-medium mb-2 flex items-center text-green-700">
               <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
               Cleanup Results
             </h4>
@@ -177,6 +178,21 @@ const StripeManagement = () => {
               <p>Products deactivated: {cleanupResults.summary?.deactivated_products || 0}</p>
               <p>Prices deactivated: {cleanupResults.summary?.deactivated_prices || 0}</p>
             </div>
+            {cleanupResults.results && cleanupResults.results.length > 0 && (
+              <div className="mt-3 space-y-1 max-h-32 overflow-y-auto">
+                <p className="font-medium text-xs text-gray-600">Deactivated Products:</p>
+                {cleanupResults.results
+                  .filter((result: any) => result.action === 'deactivated' && result.status === 'success')
+                  .map((result: any, index: number) => (
+                  <div key={index} className="flex items-center justify-between text-xs bg-gray-50 p-2 rounded">
+                    <span className="truncate">{result.name}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      Removed
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -205,12 +221,13 @@ const StripeManagement = () => {
           </div>
         )}
 
-        <div className="text-sm text-orange-800 bg-orange-100 p-3 rounded-lg">
-          <p className="font-medium mb-2">What this does:</p>
+        <div className="text-sm text-red-800 bg-red-100 p-3 rounded-lg">
+          <p className="font-medium mb-2">Cleanup Process:</p>
           <ul className="list-disc list-inside space-y-1">
-            <li><strong>Cleanup:</strong> Deactivates old/duplicate products and prices</li>
-            <li><strong>Reseed:</strong> Creates 5 clean billing tiers with proper metadata</li>
-            <li><strong>Filter Fix:</strong> Only shows products created by this billing app</li>
+            <li><strong>Remove Duplicates:</strong> Deactivates old/duplicate products created by this app</li>
+            <li><strong>Safe Operation:</strong> Only affects products with billing app metadata</li>
+            <li><strong>Preserves Data:</strong> Products are deactivated, not permanently deleted</li>
+            <li><strong>Price Cleanup:</strong> Associated prices are also deactivated</li>
           </ul>
         </div>
       </CardContent>
