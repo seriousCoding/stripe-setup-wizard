@@ -24,7 +24,7 @@ interface StripePricingTier {
 
 interface UseStripePricingOptions {
   autoRefresh?: boolean;
-  refreshInterval?: number; // in milliseconds
+  refreshInterval?: number;
 }
 
 export const useStripePricing = (options: UseStripePricingOptions = {}) => {
@@ -55,14 +55,12 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
         setPricingTiers(tiers);
         console.log('Loaded billing app products:', data.products.length);
       } else {
-        // No billing app products found, use default
         console.log('No billing app products found, using default pricing');
         setPricingTiers(getDefaultPricingTiers());
       }
     } catch (err: any) {
       console.error('Error fetching pricing data:', err);
       setError(err.message);
-      // Fallback to default pricing if Stripe fetch fails
       setPricingTiers(getDefaultPricingTiers());
     } finally {
       setIsLoading(false);
@@ -100,7 +98,6 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
 const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
   const tiers: StripePricingTier[] = [];
 
-  // Process Stripe products and map to tiers
   products.forEach((product) => {
     const defaultPrice = product.default_price;
     if (!defaultPrice) return;
@@ -109,41 +106,64 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     const isRecurring = defaultPrice.recurring?.interval === 'month';
     const metadata = product.metadata || {};
     
-    // Get tier ID from metadata
     const tierId = metadata.tier_id || 'custom';
 
-    // Extract usage limits from metadata
+    // Extract usage limits from metadata - handle unlimited values properly
     const usageLimits = [];
     
     if (metadata.usage_limit_transactions) {
-      const transactionLimit = parseInt(metadata.usage_limit_transactions);
+      const transactionLimit = metadata.usage_limit_transactions;
       usageLimits.push({ 
         name: 'Transactions', 
-        value: transactionLimit >= 999999 ? 'Unlimited' : transactionLimit.toLocaleString() 
+        value: transactionLimit === 'unlimited' ? 'Unlimited' : parseInt(transactionLimit).toLocaleString() 
       });
     }
     
     if (metadata.usage_limit_ai_processing) {
-      const aiLimit = parseInt(metadata.usage_limit_ai_processing);
+      const aiLimit = metadata.usage_limit_ai_processing;
       usageLimits.push({ 
         name: 'AI Processing', 
-        value: aiLimit >= 999999 ? 'Unlimited' : aiLimit.toLocaleString() 
+        value: aiLimit === 'unlimited' ? 'Unlimited' : parseInt(aiLimit).toLocaleString() 
       });
     }
     
     if (metadata.usage_limit_data_exports) {
-      const exportLimit = parseInt(metadata.usage_limit_data_exports);
+      const exportLimit = metadata.usage_limit_data_exports;
       usageLimits.push({ 
         name: 'Data Exports', 
-        value: exportLimit >= 999999 ? 'Unlimited' : exportLimit.toLocaleString() 
+        value: exportLimit === 'unlimited' ? 'Unlimited' : parseInt(exportLimit).toLocaleString() 
       });
     }
     
     if (metadata.usage_limit_api_calls) {
-      const apiLimit = parseInt(metadata.usage_limit_api_calls);
+      const apiLimit = metadata.usage_limit_api_calls;
       usageLimits.push({ 
         name: 'API Calls', 
-        value: apiLimit >= 999999 ? 'Unlimited' : apiLimit.toLocaleString() 
+        value: apiLimit === 'unlimited' ? 'Unlimited' : parseInt(apiLimit).toLocaleString() 
+      });
+    }
+
+    if (metadata.usage_limit_storage_gb) {
+      const storageLimit = metadata.usage_limit_storage_gb;
+      usageLimits.push({ 
+        name: 'Storage', 
+        value: storageLimit === 'unlimited' ? 'Unlimited' : `${parseInt(storageLimit)} GB` 
+      });
+    }
+
+    if (metadata.usage_limit_integrations) {
+      const integrationLimit = metadata.usage_limit_integrations;
+      usageLimits.push({ 
+        name: 'Integrations', 
+        value: integrationLimit === 'unlimited' ? 'Unlimited' : parseInt(integrationLimit).toLocaleString() 
+      });
+    }
+
+    if (metadata.usage_limit_team_seats) {
+      const seatLimit = metadata.usage_limit_team_seats;
+      usageLimits.push({ 
+        name: 'Team Seats', 
+        value: seatLimit === 'unlimited' ? 'Unlimited' : parseInt(seatLimit).toLocaleString() 
       });
     }
 
@@ -154,7 +174,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     const tier: StripePricingTier = {
       id: tierId,
       name: product.name || 'Custom Plan',
-      subtitle: getSubtitleFromBillingType(metadata.billing_model_type, isRecurring),
+      subtitle: metadata.subtitle || getSubtitleFromBillingType(metadata.billing_model_type, isRecurring),
       description: product.description || 'Custom pricing plan',
       price: priceAmount,
       currency: defaultPrice.currency?.toUpperCase() || 'USD',
@@ -167,7 +187,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       isMonthly: isRecurring,
       meterRate: parseFloat(metadata.meter_rate || '0'),
       packageCredits: parseInt(metadata.package_credits || '0'),
-      includedUsage: parseInt(metadata.usage_limit_transactions || '0'),
+      includedUsage: metadata.usage_limit_transactions === 'unlimited' ? 999999 : parseInt(metadata.usage_limit_transactions || '0'),
       usageUnit: 'transactions',
       tierStructure: 'flat'
     };
@@ -175,14 +195,17 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     tiers.push(tier);
   });
 
-  // Sort tiers by price
-  return tiers.sort((a, b) => a.price - b.price);
+  // Sort tiers by price, but put trial first
+  return tiers.sort((a, b) => {
+    if (a.id === 'trial') return -1;
+    if (b.id === 'trial') return 1;
+    return a.price - b.price;
+  });
 };
 
 const generateFeaturesFromTier = (tierId: string, metadata: any): string[] => {
   const features = [];
   
-  // Add tier-specific features based on the image
   switch (tierId) {
     case 'trial':
       features.push(
@@ -239,10 +262,10 @@ const generateFeaturesFromTier = (tierId: string, metadata: any): string[] => {
 
 const getSubtitleFromBillingType = (billingType: string, isRecurring: boolean): string => {
   switch (billingType) {
-    case 'free_trial': return 'Free Trial';
+    case 'free_trial': return 'Trial';
     case 'pay_as_you_go': return 'Pay As-You-Go';
-    case 'credit_burndown': return 'Credit Package';
-    case 'flat_recurring': return 'Monthly Plan';
+    case 'credit_burndown': return 'Credit Burndown';
+    case 'flat_recurring': return 'Flat Fee';
     case 'per_seat': return 'Per Seat';
     default: return isRecurring ? 'Monthly Plan' : 'Pay-as-you-go';
   }
@@ -253,59 +276,6 @@ const getBadgeFromTier = (tierId: string, metadata: any): string | undefined => 
   if (tierId === 'professional') return 'Most Popular';
   if (metadata.badge) return metadata.badge;
   return undefined;
-};
-
-const generateFeaturesFromMetadata = (metadata: any, usageLimits: any): string[] => {
-  const features = [];
-  
-  if (usageLimits.included_usage > 0) {
-    features.push(`${usageLimits.included_usage.toLocaleString()} ${usageLimits.usage_unit} included`);
-  }
-  
-  if (usageLimits.meter_rate > 0) {
-    features.push(`$${usageLimits.meter_rate} per additional ${usageLimits.usage_unit || 'unit'}`);
-  }
-  
-  if (usageLimits.package_credits > 0) {
-    features.push(`${usageLimits.package_credits.toLocaleString()} prepaid credits`);
-  }
-
-  // Check for unlimited features
-  if (metadata.usage_limit_transactions === 'unlimited') {
-    features.push('Unlimited transactions');
-  }
-  if (metadata.usage_limit_ai_processing === 'unlimited') {
-    features.push('Unlimited AI processing');
-  }
-  if (metadata.usage_limit_api_calls === 'unlimited') {
-    features.push('Unlimited API calls');
-  }
-  
-  // Add tier-specific features
-  switch (metadata.tier_id) {
-    case 'trial':
-      features.push('Full feature access', 'Email support');
-      break;
-    case 'starter':
-      features.push('Pay only for what you use', 'No monthly commitment', 'Email support');
-      break;
-    case 'professional':
-      features.push('Better rates', 'Flexible credit system', 'Priority support');
-      break;
-    case 'business':
-      features.push('Predictable costs', 'Advanced features', 'Phone support');
-      break;
-    case 'enterprise':
-      features.push('Team management', 'Custom integrations', 'Dedicated support');
-      break;
-  }
-  
-  // Add default features if none specified
-  if (features.length === 0) {
-    features.push('Full access to platform', 'Email support', 'Standard features');
-  }
-  
-  return features;
 };
 
 const getIconForTier = (tierId: string): string => {

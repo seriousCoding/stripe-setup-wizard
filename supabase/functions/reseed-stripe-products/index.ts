@@ -55,31 +55,11 @@ serve(async (req) => {
     // Define the products with exact usage limits from the image
     const productDefinitions = [
       {
-        id: 'trial',
-        name: 'Free Trial',
-        description: 'Try all features risk-free before committing.',
-        price: 0, // Free
-        metadata: {
-          tier_id: 'trial',
-          plan_type: 'trial',
-          billing_model_type: 'free_trial',
-          created_via: 'billing_app_v1',
-          popular: 'false',
-          badge: 'Free Trial'
-        },
-        usage_limits: {
-          transactions: 500,
-          ai_processing: 50,
-          data_exports: 10,
-          api_calls: 1000,
-          meter_rate_after_limit: 0.05
-        }
-      },
-      {
         id: 'starter',
         name: 'Starter',
+        subtitle: 'Pay As-You-Go',
         description: 'Perfect for getting started with transaction-based billing.',
-        price: 99, // $0.99 base
+        price: 99, // $0.99 per transaction
         metadata: {
           tier_id: 'starter',
           plan_type: 'metered',
@@ -92,12 +72,15 @@ serve(async (req) => {
           ai_processing: 5,
           data_exports: 2,
           api_calls: 100,
+          storage_gb: 1,
+          integrations: 2,
           meter_rate_after_limit: 0.05
         }
       },
       {
         id: 'professional',
         name: 'Professional',
+        subtitle: 'Credit Burndown',
         description: 'Buy credits in advance for better rates and flexibility.',
         price: 4900, // $49.00 package
         metadata: {
@@ -113,12 +96,15 @@ serve(async (req) => {
           ai_processing: 300,
           data_exports: 50,
           api_calls: 5000,
+          storage_gb: 50,
+          integrations: 10,
           meter_rate_after_limit: 0.04
         }
       },
       {
         id: 'business',
         name: 'Business',
+        subtitle: 'Flat Fee',
         description: 'Unlimited transactions with predictable monthly costs.',
         price: 9900, // $99.00 monthly
         interval: 'month',
@@ -130,16 +116,19 @@ serve(async (req) => {
           popular: 'false'
         },
         usage_limits: {
-          transactions: 999999,
-          ai_processing: 999999,
-          data_exports: 999999,
-          api_calls: 999999,
+          transactions: 'unlimited',
+          ai_processing: 'unlimited',
+          data_exports: 'unlimited',
+          api_calls: 'unlimited',
+          storage_gb: 'unlimited',
+          integrations: 'unlimited',
           unlimited: true
         }
       },
       {
         id: 'enterprise',
         name: 'Enterprise',
+        subtitle: 'Per Seat',
         description: 'Scale with your team size and organizational needs.',
         price: 2500, // $25.00 per seat monthly
         interval: 'month',
@@ -151,11 +140,38 @@ serve(async (req) => {
           popular: 'false'
         },
         usage_limits: {
-          transactions: 999999,
-          ai_processing: 999999,
-          data_exports: 999999,
-          api_calls: 999999,
+          transactions: 'unlimited',
+          ai_processing: 'unlimited',
+          data_exports: 'unlimited',
+          api_calls: 'unlimited',
+          storage_gb: 'unlimited',
+          integrations: 'unlimited',
+          team_seats: 'unlimited',
           unlimited: true
+        }
+      },
+      {
+        id: 'trial',
+        name: 'Free Trial',
+        subtitle: 'Trial',
+        description: 'Try all features risk-free before committing.',
+        price: 0, // Free
+        metadata: {
+          tier_id: 'trial',
+          plan_type: 'trial',
+          billing_model_type: 'free_trial',
+          created_via: 'billing_app_v1',
+          popular: 'false',
+          badge: 'Free Trial'
+        },
+        usage_limits: {
+          transactions: 500,
+          ai_processing: 50,
+          data_exports: 10,
+          api_calls: 1000,
+          storage_gb: 5,
+          integrations: 1,
+          meter_rate_after_limit: 0.05
         }
       }
     ];
@@ -169,11 +185,15 @@ serve(async (req) => {
         // Enhanced metadata with usage limits
         const enhancedMetadata = {
           ...productDef.metadata,
-          // Usage limits as metadata
+          subtitle: productDef.subtitle,
+          // Usage limits as metadata - handle unlimited values
           usage_limit_transactions: productDef.usage_limits.transactions.toString(),
           usage_limit_ai_processing: productDef.usage_limits.ai_processing.toString(),
           usage_limit_data_exports: productDef.usage_limits.data_exports.toString(),
           usage_limit_api_calls: productDef.usage_limits.api_calls.toString(),
+          usage_limit_storage_gb: productDef.usage_limits.storage_gb?.toString() || '0',
+          usage_limit_integrations: productDef.usage_limits.integrations?.toString() || '0',
+          usage_limit_team_seats: productDef.usage_limits.team_seats?.toString() || '0',
           meter_rate: productDef.usage_limits.meter_rate_after_limit?.toString() || '0',
           unlimited_features: productDef.usage_limits.unlimited ? 'true' : 'false'
         };
@@ -213,6 +233,7 @@ serve(async (req) => {
           price_id: price.id,
           tier_id: productDef.id,
           name: productDef.name,
+          subtitle: productDef.subtitle,
           amount: productDef.price,
           usage_limits: productDef.usage_limits,
           status: 'success'
@@ -236,7 +257,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: 'Stripe products reseeded successfully with usage limits',
+        message: 'Stripe products reseeded successfully with exact usage limits from design',
         results,
         summary: {
           products_created: results.filter(r => r.status === 'success').length,
