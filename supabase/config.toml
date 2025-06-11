@@ -45,3 +45,6 @@ verify_jwt = true
 
 [functions.deploy-billing-model]
 verify_jwt = true
+
+[functions.create-checkout]
+verify_jwt = true
