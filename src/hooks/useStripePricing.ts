@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -51,11 +50,12 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
         throw new Error(error.message);
       }
 
-      if (data?.products) {
+      if (data?.products && data.products.length > 0) {
         const tiers = mapStripeProductsToTiers(data.products);
         setPricingTiers(tiers);
       } else {
-        // Fallback to default pricing if no products returned
+        // Only use fallback if no products found
+        console.log('No Stripe products found, using default pricing');
         setPricingTiers(getDefaultPricingTiers());
       }
     } catch (err: any) {
@@ -97,8 +97,6 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
 };
 
 const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
-  // Start with default tiers structure but override with Stripe data
-  const defaultTiers = getDefaultPricingTiers();
   const tiers: StripePricingTier[] = [];
 
   // Process Stripe products and map to tiers
@@ -175,16 +173,8 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
 
   // If no Stripe products found, return default tiers
   if (tiers.length === 0) {
-    return defaultTiers;
+    return getDefaultPricingTiers();
   }
-
-  // Merge with defaults for any missing standard tiers
-  const tierIds = new Set(tiers.map(t => t.id));
-  defaultTiers.forEach(defaultTier => {
-    if (!tierIds.has(defaultTier.id)) {
-      tiers.push(defaultTier);
-    }
-  });
 
   // Sort tiers by price
   return tiers.sort((a, b) => a.price - b.price);

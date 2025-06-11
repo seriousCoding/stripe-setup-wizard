@@ -56,18 +56,44 @@ serve(async (req) => {
       apiVersion: '2023-10-16',
     });
 
-    // Fetch products with their default prices
+    // Fetch products with their default prices - filter by our app's metadata
     const products = await stripe.products.list({
       expand: ['data.default_price'],
       active: true,
       limit: 100
     });
 
-    logStep("Products fetched from Stripe", { count: products.data.length });
+    logStep("All products fetched from Stripe", { count: products.data.length });
+
+    // Filter products to only include those created by this billing app
+    const appProducts = products.data.filter(product => {
+      const metadata = product.metadata || {};
+      return (
+        metadata.created_via === 'stripe_setup_pilot' ||
+        metadata.billing_model_type ||
+        metadata.tier_id ||
+        metadata.usage_limit_api_calls ||
+        metadata.meter_rate ||
+        metadata.package_credits ||
+        metadata.included_usage ||
+        // Also include if product name matches common billing patterns
+        product.name.toLowerCase().includes('trial') ||
+        product.name.toLowerCase().includes('starter') ||
+        product.name.toLowerCase().includes('professional') ||
+        product.name.toLowerCase().includes('business') ||
+        product.name.toLowerCase().includes('enterprise') ||
+        product.name.toLowerCase().includes('premium')
+      );
+    });
+
+    logStep("Filtered to app-specific products", { 
+      originalCount: products.data.length,
+      filteredCount: appProducts.length 
+    });
 
     // Enhance products with meter information and usage limits
     const enhancedProducts = await Promise.all(
-      products.data.map(async (product) => {
+      appProducts.map(async (product) => {
         const enhanced = {
           ...product,
           usage_limits: {},
@@ -92,14 +118,14 @@ serve(async (req) => {
         }
 
         // If this is a metered product, try to find associated meter
-        if (product.metadata?.meter_name) {
+        if (product.metadata?.meter_name || product.metadata?.event_name) {
           try {
             const meters = await stripe.billing.meters.list({
               limit: 100
             });
             
             const associatedMeter = meters.data.find(
-              meter => meter.event_name === product.metadata.meter_name ||
+              meter => meter.event_name === (product.metadata.meter_name || product.metadata.event_name) ||
                       meter.display_name === product.name
             );
             
@@ -141,7 +167,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true,
         products: enhancedProducts,
-        total_count: products.data.length
+        total_count: enhancedProducts.length,
+        filtered_from: products.data.length
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
