@@ -32,7 +32,7 @@ const Pricing = () => {
         { name: 'AI Processing', value: '100' }
       ],
       buttonText: 'Select Plan',
-      meterRate: 0.05 // Rate after package limit
+      meterRate: 0.05
     },
     {
       id: 'professional',
@@ -150,7 +150,6 @@ const Pricing = () => {
         throw new Error('Invalid plan selected');
       }
 
-      // For free trial, just show success
       if (tierId === 'trial') {
         toast({
           title: "Free Trial Activated!",
@@ -159,7 +158,6 @@ const Pricing = () => {
         return;
       }
 
-      // For pay-as-you-go (Starter), create a customer but no immediate payment
       if (tierId === 'starter') {
         toast({
           title: "Pay-As-You-Go Plan Activated!",
@@ -168,7 +166,6 @@ const Pricing = () => {
         return;
       }
 
-      // For paid plans, create Stripe checkout session
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: {
           priceId: tierId,
@@ -222,11 +219,11 @@ const Pricing = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-50 py-12 px-4">
+    <div className="min-h-screen bg-gradient-blue-purple py-12 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4 text-slate-50">Choose Your Plan</h1>
-          <p className="text-slate-400 max-w-2xl mx-auto text-lg">
+          <h1 className="text-4xl font-bold mb-4 text-purple-500">Choose Your Plan</h1>
+          <p className="text-white/90 max-w-2xl mx-auto text-lg">
             Select the perfect plan for your business needs
           </p>
         </div>
@@ -235,10 +232,10 @@ const Pricing = () => {
           {pricingTiers.map((tier) => (
             <Card 
               key={tier.id} 
-              className={`relative bg-slate-800 border-slate-700 text-slate-50 h-full flex flex-col ${
+              className={`relative bg-slate-800/90 backdrop-blur-sm border-slate-700 text-white h-full flex flex-col ${
                 tier.popular 
                   ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' 
-                  : 'border border-slate-700'
+                  : 'border border-slate-700/50'
               }`}
             >
               {tier.popular && (
@@ -257,21 +254,21 @@ const Pricing = () => {
                 </div>
               )}
 
-              <CardHeader className="text-center pb-4">
+              <CardHeader className="text-center pb-6">
                 <div className="flex items-center justify-start space-x-3 mb-3">
-                  <div className="text-lg">{tier.icon}</div>
+                  <div className="text-xl">{tier.icon}</div>
                   <div className="text-left">
-                    <h3 className="text-lg font-semibold text-slate-50">{tier.name}</h3>
-                    <p className="text-xs text-slate-400">{tier.subtitle}</p>
+                    <h3 className="text-xl font-bold text-white">{tier.name}</h3>
+                    <p className="text-sm text-slate-400">{tier.subtitle}</p>
                   </div>
                 </div>
                 
-                <p className="text-slate-400 text-sm mb-6 min-h-[40px] text-left">
+                <p className="text-slate-300 text-sm mb-6 min-h-[48px] text-left leading-relaxed">
                   {tier.description}
                 </p>
                 
-                <div className="mb-4 text-left">
-                  <div className="text-3xl font-bold text-blue-400 mb-1">
+                <div className="mb-6 text-left">
+                  <div className="text-4xl font-bold text-blue-400 mb-1">
                     {formatPrice(tier)}
                   </div>
                   <div className="text-slate-400 text-sm">
@@ -280,34 +277,34 @@ const Pricing = () => {
                 </div>
               </CardHeader>
               
-              <CardContent className="flex-1 flex flex-col space-y-6">
+              <CardContent className="flex-1 flex flex-col space-y-4 px-6">
                 <div className="space-y-3 flex-1">
                   {tier.features.map((feature, index) => (
-                    <div key={index} className="flex items-center space-x-3">
-                      <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
-                      <span className="text-sm text-slate-300">{feature}</span>
+                    <div key={index} className="flex items-start space-x-3">
+                      <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-sm text-slate-200 leading-relaxed">{feature}</span>
                     </div>
                   ))}
                 </div>
                 
                 {tier.usageLimits && (
-                  <div className="bg-slate-700/50 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-slate-300 mb-3 uppercase tracking-wide">
+                  <div className="bg-slate-700/40 rounded-lg p-4 mt-4">
+                    <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
                       Usage Limits
                     </h4>
                     <div className="space-y-2">
                       {tier.usageLimits.map((limit, index) => (
                         <div key={index} className="flex justify-between text-sm">
                           <span className="text-slate-400">{limit.name}</span>
-                          <span className="text-slate-50 font-medium">{limit.value}</span>
+                          <span className="text-white font-medium">{limit.value}</span>
                         </div>
                       ))}
                     </div>
                     {tier.meterRate && (
-                      <div className="mt-2 pt-2 border-t border-slate-600">
+                      <div className="mt-3 pt-2 border-t border-slate-600">
                         <div className="flex justify-between text-xs">
                           <span className="text-slate-400">After limit</span>
-                          <span className="text-slate-50">${tier.meterRate}/transaction</span>
+                          <span className="text-white">${tier.meterRate}/transaction</span>
                         </div>
                       </div>
                     )}
@@ -315,7 +312,7 @@ const Pricing = () => {
                 )}
                 
                 <Button 
-                  className="w-full mt-auto bg-blue-600 hover:bg-blue-700 text-white"
+                  className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors"
                   onClick={() => handleSelectPlan(tier.id)}
                   disabled={isLoading && selectedPlan === tier.id}
                 >
@@ -327,7 +324,7 @@ const Pricing = () => {
         </div>
 
         <div className="mt-12 text-center">
-          <p className="text-slate-400 text-sm max-w-3xl mx-auto">
+          <p className="text-slate-300 text-sm max-w-4xl mx-auto leading-relaxed">
             All packages auto-renew unless you opt out. After package limits are reached, meter rates apply automatically. 
             No service interruption - we'll continue processing your transactions at the meter rate.
           </p>
