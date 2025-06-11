@@ -1,7 +1,9 @@
+
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Upload, DollarSign, FileSpreadsheet, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import UserMenu from './UserMenu';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -29,7 +31,7 @@ const DashboardLayout = ({ children, title, description }: DashboardLayoutProps)
               <p className="text-sm text-muted-foreground">Automate your Stripe product and billing configuration</p>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="h-8 w-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600"></div>
+              <UserMenu />
             </div>
           </div>
         </div>
