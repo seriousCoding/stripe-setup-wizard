@@ -64,44 +64,40 @@ export const handleSignInWithEmailOrUsername = async (data: SignInWithEmailOrUse
     
     if (error) {
       console.error('Sign in error:', error);
+      return { error };
     } else {
       console.log('Sign in successful');
+      return { error: null };
     }
-    
-    return { error };
   } else {
     // If it's a username, we need to look up the email first
     console.log('Looking up email for username:', data.emailOrUsername);
     
-    try {
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('username', data.emailOrUsername)
-        .single();
-      
-      if (profileError || !profileData) {
-        console.error('Username not found:', profileError);
-        return { error: { message: 'Invalid login credentials' } };
-      }
-      
-      console.log('Found email for username:', profileData.email);
-      
-      const { error } = await supabase.auth.signInWithPassword({
-        email: profileData.email,
-        password: data.password,
-      });
-      
-      if (error) {
-        console.error('Sign in error:', error);
-      } else {
-        console.log('Sign in successful');
-      }
-      
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('username', data.emailOrUsername)
+      .single();
+    
+    if (profileError || !profileData) {
+      console.error('Username not found:', profileError);
+      const customError = { message: 'Invalid login credentials' };
+      return { error: customError };
+    }
+    
+    console.log('Found email for username:', profileData.email);
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email: profileData.email,
+      password: data.password,
+    });
+    
+    if (error) {
+      console.error('Sign in error:', error);
       return { error };
-    } catch (error) {
-      console.error('Error looking up username:', error);
-      return { error: { message: 'Invalid login credentials' } };
+    } else {
+      console.log('Sign in successful');
+      return { error: null };
     }
   }
 };
