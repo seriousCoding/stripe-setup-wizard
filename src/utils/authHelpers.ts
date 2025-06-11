@@ -56,50 +56,27 @@ export const handleSignInWithEmailOrUsername = async (data: SignInWithEmailOrUse
   if (isEmail) {
     // If it's an email, use regular email sign in
     console.log('Signing in with email:', data.emailOrUsername);
-    
-    const { error } = await supabase.auth.signInWithPassword({
-      email: data.emailOrUsername,
-      password: data.password,
-    });
-    
-    if (error) {
-      console.error('Sign in error:', error);
-      return { error };
-    } else {
-      console.log('Sign in successful');
-      return { error: null };
-    }
-  } else {
-    // If it's a username, we need to look up the email first
-    console.log('Looking up email for username:', data.emailOrUsername);
-    
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('username', data.emailOrUsername)
-      .single();
-    
-    if (profileError || !profileData) {
-      console.error('Username not found:', profileError);
-      const customError = { message: 'Invalid login credentials' };
-      return { error: customError };
-    }
-    
-    console.log('Found email for username:', profileData.email);
-    
-    const { error } = await supabase.auth.signInWithPassword({
-      email: profileData.email,
-      password: data.password,
-    });
-    
-    if (error) {
-      console.error('Sign in error:', error);
-      return { error };
-    } else {
-      console.log('Sign in successful');
-      return { error: null };
-    }
+    return await handleSignIn({ email: data.emailOrUsername, password: data.password });
   }
+  
+  // If it's a username, we need to look up the email first
+  console.log('Looking up email for username:', data.emailOrUsername);
+  
+  const { data: profileData, error: profileError } = await supabase
+    .from('profiles')
+    .select('email')
+    .eq('username', data.emailOrUsername)
+    .single();
+  
+  if (profileError || !profileData?.email) {
+    console.error('Username not found:', profileError);
+    return { error: { message: 'Invalid login credentials' } };
+  }
+  
+  console.log('Found email for username:', profileData.email);
+  
+  // Use the found email to sign in
+  return await handleSignIn({ email: profileData.email, password: data.password });
 };
 
 export const handleSignOut = async () => {
