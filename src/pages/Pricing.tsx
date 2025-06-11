@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import PricingCard from '@/components/PricingCard';
@@ -55,7 +54,7 @@ const Pricing = () => {
       description: 'Unlimited transactions with predictable monthly costs.',
       price: 99,
       currency: 'USD',
-      interval: 'month',
+      interval: 'month' as const,
       features: [
         'Unlimited transactions',
         'Unlimited AI processing',
@@ -71,7 +70,7 @@ const Pricing = () => {
       description: 'Scale with your team size and organizational needs.',
       price: 25,
       currency: 'USD',
-      interval: 'month',
+      interval: 'month' as const,
       features: [
         'Unlimited everything',
         'Multi-user management',
