@@ -8,6 +8,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper logging function for enhanced debugging
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[FETCH-STRIPE-DATA] ${step}${detailsStr}`);
@@ -21,81 +22,59 @@ serve(async (req) => {
   try {
     logStep("Function started");
 
+    // Check for Stripe secret key
+    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeSecretKey) {
+      logStep("ERROR - Stripe secret key not configured");
+      throw new Error('Stripe secret key not configured');
+    }
+    logStep("Stripe secret key found");
+
     // Authenticate user
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data } = await supabaseClient.auth.getUser(token);
-    const user = data.user;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Authorization header missing');
+    }
 
-    if (!user) {
+    const token = authHeader.replace('Bearer ', '');
+    const { data, error: authError } = await supabaseClient.auth.getUser(token);
+    
+    if (authError || !data.user) {
+      logStep("Authentication failed", { error: authError?.message });
       throw new Error('User not authenticated');
     }
 
+    const user = data.user;
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!stripeKey) {
-      throw new Error('Stripe secret key not configured');
-    }
-
-    const stripe = new Stripe(stripeKey, {
+    const stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
     });
 
-    logStep("Stripe client initialized");
-
-    // Fetch existing products with their default prices
-    const products = await stripe.products.list({ 
-      limit: 100,
-      expand: ['data.default_price']
+    // Fetch products with their default prices
+    const products = await stripe.products.list({
+      expand: ['data.default_price'],
+      active: true,
+      limit: 100
     });
 
-    logStep("Fetched products", { count: products.data.length });
+    logStep("Products fetched from Stripe", { count: products.data.length });
 
-    // If no products exist, create test data
-    if (products.data.length === 0) {
-      logStep("No existing products found, creating test data");
-      await createTestData(stripe, user);
-      
-      // Fetch the newly created products
-      const newProducts = await stripe.products.list({ 
-        limit: 100,
-        expand: ['data.default_price']
-      });
-      
-      logStep("Test data created, refetched products", { count: newProducts.data.length });
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          products: newProducts.data,
-          test_data_created: true
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        }
-      );
-    }
-
-    // Return existing products
     return new Response(
       JSON.stringify({ 
         success: true,
-        products: products.data,
-        test_data_created: false
+        products: products.data 
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       }
     );
-
   } catch (error: any) {
     logStep("ERROR in fetch-stripe-data", { message: error.message });
     
@@ -111,120 +90,3 @@ serve(async (req) => {
     );
   }
 });
-
-async function createTestData(stripe: Stripe, user: any) {
-  logStep("Creating test data for empty Stripe account");
-
-  const testProducts = [
-    {
-      name: "Professional Plan",
-      description: "Monthly subscription with included usage",
-      type: "recurring",
-      unit_amount: 4999, // $49.99
-      currency: "usd",
-      interval: "month"
-    },
-    {
-      name: "API Calls",
-      description: "Usage-based API calls",
-      type: "metered",
-      unit_amount: 10, // $0.10
-      currency: "usd",
-      eventName: "api_call"
-    },
-    {
-      name: "Storage Overage",
-      description: "Additional storage beyond included limit",
-      type: "metered",
-      unit_amount: 50, // $0.50
-      currency: "usd",
-      eventName: "storage_overage"
-    },
-    {
-      name: "Bandwidth Overage",
-      description: "Additional bandwidth usage",
-      type: "metered",
-      unit_amount: 25, // $0.25
-      currency: "usd",
-      eventName: "bandwidth_overage"
-    }
-  ];
-
-  for (const testProduct of testProducts) {
-    try {
-      // Create product
-      const product = await stripe.products.create({
-        name: testProduct.name,
-        description: testProduct.description,
-        type: 'service',
-        metadata: {
-          user_id: user.id,
-          created_by: 'stripe-setup-pilot-test-data',
-          billing_type: testProduct.type
-        }
-      });
-
-      logStep("Test product created", { name: product.name, id: product.id });
-
-      // Create price
-      const priceData: any = {
-        product: product.id,
-        unit_amount: testProduct.unit_amount,
-        currency: testProduct.currency,
-        metadata: {
-          user_id: user.id,
-          test_data: 'true'
-        }
-      };
-
-      if (testProduct.type === 'recurring') {
-        priceData.recurring = {
-          interval: testProduct.interval
-        };
-      } else if (testProduct.type === 'metered') {
-        priceData.billing_scheme = 'per_unit';
-        priceData.usage_type = 'metered';
-        priceData.recurring = {
-          interval: 'month',
-          usage_type: 'metered',
-          aggregate_usage: 'sum'
-        };
-      }
-
-      const price = await stripe.prices.create(priceData);
-      logStep("Test price created", { priceId: price.id, amount: price.unit_amount });
-
-      // Update product to set default price
-      await stripe.products.update(product.id, {
-        default_price: price.id
-      });
-
-      // Create meter for metered items
-      if (testProduct.type === 'metered' && testProduct.eventName) {
-        try {
-          const meter = await stripe.billing.meters.create({
-            display_name: testProduct.name,
-            event_name: testProduct.eventName,
-            customer_mapping: {
-              event_payload_key: 'customer_id',
-              type: 'by_id'
-            },
-            default_aggregation: {
-              formula: 'sum'
-            },
-            value_settings: {
-              event_payload_key: 'value'
-            }
-          });
-          logStep("Test meter created", { meterId: meter.id, eventName: meter.event_name });
-        } catch (meterError: any) {
-          logStep("Test meter creation failed", { error: meterError.message });
-        }
-      }
-    } catch (error: any) {
-      logStep("Error creating test product", { product: testProduct.name, error: error.message });
-    }
-  }
-
-  logStep("Test data creation completed");
-}

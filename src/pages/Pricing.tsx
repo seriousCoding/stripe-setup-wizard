@@ -15,6 +15,7 @@ const Pricing = () => {
   const { pricingTiers, isLoading: isPricingLoading, error: pricingError, refetch } = useStripePricing();
 
   const handleSelectPlan = async (tierId: string) => {
+    console.log('Selecting plan:', tierId);
     setIsLoading(true);
     setSelectedPlan(tierId);
     
@@ -24,6 +25,9 @@ const Pricing = () => {
         throw new Error('Invalid plan selected');
       }
 
+      console.log('Selected tier details:', selectedTier);
+
+      // Handle special cases for free/trial plans
       if (tierId === 'trial') {
         toast({
           title: "Free Trial Activated!",
@@ -40,11 +44,13 @@ const Pricing = () => {
         return;
       }
 
+      // Create checkout session for paid plans
+      console.log('Creating checkout session...');
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: {
           priceId: tierId,
           planName: selectedTier.name,
-          amount: selectedTier.price * 100,
+          amount: selectedTier.price * 100, // Convert to cents
           currency: selectedTier.currency.toLowerCase(),
           mode: selectedTier.isMonthly ? 'subscription' : 'payment',
           packageCredits: selectedTier.packageCredits,
@@ -52,14 +58,27 @@ const Pricing = () => {
         }
       });
 
+      console.log('Checkout response:', { data, error });
+
       if (error) {
-        throw new Error(error.message);
+        console.error('Checkout error:', error);
+        throw new Error(error.message || 'Failed to create checkout session');
       }
 
       if (data?.url) {
+        console.log('Redirecting to checkout:', data.url);
+        // Open Stripe checkout in a new tab
         window.open(data.url, '_blank');
+        
+        toast({
+          title: "Redirecting to Checkout",
+          description: "A new tab will open for secure payment processing.",
+        });
+      } else {
+        throw new Error('No checkout URL received');
       }
 
+      // Show success message for package plans
       if (selectedTier.packageCredits) {
         toast({
           title: `${selectedTier.name} Plan Selected!`,
@@ -70,7 +89,7 @@ const Pricing = () => {
       console.error('Error selecting plan:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to process plan selection",
+        description: error.message || "Failed to process plan selection. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -132,7 +151,7 @@ const Pricing = () => {
           {pricingError && (
             <div className="mt-4 flex items-center justify-center space-x-2 text-orange-300">
               <AlertCircle className="h-4 w-4" />
-              <span className="text-sm">Using fallback pricing data</span>
+              <span className="text-sm">Using fallback pricing data - {pricingError}</span>
             </div>
           )}
         </div>

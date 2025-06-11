@@ -14,33 +14,48 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Starting create-checkout function');
+    
+    // Check for Stripe secret key
+    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+    console.log('Stripe key check:', stripeSecretKey ? 'Found' : 'Missing');
+    
+    if (!stripeSecretKey) {
+      console.error('STRIPE_SECRET_KEY environment variable is not set');
+      throw new Error('Stripe configuration missing. Please contact support.');
+    }
+
     // Authenticate user
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data } = await supabaseClient.auth.getUser(token);
-    const user = data.user;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Authorization header missing');
+    }
 
-    if (!user) {
+    const token = authHeader.replace('Bearer ', '');
+    const { data, error: authError } = await supabaseClient.auth.getUser(token);
+    
+    if (authError || !data.user) {
+      console.error('Auth error:', authError);
       throw new Error('User not authenticated');
     }
 
+    const user = data.user;
+    console.log('User authenticated:', user.email);
+
     const { priceId, planName, amount, currency, mode, packageCredits, meterRate } = await req.json();
 
-    if (!priceId || !planName || !amount) {
-      throw new Error('Missing required parameters');
+    if (!priceId || !planName || amount === undefined) {
+      throw new Error('Missing required parameters: priceId, planName, or amount');
     }
 
-    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!stripeKey) {
-      throw new Error('Stripe secret key not configured');
-    }
+    console.log('Request params:', { priceId, planName, amount, currency, mode });
 
-    const stripe = new Stripe(stripeKey, {
+    const stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
     });
 
@@ -53,6 +68,7 @@ serve(async (req) => {
     let customerId;
     if (customers.data.length > 0) {
       customerId = customers.data[0].id;
+      console.log('Existing customer found:', customerId);
     } else {
       // Create new customer
       const customer = await stripe.customers.create({
@@ -62,11 +78,12 @@ serve(async (req) => {
         },
       });
       customerId = customer.id;
+      console.log('New customer created:', customerId);
     }
 
     // Create price object with package and meter rate information
     const priceData: any = {
-      currency: currency,
+      currency: currency || 'usd',
       unit_amount: amount,
       product_data: {
         name: `${planName} Plan`,
@@ -84,6 +101,7 @@ serve(async (req) => {
     }
 
     const price = await stripe.prices.create(priceData);
+    console.log('Price created:', price.id);
 
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
@@ -113,6 +131,8 @@ serve(async (req) => {
         }
       } : undefined,
     });
+
+    console.log('Checkout session created:', session.id);
 
     return new Response(
       JSON.stringify({ url: session.url }),
