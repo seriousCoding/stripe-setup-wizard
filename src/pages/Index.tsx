@@ -1,8 +1,8 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import PayAsYouGoForm from '@/components/PayAsYouGoForm';
-import { Card, CardContent } from '@/components/ui/card';
+import SpreadsheetUpload from '@/components/SpreadsheetUpload';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, Users, DollarSign, CheckCircle } from 'lucide-react';
 
@@ -39,7 +39,34 @@ const Index = () => {
           ))}
         </div>
 
-        <PayAsYouGoForm />
+        <SpreadsheetUpload />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+            <CardDescription>Your latest Stripe configuration activities</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {[
+                { action: 'Created product "API Service Pro"', time: '2 hours ago', status: 'success' },
+                { action: 'Updated pricing for "Storage Plan"', time: '1 day ago', status: 'success' },
+                { action: 'Added meter "Database Queries"', time: '2 days ago', status: 'success' },
+                { action: 'Validation failed for pricing data', time: '3 days ago', status: 'error' }
+              ].map((item, index) => (
+                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className={`h-2 w-2 rounded-full ${
+                      item.status === 'success' ? 'bg-green-500' : 'bg-red-500'
+                    }`}></div>
+                    <span className="text-sm">{item.action}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{item.time}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   );
