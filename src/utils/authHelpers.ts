@@ -54,9 +54,21 @@ export const handleSignInWithEmailOrUsername = async (data: SignInWithEmailOrUse
   const isEmail = data.emailOrUsername.includes('@');
   
   if (isEmail) {
-    // If it's an email, use regular email sign in
+    // If it's an email, sign in directly
     console.log('Signing in with email:', data.emailOrUsername);
-    return await handleSignIn({ email: data.emailOrUsername, password: data.password });
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email: data.emailOrUsername,
+      password: data.password,
+    });
+    
+    if (error) {
+      console.error('Sign in error:', error);
+    } else {
+      console.log('Sign in successful');
+    }
+    
+    return { error };
   }
   
   // If it's a username, we need to look up the email first
@@ -75,8 +87,19 @@ export const handleSignInWithEmailOrUsername = async (data: SignInWithEmailOrUse
   
   console.log('Found email for username:', profileData.email);
   
-  // Use the found email to sign in
-  return await handleSignIn({ email: profileData.email, password: data.password });
+  // Use the found email to sign in directly
+  const { error } = await supabase.auth.signInWithPassword({
+    email: profileData.email,
+    password: data.password,
+  });
+  
+  if (error) {
+    console.error('Sign in error:', error);
+  } else {
+    console.log('Sign in successful');
+  }
+  
+  return { error };
 };
 
 export const handleSignOut = async () => {
