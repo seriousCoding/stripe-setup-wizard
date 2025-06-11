@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import BillingModelTypeTabs from '@/components/BillingModelTypeTabs';
 import SpreadsheetUpload from '@/components/SpreadsheetUpload';
+import PayAsYouGoForm from '@/components/PayAsYouGoForm';
 import FlatRecurringForm from '@/components/FlatRecurringForm';
 import FixedOverageForm from '@/components/FixedOverageForm';
 import PerSeatForm from '@/components/PerSeatForm';
@@ -20,7 +21,7 @@ const BillingModels = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'pay-as-you-go':
-        return <SpreadsheetUpload onDataUploaded={handleDataUploaded} />;
+        return <PayAsYouGoForm />;
       case 'flat-recurring':
         return <FlatRecurringForm />;
       case 'fixed-overage':
@@ -28,7 +29,7 @@ const BillingModels = () => {
       case 'per-seat':
         return <PerSeatForm />;
       default:
-        return <SpreadsheetUpload onDataUploaded={handleDataUploaded} />;
+        return <PayAsYouGoForm />;
     }
   };
 
