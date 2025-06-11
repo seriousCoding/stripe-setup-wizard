@@ -1,144 +1,18 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check } from 'lucide-react';
+import { Check, RefreshCw, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useStripePricing } from '@/hooks/useStripePricing';
 
 const Pricing = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const { toast } = useToast();
-
-  const pricingTiers = [
-    {
-      id: 'starter',
-      name: 'Starter',
-      subtitle: 'Pay As-You-Go',
-      description: 'Perfect for getting started with transaction-based billing.',
-      price: 0.05,
-      currency: 'USD',
-      icon: '📄',
-      features: [
-        'Pay only for what you use',
-        'No monthly commitment',
-        'Basic AI data extraction',
-        'Standard support'
-      ],
-      usageLimits: [
-        { name: 'Transactions', value: '1,000' },
-        { name: 'AI Processing', value: '100' }
-      ],
-      buttonText: 'Select Plan',
-      meterRate: 0.05
-    },
-    {
-      id: 'professional',
-      name: 'Professional',
-      subtitle: 'Credit Burndown',
-      description: 'Buy credits in advance for better rates and flexibility.',
-      price: 49,
-      currency: 'USD',
-      popular: true,
-      icon: '💼',
-      features: [
-        '1,200 transaction credits',
-        '15% discount on bulk purchases',
-        'Advanced AI processing',
-        'Priority support',
-        'Usage analytics'
-      ],
-      usageLimits: [
-        { name: 'Transactions', value: '1,200' },
-        { name: 'AI Processing', value: '300' }
-      ],
-      buttonText: 'Select Plan',
-      meterRate: 0.04,
-      packageCredits: 1200
-    },
-    {
-      id: 'business',
-      name: 'Business',
-      subtitle: 'Flat Fee',
-      description: 'Unlimited transactions with predictable monthly costs.',
-      price: 99,
-      currency: 'USD',
-      icon: '⚡',
-      features: [
-        'Unlimited transactions',
-        'Unlimited AI processing',
-        'Advanced analytics',
-        'Dedicated support',
-        'Custom integrations'
-      ],
-      buttonText: 'Select Plan',
-      isMonthly: true
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      subtitle: 'Per Seat',
-      description: 'Scale with your team size and organizational needs.',
-      price: 25,
-      currency: 'USD',
-      icon: '👥',
-      features: [
-        'Unlimited everything',
-        'Multi-user management',
-        'Advanced security',
-        'SLA guarantee',
-        'Custom development'
-      ],
-      buttonText: 'Select Plan',
-      isMonthly: true
-    },
-    {
-      id: 'trial',
-      name: 'Free Trial',
-      subtitle: 'Trial',
-      description: 'Try all features risk-free before committing.',
-      price: 0,
-      currency: 'USD',
-      badge: 'Free Trial',
-      icon: '🎁',
-      features: [
-        'Full access to all features',
-        '500 transaction limit',
-        'Basic AI processing',
-        'Email support'
-      ],
-      usageLimits: [
-        { name: 'Transactions', value: '500' },
-        { name: 'AI Processing', value: '50' }
-      ],
-      buttonText: 'Select Plan',
-      packageCredits: 500,
-      meterRate: 0.05
-    }
-  ];
-
-  const createStripeProducts = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('create-subscription-products', {
-        body: { products: pricingTiers }
-      });
-
-      if (error) {
-        console.error('Error creating products:', error);
-        return;
-      }
-
-      console.log('Products created successfully:', data);
-    } catch (error) {
-      console.error('Error creating Stripe products:', error);
-    }
-  };
-
-  useEffect(() => {
-    createStripeProducts();
-  }, []);
+  const { pricingTiers, isLoading: isPricingLoading, error: pricingError, refetch } = useStripePricing();
 
   const handleSelectPlan = async (tierId: string) => {
     setIsLoading(true);
@@ -218,14 +92,49 @@ const Pricing = () => {
     return '';
   };
 
+  if (isPricingLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-blue-purple py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold mb-4 text-purple-500">Choose Your Plan</h1>
+            <p className="text-white/90 max-w-2xl mx-auto text-lg">
+              Loading pricing information...
+            </p>
+          </div>
+          <div className="flex justify-center">
+            <RefreshCw className="h-8 w-8 animate-spin text-blue-400" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-blue-purple py-12 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4 text-purple-500">Choose Your Plan</h1>
+          <div className="flex items-center justify-center space-x-4 mb-4">
+            <h1 className="text-4xl font-bold text-purple-500">Choose Your Plan</h1>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refetch}
+              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh Prices
+            </Button>
+          </div>
           <p className="text-white/90 max-w-2xl mx-auto text-lg">
             Select the perfect plan for your business needs
           </p>
+          {pricingError && (
+            <div className="mt-4 flex items-center justify-center space-x-2 text-orange-300">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">Using fallback pricing data</span>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
