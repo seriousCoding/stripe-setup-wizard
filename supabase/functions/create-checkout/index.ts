@@ -16,12 +16,21 @@ serve(async (req) => {
   try {
     console.log('Starting create-checkout function');
     
-    // Check for Stripe secret key
-    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+    // Debug environment variables
+    const allEnvVars = Object.keys(Deno.env.toObject());
+    console.log('Available environment variables:', allEnvVars);
+    
+    // Check for Stripe secret key with multiple possible names
+    let stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || 
+                         Deno.env.get('STRIPE_SECRET') || 
+                         Deno.env.get('SUPABASE_STRIPE_SECRET_KEY');
+    
     console.log('Stripe key check:', stripeSecretKey ? `Found (starts with: ${stripeSecretKey.substring(0, 7)})` : 'Missing');
+    console.log('Checking specific env var STRIPE_SECRET_KEY:', Deno.env.get('STRIPE_SECRET_KEY') ? 'Found' : 'Not found');
     
     if (!stripeSecretKey) {
       console.error('STRIPE_SECRET_KEY environment variable is not set');
+      console.error('Available env vars:', allEnvVars.filter(key => key.includes('STRIPE')));
       throw new Error('Stripe secret key not configured in Supabase secrets. Please add STRIPE_SECRET_KEY to your edge function secrets.');
     }
 
