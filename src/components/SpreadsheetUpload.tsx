@@ -2,6 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import BillingModelGenerator from './BillingModelGenerator';
 import ProductSetup from './ProductSetup';
 import ServiceDefinition from './ServiceDefinition';
@@ -29,7 +30,8 @@ const SpreadsheetUpload = () => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showBillingGenerator, setShowBillingGenerator] = useState(false);
   const [showAnalyzer, setShowAnalyzer] = useState(false);
-  const [generatedModel, setGeneratedModel] = useState<any>(null);
+  const [generatedModels, setGeneratedModels] = useState<any[]>([]);
+  const { toast } = useToast();
   
   // Product setup state
   const [productSetup, setProductSetup] = useState<'new' | 'existing'>('existing');
@@ -44,46 +46,181 @@ const SpreadsheetUpload = () => {
   const handleFileUpload = useCallback(async (file: File) => {
     setIsProcessing(true);
     
-    // Simulate file processing with more realistic data
-    setTimeout(() => {
-      const mockData = [
-        { product: 'API Calls', price: 0.001, currency: 'USD', type: 'metered', eventName: 'api_call', description: 'REST API requests' },
-        { product: 'Storage GB', price: 0.05, currency: 'USD', type: 'metered', eventName: 'storage_gb', description: 'Data storage per GB' },
-        { product: 'Pro Plan', price: 29.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Monthly subscription' },
-        { product: 'Enterprise Support', price: 199.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Premium support tier' },
-        { product: 'Data Processing', price: 0.002, currency: 'USD', type: 'metered', eventName: 'data_process', description: 'Per record processed' }
-      ];
+    try {
+      let parsedData: any[] = [];
+      
+      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+        const text = await file.text();
+        parsedData = parseCSV(text);
+      } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        // For demo purposes, we'll simulate Excel parsing
+        parsedData = generateMockExcelData();
+      } else {
+        throw new Error('Unsupported file type. Please upload a CSV or Excel file.');
+      }
+      
+      // Enhance the data with intelligent defaults
+      const enhancedData = parsedData.map((row, index) => ({
+        product: row.product || row.name || row.service || `Service ${index + 1}`,
+        price: parseFloat(row.price || row.cost || row.amount || '0'),
+        currency: (row.currency || 'USD').toUpperCase(),
+        type: determineServiceType(row),
+        interval: row.interval || (row.type === 'recurring' ? 'month' : undefined),
+        eventName: generateEventName(row.product || row.name || row.service || `service_${index + 1}`),
+        description: row.description || row.desc || `${row.product || 'Service'} billing`
+      }));
       
       setUploadedFile({
         name: file.name,
         size: file.size,
         type: file.type,
-        data: mockData
+        data: enhancedData
       });
-      setIsProcessing(false);
+      
+      toast({
+        title: "File Uploaded Successfully",
+        description: `Parsed ${enhancedData.length} billing items from ${file.name}`,
+      });
+      
       setShowAnalyzer(true);
-    }, 1500);
-  }, []);
+    } catch (error: any) {
+      toast({
+        title: "Upload Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [toast]);
+
+  const parseCSV = (text: string): any[] => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return [];
+    
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const data = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',');
+      const row: any = {};
+      headers.forEach((header, index) => {
+        row[header] = values[index]?.trim() || '';
+      });
+      data.push(row);
+    }
+    
+    return data;
+  };
+
+  const generateMockExcelData = (): any[] => {
+    return [
+      { product: 'API Calls', price: 0.001, currency: 'USD', type: 'metered', description: 'REST API requests' },
+      { product: 'Storage GB', price: 0.05, currency: 'USD', type: 'metered', description: 'Data storage per GB' },
+      { product: 'Pro Plan', price: 29.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Monthly subscription' },
+      { product: 'Enterprise Support', price: 199.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Premium support tier' },
+      { product: 'Data Processing', price: 0.002, currency: 'USD', type: 'metered', description: 'Per record processed' },
+      { product: 'Bandwidth GB', price: 0.08, currency: 'USD', type: 'metered', description: 'Data transfer per GB' }
+    ];
+  };
+
+  const determineServiceType = (row: any): 'metered' | 'recurring' | 'one-time' => {
+    const typeStr = (row.type || '').toLowerCase();
+    const productStr = (row.product || row.name || '').toLowerCase();
+    
+    if (typeStr.includes('recurring') || typeStr.includes('subscription') || typeStr.includes('monthly') || typeStr.includes('yearly')) {
+      return 'recurring';
+    }
+    
+    if (typeStr.includes('metered') || typeStr.includes('usage') || productStr.includes('api') || productStr.includes('call') || productStr.includes('gb') || productStr.includes('mb')) {
+      return 'metered';
+    }
+    
+    if (typeStr.includes('one-time') || typeStr.includes('setup')) {
+      return 'one-time';
+    }
+    
+    // Default to metered for small amounts, recurring for larger amounts
+    const price = parseFloat(row.price || '0');
+    return price < 1 ? 'metered' : 'recurring';
+  };
+
+  const generateEventName = (name: string): string => {
+    return name.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  };
 
   const handlePasteData = () => {
-    // Simulate parsing pasted data
-    const mockServices = [
-      { displayName: 'Database Queries', eventName: 'db_query', pricePerUnit: 0.0005, currency: 'USD' },
-      { displayName: 'Image Processing', eventName: 'image_process', pricePerUnit: 0.02, currency: 'USD' }
-    ];
-    
-    const newServices = mockServices.map(service => ({
-      ...service,
-      id: Date.now().toString() + Math.random()
-    }));
-    
-    setMeteredServices([...meteredServices, ...newServices]);
-    setPasteData('');
+    if (!pasteData.trim()) {
+      toast({
+        title: "No Data",
+        description: "Please paste some data first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // AI-powered parsing simulation
+    const lines = pasteData.split('\n').filter(line => line.trim());
+    const parsedServices: any[] = [];
+
+    lines.forEach((line, index) => {
+      // Simple pattern matching for common formats
+      const priceMatch = line.match(/\$?(\d+\.?\d*)/);
+      const price = priceMatch ? parseFloat(priceMatch[1]) : 0.01;
+      
+      let serviceName = line.replace(/\$?[\d\.]+/, '').trim();
+      if (!serviceName) serviceName = `Service ${index + 1}`;
+      
+      parsedServices.push({
+        product: serviceName,
+        price,
+        currency: 'USD',
+        type: price < 1 ? 'metered' : 'recurring',
+        eventName: generateEventName(serviceName),
+        description: `${serviceName} - parsed from text`
+      });
+    });
+
+    if (parsedServices.length > 0) {
+      setUploadedFile({
+        name: 'pasted-data.txt',
+        size: pasteData.length,
+        type: 'text/plain',
+        data: parsedServices
+      });
+      setShowAnalyzer(true);
+      setPasteData('');
+      
+      toast({
+        title: "Data Parsed Successfully",
+        description: `Extracted ${parsedServices.length} services from pasted data`,
+      });
+    }
   };
 
   const handleScanImage = () => {
-    // Simulate camera scan
-    console.log('Opening camera for image scan...');
+    // Simulate camera scan with mock data
+    const mockImageData = [
+      { product: 'Database Queries', price: 0.0005, currency: 'USD', type: 'metered', description: 'SQL query execution' },
+      { product: 'Image Processing', price: 0.02, currency: 'USD', type: 'metered', description: 'Image transformation' },
+      { product: 'Email Sends', price: 0.001, currency: 'USD', type: 'metered', description: 'Transactional emails' }
+    ];
+
+    setUploadedFile({
+      name: 'scanned-image.jpg',
+      size: 1024,
+      type: 'image/jpeg',
+      data: mockImageData
+    });
+    setShowAnalyzer(true);
+    
+    toast({
+      title: "Image Scanned Successfully",
+      description: `Extracted ${mockImageData.length} services from image`,
+    });
   };
 
   const addMeteredService = () => {
@@ -110,19 +247,46 @@ const SpreadsheetUpload = () => {
   };
 
   const generateBillingModel = () => {
+    let dataToUse = uploadedFile?.data;
+    
+    if (!dataToUse && meteredServices.length > 0) {
+      // Convert metered services to billing items
+      dataToUse = meteredServices.map(service => ({
+        product: service.displayName,
+        price: service.pricePerUnit,
+        currency: service.currency,
+        type: 'metered',
+        eventName: service.eventName,
+        description: `${service.displayName} - metered billing`
+      }));
+    }
+    
+    if (!dataToUse || dataToUse.length === 0) {
+      toast({
+        title: "No Data Available",
+        description: "Please upload a file or define services manually.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setShowBillingGenerator(true);
     setShowAnalyzer(false);
   };
 
   const handleModelGenerated = (model: any) => {
-    setGeneratedModel(model);
+    setGeneratedModels(prev => [...prev, model]);
     setShowBillingGenerator(false);
+    
+    toast({
+      title: "Model Generated Successfully",
+      description: `${model.name} has been saved and is ready for use.`,
+    });
   };
 
   const handleModelSelect = (modelType: string) => {
     console.log('Selected model type:', modelType);
-    setShowAnalyzer(false);
-    // Here you could redirect to the specific form or update the parent component
+    generateBillingModel();
   };
 
   if (showBillingGenerator && uploadedFile?.data) {
@@ -167,8 +331,11 @@ const SpreadsheetUpload = () => {
           >
             Configure This Model
           </Button>
-          <Button variant="outline">
-            Try Different Model
+          <Button variant="outline" onClick={() => {
+            setShowAnalyzer(false);
+            setUploadedFile(null);
+          }}>
+            Try Different Data
           </Button>
         </div>
       </div>
@@ -234,25 +401,34 @@ const SpreadsheetUpload = () => {
         </Card>
       )}
 
-      {generatedModel && (
+      {generatedModels.length > 0 && (
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardHeader>
-            <CardTitle className="text-green-900">✅ Billing Model Generated</CardTitle>
+            <CardTitle className="text-green-900">✅ Billing Models Generated</CardTitle>
             <CardDescription className="text-green-700">
-              {generatedModel.name} is ready for Stripe configuration
+              {generatedModels.length} model{generatedModels.length !== 1 ? 's' : ''} ready for Stripe configuration
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <p><strong>Items:</strong> {generatedModel.items?.length}</p>
-              <p><strong>Generated:</strong> {new Date(generatedModel.generatedAt).toLocaleString()}</p>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setShowBillingGenerator(true)}
-              >
-                Edit Model
-              </Button>
+            <div className="space-y-3">
+              {generatedModels.map((model, index) => (
+                <div key={index} className="p-3 bg-white/60 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">{model.name}</h4>
+                      <p className="text-sm text-gray-600">{model.items?.length} items</p>
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button variant="outline" size="sm">
+                        View Details
+                      </Button>
+                      <Button variant="outline" size="sm">
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>

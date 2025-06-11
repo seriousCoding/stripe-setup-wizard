@@ -9,6 +9,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import BillingModels from "./pages/BillingModels";
 import Products from "./pages/Products";
+import SavedModels from "./pages/SavedModels";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -37,6 +38,11 @@ const App = () => (
             <Route path="/products" element={
               <ProtectedRoute>
                 <Products />
+              </ProtectedRoute>
+            } />
+            <Route path="/saved-models" element={
+              <ProtectedRoute>
+                <SavedModels />
               </ProtectedRoute>
             } />
             <Route path="/settings" element={
