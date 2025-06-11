@@ -1,9 +1,9 @@
-
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Wand2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import BillingModelGenerator from './BillingModelGenerator';
 
 interface UploadedFile {
   name: string;
@@ -16,6 +16,8 @@ const SpreadsheetUpload = () => {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showBillingGenerator, setShowBillingGenerator] = useState(false);
+  const [generatedModel, setGeneratedModel] = useState<any>(null);
 
   const handleFileUpload = useCallback(async (file: File) => {
     setIsProcessing(true);
@@ -27,9 +29,11 @@ const SpreadsheetUpload = () => {
         size: file.size,
         type: file.type,
         data: [
-          { product: 'API Calls', price: 0.001, currency: 'USD', type: 'metered' },
-          { product: 'Storage GB', price: 0.05, currency: 'USD', type: 'metered' },
-          { product: 'Pro Plan', price: 29.99, currency: 'USD', type: 'recurring', interval: 'month' }
+          { product: 'API Calls', price: 0.001, currency: 'USD', type: 'metered', eventName: 'api_call', description: 'REST API requests' },
+          { product: 'Storage GB', price: 0.05, currency: 'USD', type: 'metered', eventName: 'storage_gb', description: 'Data storage per GB' },
+          { product: 'Pro Plan', price: 29.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Monthly subscription' },
+          { product: 'Enterprise Support', price: 199.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Premium support tier' },
+          { product: 'Data Processing', price: 0.002, currency: 'USD', type: 'metered', eventName: 'data_process', description: 'Per record processed' }
         ]
       });
       setIsProcessing(false);
@@ -48,6 +52,24 @@ const SpreadsheetUpload = () => {
   const formatFileSize = (bytes: number) => {
     return `${(bytes / 1024).toFixed(1)} KB`;
   };
+
+  const generateBillingModel = () => {
+    setShowBillingGenerator(true);
+  };
+
+  const handleModelGenerated = (model: any) => {
+    setGeneratedModel(model);
+    setShowBillingGenerator(false);
+  };
+
+  if (showBillingGenerator && uploadedFile?.data) {
+    return (
+      <BillingModelGenerator
+        uploadedData={uploadedFile.data}
+        onModelGenerated={handleModelGenerated}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -146,6 +168,13 @@ const SpreadsheetUpload = () => {
               </div>
               
               <div className="flex space-x-3">
+                <Button 
+                  onClick={generateBillingModel}
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                >
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Generate Billing Model
+                </Button>
                 <Button className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Validate with AI
@@ -155,6 +184,30 @@ const SpreadsheetUpload = () => {
                   Preview API Calls
                 </Button>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {generatedModel && (
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+          <CardHeader>
+            <CardTitle className="text-green-900">✅ Billing Model Generated</CardTitle>
+            <CardDescription className="text-green-700">
+              {generatedModel.name} is ready for Stripe configuration
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <p><strong>Items:</strong> {generatedModel.items?.length}</p>
+              <p><strong>Generated:</strong> {new Date(generatedModel.generatedAt).toLocaleString()}</p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowBillingGenerator(true)}
+              >
+                Edit Model
+              </Button>
             </div>
           </CardContent>
         </Card>
