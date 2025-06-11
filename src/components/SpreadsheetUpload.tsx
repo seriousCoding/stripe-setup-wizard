@@ -1,11 +1,20 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2 } from 'lucide-react';
+import BillingModelGenerator from './BillingModelGenerator';
+import StripeConnectionStatus from './StripeConnectionStatus';
+import BillingModelTypeTabs from './BillingModelTypeTabs';
+import ProductSetup from './ProductSetup';
+import ServiceDefinition from './ServiceDefinition';
+import MeteredServices from './MeteredServices';
+
+interface UploadedFile {
+  name: string;
+  size: number;
+  type: string;
+  data?: any[];
+}
 
 interface MeteredService {
   id: string;
@@ -16,9 +25,63 @@ interface MeteredService {
 }
 
 const SpreadsheetUpload = () => {
+  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [showBillingGenerator, setShowBillingGenerator] = useState(false);
+  const [generatedModel, setGeneratedModel] = useState<any>(null);
+  
+  // Product setup state
+  const [productSetup, setProductSetup] = useState<'new' | 'existing'>('existing');
+  const [existingProduct, setExistingProduct] = useState('');
+  const [pasteData, setPasteData] = useState('');
+  
+  // Metered services state
   const [meteredServices, setMeteredServices] = useState<MeteredService[]>([
-    { id: '1', displayName: '', eventName: '', pricePerUnit: 0, currency: 'USD' }
+    { id: '1', displayName: 'API Calls', eventName: 'api_call_count', pricePerUnit: 0.05, currency: 'USD' }
   ]);
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    setIsProcessing(true);
+    
+    // Simulate file processing
+    setTimeout(() => {
+      setUploadedFile({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        data: [
+          { product: 'API Calls', price: 0.001, currency: 'USD', type: 'metered', eventName: 'api_call', description: 'REST API requests' },
+          { product: 'Storage GB', price: 0.05, currency: 'USD', type: 'metered', eventName: 'storage_gb', description: 'Data storage per GB' },
+          { product: 'Pro Plan', price: 29.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Monthly subscription' },
+          { product: 'Enterprise Support', price: 199.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Premium support tier' },
+          { product: 'Data Processing', price: 0.002, currency: 'USD', type: 'metered', eventName: 'data_process', description: 'Per record processed' }
+        ]
+      });
+      setIsProcessing(false);
+    }, 1500);
+  }, []);
+
+  const handlePasteData = () => {
+    // Simulate parsing pasted data
+    const mockServices = [
+      { displayName: 'Database Queries', eventName: 'db_query', pricePerUnit: 0.0005, currency: 'USD' },
+      { displayName: 'Image Processing', eventName: 'image_process', pricePerUnit: 0.02, currency: 'USD' }
+    ];
+    
+    const newServices = mockServices.map(service => ({
+      ...service,
+      id: Date.now().toString() + Math.random()
+    }));
+    
+    setMeteredServices([...meteredServices, ...newServices]);
+    setPasteData('');
+  };
+
+  const handleScanImage = () => {
+    // Simulate camera scan
+    console.log('Opening camera for image scan...');
+  };
 
   const addMeteredService = () => {
     const newService: MeteredService = {
@@ -43,123 +106,110 @@ const SpreadsheetUpload = () => {
     setMeteredServices(services => services.filter(service => service.id !== id));
   };
 
+  const generateBillingModel = () => {
+    setShowBillingGenerator(true);
+  };
+
+  const handleModelGenerated = (model: any) => {
+    setGeneratedModel(model);
+    setShowBillingGenerator(false);
+  };
+
+  if (showBillingGenerator && uploadedFile?.data) {
+    return (
+      <BillingModelGenerator
+        uploadedData={uploadedFile.data}
+        onModelGenerated={handleModelGenerated}
+      />
+    );
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pay As You Go</CardTitle>
-        <CardDescription>
-          Charge customers based on their usage
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div>
-          <Label className="text-sm font-medium">Product</Label>
-          <Select defaultValue="existing">
-            <SelectTrigger className="mt-2">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="existing">Use existing product</SelectItem>
-              <SelectItem value="new">Create new product</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="space-y-6">
+      <StripeConnectionStatus />
+      <BillingModelTypeTabs />
 
-        <div>
-          <Label className="text-sm font-medium">Existing Product</Label>
-          <Select>
-            <SelectTrigger className="mt-2">
-              <SelectValue placeholder="Select a product" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="prod_123">API Service Platform</SelectItem>
-              <SelectItem value="prod_456">Analytics Dashboard</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Pay As You Go Model</CardTitle>
+          <CardDescription>
+            Charge customers based on their usage of one or more metered services. You can add these to a new or an existing Stripe product. Optionally, define services via file upload, pasting data (AI parsed), or scanning an image (AI parsed) when using an existing product.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <ProductSetup
+            productSetup={productSetup}
+            setProductSetup={setProductSetup}
+            existingProduct={existingProduct}
+            setExistingProduct={setExistingProduct}
+          />
 
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <Label className="text-sm font-medium">Metered Services</Label>
-            <Button onClick={addMeteredService} size="sm" variant="outline">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Service
-            </Button>
-          </div>
-          
-          <div className="space-y-4">
-            {meteredServices.map((service, index) => (
-              <div key={service.id} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-sm font-medium">Service {index + 1}</span>
-                  {meteredServices.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeMeteredService(service.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm">Display Name</Label>
-                    <Input
-                      value={service.displayName}
-                      onChange={(e) => updateMeteredService(service.id, 'displayName', e.target.value)}
-                      placeholder="e.g., API Calls"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm">Event Name</Label>
-                    <Input
-                      value={service.eventName}
-                      onChange={(e) => updateMeteredService(service.id, 'eventName', e.target.value)}
-                      placeholder="e.g., api_call_count"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm">Price Per Unit</Label>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      value={service.pricePerUnit}
-                      onChange={(e) => updateMeteredService(service.id, 'pricePerUnit', parseFloat(e.target.value) || 0)}
-                      placeholder="0.05"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm">Currency</Label>
-                    <Select 
-                      value={service.currency} 
-                      onValueChange={(value) => updateMeteredService(service.id, 'currency', value)}
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="EUR">EUR</SelectItem>
-                        <SelectItem value="GBP">GBP</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+          <ServiceDefinition
+            pasteData={pasteData}
+            setPasteData={setPasteData}
+            handlePasteData={handlePasteData}
+            handleScanImage={handleScanImage}
+            handleFileUpload={handleFileUpload}
+            isDragOver={isDragOver}
+            setIsDragOver={setIsDragOver}
+          />
+        </CardContent>
+      </Card>
 
-        <Button className="w-full">
-          Create Billing Model
-        </Button>
-      </CardContent>
-    </Card>
+      <MeteredServices
+        meteredServices={meteredServices}
+        updateMeteredService={updateMeteredService}
+        removeMeteredService={removeMeteredService}
+        addMeteredService={addMeteredService}
+      />
+
+      <Card>
+        <CardContent className="p-6">
+          <Button 
+            size="lg" 
+            className="w-full bg-blue-600 hover:bg-blue-700"
+            onClick={generateBillingModel}
+          >
+            Create Pay As You Go Model
+          </Button>
+        </CardContent>
+      </Card>
+
+      {isProcessing && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span>Processing your file...</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {generatedModel && (
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+          <CardHeader>
+            <CardTitle className="text-green-900">✅ Billing Model Generated</CardTitle>
+            <CardDescription className="text-green-700">
+              {generatedModel.name} is ready for Stripe configuration
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <p><strong>Items:</strong> {generatedModel.items?.length}</p>
+              <p><strong>Generated:</strong> {new Date(generatedModel.generatedAt).toLocaleString()}</p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowBillingGenerator(true)}
+              >
+                Edit Model
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 };
 
