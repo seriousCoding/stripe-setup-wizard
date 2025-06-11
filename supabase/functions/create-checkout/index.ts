@@ -82,16 +82,7 @@ serve(async (req) => {
       logStep('New customer created', { customerId });
     }
 
-    // Map plan IDs to actual Stripe price IDs from your Stripe products
-    const stripePriceMap: Record<string, string> = {
-      'trial': 'price_trial', // Replace with actual Stripe price ID
-      'starter': 'price_starter', // Replace with actual Stripe price ID  
-      'professional': 'price_professional', // Replace with actual Stripe price ID
-      'business': 'price_business', // Replace with actual Stripe price ID
-      'enterprise': 'price_enterprise' // Replace with actual Stripe price ID
-    };
-
-    // For now, let's fetch the products from Stripe and find matching prices
+    // Fetch products from Stripe to find the right price
     const products = await stripe.products.list({
       active: true,
       limit: 100,
@@ -108,51 +99,29 @@ serve(async (req) => {
           active: true,
         });
         
-        // Match based on plan tier
-        if (product.metadata?.tier === priceId || product.name.toLowerCase().includes(planName.toLowerCase())) {
+        // Match based on plan tier or product name
+        if (product.metadata?.tier === priceId || 
+            product.name.toLowerCase().includes(planName.toLowerCase()) ||
+            product.metadata?.tier_id === priceId) {
           targetPrice = prices.data[0];
-          logStep("Found matching price", { priceId: targetPrice?.id, productName: product.name });
+          logStep("Found matching price", { 
+            priceId: targetPrice?.id, 
+            productName: product.name,
+            tierMatch: product.metadata?.tier || product.metadata?.tier_id,
+            isRecurring: !!targetPrice?.recurring
+          });
           break;
         }
       }
     }
 
     if (!targetPrice) {
-      // Fallback: create a simple price for the plan
-      logStep("No existing price found, creating new price");
-      
-      const priceAmount = {
-        'trial': 0,
-        'starter': 99, // $0.99
-        'professional': 4900, // $49
-        'business': 9900, // $99
-        'enterprise': 2500 // $25
-      }[priceId] || 0;
-
-      const product = await stripe.products.create({
-        name: `${planName} Plan`,
-        metadata: {
-          tier: priceId,
-          created_via: 'checkout_fallback'
-        }
-      });
-
-      const priceData: any = {
-        currency: 'usd',
-        unit_amount: priceAmount,
-        product: product.id,
-      };
-
-      if (priceId === 'business' || priceId === 'enterprise') {
-        priceData.recurring = { interval: 'month' };
-      }
-
-      targetPrice = await stripe.prices.create(priceData);
-      logStep("Created new price", { priceId: targetPrice.id, amount: priceAmount });
+      throw new Error(`No matching price found for plan: ${planName} (${priceId}). Please ensure the Stripe products are properly seeded.`);
     }
 
-    // Determine mode based on plan type
-    const mode = (priceId === 'business' || priceId === 'enterprise') ? 'subscription' : 'payment';
+    // Determine mode based on whether the price has recurring billing
+    const mode = targetPrice.recurring ? 'subscription' : 'payment';
+    logStep("Determined checkout mode", { mode, isRecurring: !!targetPrice.recurring });
     
     // Create checkout session
     const sessionData: any = {
@@ -174,13 +143,16 @@ serve(async (req) => {
       },
     };
 
+    // Add subscription-specific data if it's a subscription
     if (mode === 'subscription') {
       sessionData.subscription_data = {
         metadata: {
           plan_id: priceId,
           plan_name: planName,
+          user_id: data.user.id,
         }
       };
+      logStep("Added subscription metadata");
     }
 
     const session = await stripe.checkout.sessions.create(sessionData);
@@ -188,7 +160,8 @@ serve(async (req) => {
     logStep('Checkout session created successfully', { 
       sessionId: session.id, 
       mode: mode,
-      priceId: targetPrice.id
+      priceId: targetPrice.id,
+      url: session.url
     });
 
     return new Response(
