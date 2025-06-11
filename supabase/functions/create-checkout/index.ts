@@ -18,11 +18,11 @@ serve(async (req) => {
     
     // Check for Stripe secret key
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
-    console.log('Stripe key check:', stripeSecretKey ? 'Found' : 'Missing');
+    console.log('Stripe key check:', stripeSecretKey ? `Found (starts with: ${stripeSecretKey.substring(0, 7)})` : 'Missing');
     
     if (!stripeSecretKey) {
       console.error('STRIPE_SECRET_KEY environment variable is not set');
-      throw new Error('Stripe configuration missing. Please contact support.');
+      throw new Error('Stripe secret key not configured in Supabase secrets. Please add STRIPE_SECRET_KEY to your edge function secrets.');
     }
 
     // Authenticate user
@@ -132,7 +132,8 @@ serve(async (req) => {
       } : undefined,
     });
 
-    console.log('Checkout session created:', session.id);
+    console.log('Checkout session created successfully:', session.id);
+    console.log('Checkout URL:', session.url);
 
     return new Response(
       JSON.stringify({ url: session.url }),

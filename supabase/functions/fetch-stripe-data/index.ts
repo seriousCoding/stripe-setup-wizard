@@ -26,9 +26,9 @@ serve(async (req) => {
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeSecretKey) {
       logStep("ERROR - Stripe secret key not configured");
-      throw new Error('Stripe secret key not configured');
+      throw new Error('Stripe secret key not configured in Supabase secrets. Please add STRIPE_SECRET_KEY to your edge function secrets.');
     }
-    logStep("Stripe secret key found");
+    logStep("Stripe secret key found", { keyPrefix: stripeSecretKey.substring(0, 7) });
 
     // Authenticate user
     const supabaseClient = createClient(
