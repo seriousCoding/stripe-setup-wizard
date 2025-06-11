@@ -6,8 +6,25 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Search, Plus, ExternalLink, Edit, Trash2, RefreshCw } from 'lucide-react';
-import { stripeService, StripeProduct } from '@/services/stripeService';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+
+interface StripeProduct {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+  created: number;
+  default_price?: {
+    id: string;
+    unit_amount: number;
+    currency: string;
+    recurring?: {
+      interval: string;
+      interval_count?: number;
+    };
+  };
+}
 
 const Products = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,19 +34,49 @@ const Products = () => {
 
   const loadProducts = async () => {
     setLoading(true);
-    const { products: fetchedProducts, error } = await stripeService.listProducts();
-    
-    if (error) {
+    try {
+      console.log('Fetching live Stripe products...');
+      
+      const { data, error } = await supabase.functions.invoke('fetch-stripe-data', {
+        body: {}
+      });
+
+      if (error) {
+        console.error('Error fetching Stripe data:', error);
+        toast({
+          title: "Error Loading Products",
+          description: "Failed to fetch products from Stripe. Please check your connection.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data?.success && data.products) {
+        setProducts(data.products);
+        console.log('Products loaded:', data.products.length);
+        
+        if (data.test_data_created) {
+          toast({
+            title: "Test Data Created",
+            description: `Created ${data.products.length} test products in your Stripe account.`,
+          });
+        } else {
+          toast({
+            title: "Products Loaded",
+            description: `Loaded ${data.products.length} products from Stripe.`,
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error in loadProducts:', error);
       toast({
         title: "Error Loading Products",
-        description: error,
+        description: "Failed to fetch products. Please try again.",
         variant: "destructive",
       });
-    } else if (fetchedProducts) {
-      setProducts(fetchedProducts);
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -38,42 +85,17 @@ const Products = () => {
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.description.toLowerCase().includes(searchTerm.toLowerCase())
+    (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const formatPrice = (amount: number, currency: string, interval: string | undefined) => {
+  const formatPrice = (amount: number, currency: string, interval?: string) => {
     const price = (amount / 100).toFixed(2);
     const intervalText = interval ? `/${interval}` : '';
     return `$${price} ${currency.toUpperCase()}${intervalText}`;
   };
 
-  const createNewProduct = async () => {
-    const productName = prompt("Enter product name:");
-    if (!productName) return;
-    
-    const description = prompt("Enter product description (optional):");
-    
-    setLoading(true);
-    const { product, error } = await stripeService.createProduct({
-      name: productName,
-      description: description || undefined
-    });
-    
-    if (error) {
-      toast({
-        title: "Error Creating Product",
-        description: error,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Product Created!",
-        description: `${productName} has been created successfully.`,
-      });
-      loadProducts(); // Refresh the list
-    }
-    
-    setLoading(false);
+  const openStripeProduct = (productId: string) => {
+    window.open(`https://dashboard.stripe.com/products/${productId}`, '_blank');
   };
 
   if (loading && products.length === 0) {
@@ -83,7 +105,10 @@ const Products = () => {
         description="Manage your existing Stripe products and pricing"
       >
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            <span>Loading live Stripe data...</span>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -116,7 +141,7 @@ const Products = () => {
             </Button>
             <Button 
               className="bg-gradient-to-r from-indigo-600 to-purple-600"
-              onClick={createNewProduct}
+              onClick={() => window.open('https://dashboard.stripe.com/products', '_blank')}
             >
               <Plus className="h-4 w-4 mr-2" />
               New Product
@@ -151,42 +176,36 @@ const Products = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">
-                      Pricing ({product.prices.length} price{product.prices.length !== 1 ? 's' : ''})
-                    </h4>
-                    <div className="space-y-1">
-                      {product.prices.slice(0, 3).map((price) => (
-                        <div key={price.id} className="text-sm text-muted-foreground">
-                          {formatPrice(price.unit_amount, price.currency, price.interval)}
-                          {price.type === 'recurring' && (
-                            <Badge variant="outline" className="ml-2 text-xs">
-                              Recurring
-                            </Badge>
-                          )}
-                        </div>
-                      ))}
-                      {product.prices.length > 3 && (
-                        <div className="text-xs text-muted-foreground">
-                          +{product.prices.length - 3} more...
-                        </div>
-                      )}
+                  {product.default_price && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Pricing</h4>
+                      <div className="text-sm text-muted-foreground">
+                        {formatPrice(
+                          product.default_price.unit_amount,
+                          product.default_price.currency,
+                          product.default_price.recurring?.interval
+                        )}
+                        {product.default_price.recurring && (
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            Recurring
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   
                   <div className="flex items-center justify-between pt-3 border-t">
                     <span className="text-xs text-muted-foreground">
-                      ID: {product.id}
+                      ID: {product.id.substring(0, 12)}...
                     </span>
                     <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" title="Edit Product">
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button variant="outline" size="sm" title="View in Stripe">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        title="View in Stripe"
+                        onClick={() => openStripeProduct(product.id)}
+                      >
                         <ExternalLink className="h-3 w-3" />
-                      </Button>
-                      <Button variant="outline" size="sm" title="Delete Product">
-                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>
@@ -204,7 +223,7 @@ const Products = () => {
             {!searchTerm && (
               <Button 
                 className="bg-gradient-to-r from-indigo-600 to-purple-600"
-                onClick={createNewProduct}
+                onClick={() => window.open('https://dashboard.stripe.com/products', '_blank')}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Your First Product
