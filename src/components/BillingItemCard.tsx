@@ -14,7 +14,7 @@ interface BillingItem {
   product: string;
   price: number;
   currency: string;
-  type: 'metered' | 'recurring' | 'one-time';
+  type: 'metered' | 'recurring' | 'one_time';
   interval?: string;
   eventName?: string;
   description?: string;
