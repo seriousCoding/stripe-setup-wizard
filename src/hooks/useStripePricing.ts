@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface StripePricingTier {
@@ -20,14 +20,26 @@ interface StripePricingTier {
   packageCredits?: number;
 }
 
-export const useStripePricing = () => {
+interface UseStripePricingOptions {
+  autoRefresh?: boolean;
+  refreshInterval?: number; // in milliseconds
+}
+
+export const useStripePricing = (options: UseStripePricingOptions = {}) => {
+  const { autoRefresh = false, refreshInterval = 30000 } = options;
   const [pricingTiers, setPricingTiers] = useState<StripePricingTier[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchPricingData = async () => {
+  const fetchPricingData = async (isAutoRefresh = false) => {
     try {
-      setIsLoading(true);
+      if (isAutoRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
       setError(null);
 
       const { data, error } = await supabase.functions.invoke('fetch-stripe-data');
@@ -50,18 +62,34 @@ export const useStripePricing = () => {
       setPricingTiers(getDefaultPricingTiers());
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
     fetchPricingData();
-  }, []);
+
+    if (autoRefresh) {
+      intervalRef.current = setInterval(() => {
+        fetchPricingData(true);
+      }, refreshInterval);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [autoRefresh, refreshInterval]);
+
+  const refetch = () => fetchPricingData();
 
   return {
     pricingTiers,
     isLoading,
     error,
-    refetch: fetchPricingData
+    isRefreshing,
+    refetch
   };
 };
 

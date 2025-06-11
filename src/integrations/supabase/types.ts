@@ -45,6 +45,121 @@ export type Database = {
         }
         Relationships: []
       }
+      usage_events: {
+        Row: {
+          created_at: string
+          event_name: string
+          id: string
+          metadata: Json | null
+          meter_id: string
+          stripe_event_id: string | null
+          user_id: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          event_name: string
+          id?: string
+          metadata?: Json | null
+          meter_id: string
+          stripe_event_id?: string | null
+          user_id: string
+          value?: number
+        }
+        Update: {
+          created_at?: string
+          event_name?: string
+          id?: string
+          metadata?: Json | null
+          meter_id?: string
+          stripe_event_id?: string | null
+          user_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_events_meter_id_fkey"
+            columns: ["meter_id"]
+            isOneToOne: false
+            referencedRelation: "usage_meters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      usage_meters: {
+        Row: {
+          created_at: string
+          display_name: string
+          event_name: string
+          id: string
+          name: string
+          stripe_meter_id: string | null
+          unit_label: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          event_name: string
+          id?: string
+          name: string
+          stripe_meter_id?: string | null
+          unit_label?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          event_name?: string
+          id?: string
+          name?: string
+          stripe_meter_id?: string | null
+          unit_label?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_usage_summary: {
+        Row: {
+          created_at: string
+          id: string
+          meter_id: string
+          period_end: string
+          period_start: string
+          total_usage: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          meter_id: string
+          period_end: string
+          period_start: string
+          total_usage?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          meter_id?: string
+          period_end?: string
+          period_start?: string
+          total_usage?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_usage_summary_meter_id_fkey"
+            columns: ["meter_id"]
+            isOneToOne: false
+            referencedRelation: "usage_meters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

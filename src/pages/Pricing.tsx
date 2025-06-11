@@ -2,17 +2,31 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, RefreshCw, AlertCircle, Database } from 'lucide-react';
+import { Check, RefreshCw, AlertCircle, Database, Activity } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useStripePricing } from '@/hooks/useStripePricing';
+import UsageDashboard from '@/components/UsageDashboard';
 
 const Pricing = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
   const { toast } = useToast();
-  const { pricingTiers, isLoading: isPricingLoading, error: pricingError, refetch } = useStripePricing();
+  
+  // Enable automatic price refresh every 30 seconds
+  const { pricingTiers, isLoading: isPricingLoading, error: pricingError, refetch, isRefreshing } = useStripePricing({
+    autoRefresh: true,
+    refreshInterval: 30000
+  });
+
+  // Define usage limits for different plans
+  const usageLimits = {
+    api_calls: 100,
+    transactions: 50,
+    ai_processing: 20,
+    data_exports: 5
+  };
 
   const handleSeedStripe = async () => {
     setIsSeeding(true);
@@ -163,22 +177,34 @@ const Pricing = () => {
                 variant="outline"
                 size="sm"
                 onClick={refetch}
+                disabled={isRefreshing}
                 className="bg-white/10 border-white/20 text-white hover:bg-white/20"
               >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh Prices
+                <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh Prices'}
               </Button>
             </div>
           </div>
           <p className="text-white/90 max-w-2xl mx-auto text-lg">
             Select the perfect plan for your business needs
           </p>
+          {isRefreshing && (
+            <div className="mt-2 flex items-center justify-center space-x-2 text-blue-300">
+              <Activity className="h-4 w-4 animate-pulse" />
+              <span className="text-sm">Auto-refreshing prices...</span>
+            </div>
+          )}
           {pricingError && (
             <div className="mt-4 flex items-center justify-center space-x-2 text-orange-300">
               <AlertCircle className="h-4 w-4" />
               <span className="text-sm">Using fallback pricing data - {pricingError}</span>
             </div>
           )}
+        </div>
+
+        {/* Usage Dashboard */}
+        <div className="mb-8">
+          <UsageDashboard period="current_month" limits={usageLimits} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
@@ -279,7 +305,8 @@ const Pricing = () => {
         <div className="mt-12 text-center">
           <p className="text-slate-300 text-sm max-w-4xl mx-auto leading-relaxed">
             All packages auto-renew unless you opt out. After package limits are reached, meter rates apply automatically. 
-            No service interruption - we'll continue processing your transactions at the meter rate.
+            No service interruption - we'll continue processing your transactions at the meter rate. 
+            Prices refresh automatically every 30 seconds.
           </p>
         </div>
       </div>
