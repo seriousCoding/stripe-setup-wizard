@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,54 +53,39 @@ const FixedOverageForm = () => {
   const fetchStripeData = async () => {
     setIsLoading(true);
     try {
-      // This will fetch existing Stripe data or create test data if none exists
-      const { data, error } = await supabase.functions.invoke('deploy-billing-model', {
-        body: { 
-          billingModel: { 
-            name: 'temp-fetch',
-            type: 'fixed-overage',
-            items: []
-          }
-        }
+      console.log('Fetching live Stripe data...');
+      
+      const { data, error } = await supabase.functions.invoke('fetch-stripe-data', {
+        body: {}
       });
 
       if (error) {
         console.error('Error fetching Stripe data:', error);
-        // Set default values if fetch fails
-        setBasePlan({
-          name: 'Professional Plan',
-          price: 49.99,
-          currency: 'USD',
-          interval: 'month',
-          description: 'Base plan with included usage',
-          includedUsage: 1000,
-          usageUnit: 'API calls'
+        toast({
+          title: "Error",
+          description: "Failed to fetch Stripe data. Please check your Stripe connection.",
+          variant: "destructive",
         });
+        return;
+      }
+
+      if (data?.success) {
+        console.log('Live Stripe data fetched:', data);
         
-        setOverageItems([{
-          id: '1',
-          name: 'Additional API Calls',
-          pricePerUnit: 0.01,
-          currency: 'USD',
-          eventName: 'api_call_overage',
-          description: 'Extra API calls beyond included limit'
-        }]);
-      } else {
-        // If we have products from Stripe, use them to populate the form
-        if (data?.results?.products?.length > 0) {
-          const products = data.results.products;
-          const recurringProduct = products.find((p: any) => 
-            p.metadata?.billing_model_type === 'recurring' || 
+        // Process fetched products and prices
+        if (data.products && data.products.length > 0) {
+          const recurringProduct = data.products.find((p: any) => 
+            p.default_price?.recurring || 
             p.name.toLowerCase().includes('plan') ||
             p.name.toLowerCase().includes('subscription')
           );
           
-          if (recurringProduct) {
+          if (recurringProduct && recurringProduct.default_price) {
             setBasePlan({
               name: recurringProduct.name,
-              price: 49.99, // Default, will be updated when price is fetched
-              currency: 'USD',
-              interval: 'month',
+              price: recurringProduct.default_price.unit_amount / 100,
+              currency: recurringProduct.default_price.currency.toUpperCase(),
+              interval: recurringProduct.default_price.recurring?.interval || 'month',
               description: recurringProduct.description || 'Base subscription plan',
               includedUsage: 1000,
               usageUnit: 'units'
@@ -109,32 +93,88 @@ const FixedOverageForm = () => {
           }
 
           // Set overage items from metered products
-          const meteredProducts = products.filter((p: any) => 
-            p.metadata?.billing_model_type === 'metered' ||
+          const meteredProducts = data.products.filter((p: any) => 
+            p.default_price?.recurring?.usage_type === 'metered' ||
             p.name.toLowerCase().includes('usage') ||
             p.name.toLowerCase().includes('call') ||
             p.name.toLowerCase().includes('overage')
           );
 
           if (meteredProducts.length > 0) {
-            const newOverageItems = meteredProducts.map((product: any, index: number) => ({
+            const newOverageItems = meteredProducts.map((product: any) => ({
               id: product.id,
               name: product.name,
-              pricePerUnit: 0.01, // Default, will be updated when price is fetched
-              currency: 'USD',
+              pricePerUnit: product.default_price ? product.default_price.unit_amount / 100 : 0.01,
+              currency: product.default_price ? product.default_price.currency.toUpperCase() : 'USD',
               eventName: product.name.toLowerCase().replace(/\s+/g, '_'),
               description: product.description || `Usage-based ${product.name}`
             }));
             setOverageItems(newOverageItems);
+          } else {
+            // Add default overage item if none found
+            setOverageItems([{
+              id: '1',
+              name: 'Additional Usage',
+              pricePerUnit: 0.01,
+              currency: 'USD',
+              eventName: 'additional_usage',
+              description: 'Extra usage beyond included limit'
+            }]);
           }
+        } else {
+          // Set default values if no products found
+          setBasePlan({
+            name: 'Professional Plan',
+            price: 49.99,
+            currency: 'USD',
+            interval: 'month',
+            description: 'Base plan with included usage',
+            includedUsage: 1000,
+            usageUnit: 'API calls'
+          });
+          
+          setOverageItems([{
+            id: '1',
+            name: 'Additional API Calls',
+            pricePerUnit: 0.01,
+            currency: 'USD',
+            eventName: 'api_call_overage',
+            description: 'Extra API calls beyond included limit'
+          }]);
         }
+
+        toast({
+          title: "Data Loaded",
+          description: `Loaded ${data.products?.length || 0} products from Stripe.`,
+        });
       }
     } catch (error: any) {
       console.error('Error in fetchStripeData:', error);
       toast({
-        title: "Info",
-        description: "Using default values. Connect to Stripe to fetch live data.",
+        title: "Error",
+        description: "Failed to fetch Stripe data. Using default values.",
+        variant: "destructive",
       });
+      
+      // Set default values on error
+      setBasePlan({
+        name: 'Professional Plan',
+        price: 49.99,
+        currency: 'USD',
+        interval: 'month',
+        description: 'Base plan with included usage',
+        includedUsage: 1000,
+        usageUnit: 'API calls'
+      });
+      
+      setOverageItems([{
+        id: '1',
+        name: 'Additional API Calls',
+        pricePerUnit: 0.01,
+        currency: 'USD',
+        eventName: 'api_call_overage',
+        description: 'Extra API calls beyond included limit'
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -238,7 +278,7 @@ const FixedOverageForm = () => {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-        <span className="ml-2">Loading Stripe data...</span>
+        <span className="ml-2">Loading live Stripe data...</span>
       </div>
     );
   }
