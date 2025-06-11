@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -94,20 +93,33 @@ const FixedOverageForm = () => {
       {
         id: 'base-plan',
         product: basePlan.name,
-        price: basePlan.price,
-        currency: basePlan.currency,
+        unit_amount: Math.round(basePlan.price * 100), // Convert to cents
+        currency: basePlan.currency.toLowerCase(),
         type: 'recurring' as const,
         interval: basePlan.interval,
-        description: basePlan.description
+        description: basePlan.description,
+        billing_scheme: 'per_unit' as const,
+        metadata: {
+          plan_type: 'base_plan',
+          included_usage: basePlan.includedUsage.toString(),
+          usage_unit: basePlan.usageUnit
+        }
       },
       ...overageItems.map(item => ({
         id: item.id,
         product: item.name,
-        price: item.pricePerUnit,
-        currency: item.currency,
+        unit_amount: Math.round(item.pricePerUnit * 100), // Convert to cents
+        currency: item.currency.toLowerCase(),
         type: 'metered' as const,
         eventName: item.eventName,
-        description: item.description
+        description: item.description,
+        billing_scheme: 'per_unit' as const,
+        usage_type: 'metered' as const,
+        aggregate_usage: 'sum' as const,
+        metadata: {
+          overage_item: 'true',
+          base_plan_id: 'base-plan'
+        }
       }))
     ];
 

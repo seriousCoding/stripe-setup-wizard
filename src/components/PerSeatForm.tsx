@@ -121,12 +121,19 @@ const PerSeatForm = () => {
     const billingItems = seatTiers.map(tier => ({
       id: tier.id,
       product: tier.name,
-      price: tier.pricePerSeat,
-      currency: tier.currency,
+      unit_amount: Math.round(tier.pricePerSeat * 100), // Convert to cents
+      currency: tier.currency.toLowerCase(),
       type: 'recurring' as const,
       interval: tier.interval,
       description: tier.description,
-      eventName: `seat_${tier.name.toLowerCase().replace(/\s+/g, '_')}`
+      eventName: `seat_${tier.name.toLowerCase().replace(/\s+/g, '_')}`,
+      billing_scheme: 'per_unit' as const,
+      metadata: {
+        seat_type: 'per_seat',
+        min_seats: tier.minSeats.toString(),
+        max_seats: tier.maxSeats?.toString() || 'unlimited',
+        features: tier.features.join(',')
+      }
     }));
 
     const model = {
