@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -59,7 +58,7 @@ serve(async (req) => {
         name: 'Free Trial',
         subtitle: 'Trial',
         description: 'Try all features risk-free before committing.',
-        price: 0, // Free
+        price: 0, // $0 - Free
         metadata: {
           tier_id: 'trial',
           plan_type: 'trial',
@@ -71,11 +70,6 @@ serve(async (req) => {
         usage_limits: {
           transactions: 500,
           ai_processing: 50,
-          data_exports: 10,
-          api_calls: 1000,
-          storage_gb: 5,
-          integrations: 1,
-          team_seats: 1,
           meter_rate_after_limit: 0.05
         }
       },
@@ -84,7 +78,7 @@ serve(async (req) => {
         name: 'Starter',
         subtitle: 'Pay As-You-Go',
         description: 'Perfect for getting started with transaction-based billing.',
-        price: 99, // $0.99 per transaction
+        price: 99, // $0.99 per transaction (99 cents)
         metadata: {
           tier_id: 'starter',
           plan_type: 'metered',
@@ -95,11 +89,6 @@ serve(async (req) => {
         usage_limits: {
           transactions: 20,
           ai_processing: 5,
-          data_exports: 2,
-          api_calls: 100,
-          storage_gb: 1,
-          integrations: 2,
-          team_seats: 1,
           meter_rate_after_limit: 0.05
         }
       },
@@ -108,7 +97,7 @@ serve(async (req) => {
         name: 'Professional',
         subtitle: 'Credit Burndown',
         description: 'Buy credits in advance for better rates and flexibility.',
-        price: 4900, // $49.00 package
+        price: 4900, // $49.00 prepaid credits (4900 cents)
         metadata: {
           tier_id: 'professional',
           plan_type: 'package',
@@ -120,11 +109,6 @@ serve(async (req) => {
         usage_limits: {
           transactions: 1200,
           ai_processing: 300,
-          data_exports: 50,
-          api_calls: 5000,
-          storage_gb: 50,
-          integrations: 10,
-          team_seats: 5,
           meter_rate_after_limit: 0.04
         }
       },
@@ -133,7 +117,7 @@ serve(async (req) => {
         name: 'Business',
         subtitle: 'Flat Fee',
         description: 'Unlimited transactions with predictable monthly costs.',
-        price: 9900, // $99.00 monthly
+        price: 9900, // $99.00 monthly (9900 cents)
         interval: 'month',
         metadata: {
           tier_id: 'business',
@@ -145,11 +129,6 @@ serve(async (req) => {
         usage_limits: {
           transactions: 'unlimited',
           ai_processing: 'unlimited',
-          data_exports: 'unlimited',
-          api_calls: 'unlimited',
-          storage_gb: 'unlimited',
-          integrations: 'unlimited',
-          team_seats: 'unlimited',
           unlimited: true
         }
       },
@@ -158,7 +137,7 @@ serve(async (req) => {
         name: 'Enterprise',
         subtitle: 'Per Seat',
         description: 'Scale with your team size and organizational needs.',
-        price: 2500, // $25.00 per seat monthly
+        price: 2500, // $25.00 per user/month (2500 cents)
         interval: 'month',
         metadata: {
           tier_id: 'enterprise',
@@ -170,11 +149,6 @@ serve(async (req) => {
         usage_limits: {
           transactions: 'unlimited',
           ai_processing: 'unlimited',
-          data_exports: 'unlimited',
-          api_calls: 'unlimited',
-          storage_gb: 'unlimited',
-          integrations: 'unlimited',
-          team_seats: 'unlimited',
           unlimited: true
         }
       }
@@ -193,11 +167,6 @@ serve(async (req) => {
           // Usage limits as metadata - handle unlimited values properly
           usage_limit_transactions: productDef.usage_limits.transactions.toString(),
           usage_limit_ai_processing: productDef.usage_limits.ai_processing.toString(),
-          usage_limit_data_exports: productDef.usage_limits.data_exports.toString(),
-          usage_limit_api_calls: productDef.usage_limits.api_calls.toString(),
-          usage_limit_storage_gb: productDef.usage_limits.storage_gb.toString(),
-          usage_limit_integrations: productDef.usage_limits.integrations.toString(),
-          usage_limit_team_seats: productDef.usage_limits.team_seats.toString(),
           meter_rate: productDef.usage_limits.meter_rate_after_limit?.toString() || '0',
           unlimited_features: productDef.usage_limits.unlimited ? 'true' : 'false'
         };

@@ -104,8 +104,12 @@ const Pricing = () => {
 
   const formatPrice = (tier: any) => {
     if (tier.price === 0) return '$0';
-    if (tier.price < 100) return `$${(tier.price / 100).toFixed(2)}`;
-    return `$${tier.price / 100}`;
+    // Convert from cents to dollars and format properly
+    const dollarAmount = tier.price / 100;
+    if (dollarAmount < 1) {
+      return `$${dollarAmount.toFixed(2)}`;
+    }
+    return `$${Math.round(dollarAmount)}`;
   };
 
   const getPriceSubtext = (tier: any) => {
