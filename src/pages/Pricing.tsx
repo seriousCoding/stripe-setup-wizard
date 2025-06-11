@@ -58,13 +58,8 @@ const Pricing = () => {
 
       if (data?.url) {
         console.log('Redirecting to checkout:', data.url);
-        // Open Stripe checkout in a new tab
-        window.open(data.url, '_blank');
-        
-        toast({
-          title: "Redirecting to Checkout",
-          description: "A new tab will open for secure payment processing.",
-        });
+        // Redirect directly to Stripe checkout
+        window.location.href = data.url;
       } else {
         throw new Error('No checkout URL received');
       }
