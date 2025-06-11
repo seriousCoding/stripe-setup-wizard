@@ -55,6 +55,8 @@ export const handleSignInWithEmailOrUsername = async (data: SignInWithEmailOrUse
   
   if (isEmail) {
     // If it's an email, use regular email sign in
+    console.log('Signing in with email:', data.emailOrUsername);
+    
     const { error } = await supabase.auth.signInWithPassword({
       email: data.emailOrUsername,
       password: data.password,
