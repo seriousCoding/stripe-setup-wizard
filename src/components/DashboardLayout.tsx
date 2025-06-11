@@ -20,15 +20,15 @@ const DashboardLayout = ({ children, title, description }: DashboardLayoutProps)
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="border-b border-border/40 bg-background/80 backdrop-blur-sm">
+    <div className="min-h-screen bg-gradient-blue-purple">
+      <div className="border-b border-white/20 bg-black/20 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold text-black">
                 Stripe Setup Pilot
               </h1>
-              <p className="text-sm text-muted-foreground">Automate your Stripe product and billing configuration</p>
+              <p className="text-sm text-white/80">Automate your Stripe product and billing configuration</p>
             </div>
             <div className="flex items-center space-x-4">
               <UserMenu />
@@ -43,12 +43,12 @@ const DashboardLayout = ({ children, title, description }: DashboardLayoutProps)
             <nav className="space-y-2">
               {navItems.map((item) => (
                 <Link key={item.href} to={item.href}>
-                  <Card className="p-4 hover:shadow-md transition-all duration-200 hover:border-indigo-200 cursor-pointer group">
+                  <Card className="card-on-gradient p-4 hover:shadow-md transition-all duration-200 hover:border-white/30 cursor-pointer group">
                     <div className="flex items-start space-x-3">
-                      <item.icon className="h-5 w-5 text-indigo-600 mt-0.5 group-hover:scale-110 transition-transform" />
+                      <item.icon className="h-5 w-5 text-purple-400 mt-0.5 group-hover:scale-110 transition-transform" />
                       <div>
-                        <h3 className="font-medium text-sm">{item.label}</h3>
-                        <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
+                        <h3 className="font-medium text-sm text-white">{item.label}</h3>
+                        <p className="text-xs text-white/70 mt-1">{item.description}</p>
                       </div>
                     </div>
                   </Card>
@@ -59,9 +59,9 @@ const DashboardLayout = ({ children, title, description }: DashboardLayoutProps)
 
           <div className="lg:col-span-3">
             <div className="mb-6">
-              <h2 className="text-3xl font-bold text-foreground">{title}</h2>
+              <h2 className="text-3xl font-bold text-black">{title}</h2>
               {description && (
-                <p className="text-muted-foreground mt-2">{description}</p>
+                <p className="text-white/90 mt-2">{description}</p>
               )}
             </div>
             {children}

@@ -63,7 +63,7 @@ export default {
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
 				},
-				// Exact colors from the image
+				// Blue-purple gradient theme colors
 				slate: {
 					50: '#f8fafc',
 					100: '#f1f5f9',
@@ -82,10 +82,25 @@ export default {
 					600: '#2563eb',
 					700: '#1d4ed8',
 				},
+				purple: {
+					400: '#a78bfa',
+					500: '#8b5cf6',
+					600: '#7c3aed',
+					700: '#6d28d9',
+				},
+				indigo: {
+					400: '#818cf8',
+					500: '#6366f1',
+					600: '#4f46e5',
+					700: '#4338ca',
+				},
 				green: {
 					500: '#10b981',
 					600: '#059669',
 				}
+			},
+			backgroundImage: {
+				'gradient-blue-purple': 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #a855f7 100%)',
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
