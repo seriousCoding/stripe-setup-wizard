@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -104,11 +103,19 @@ const Pricing = () => {
 
   const formatPrice = (tier: any) => {
     if (tier.price === 0) return '$0';
-    // Convert from cents to dollars and format properly
-    const dollarAmount = tier.price / 100;
-    if (dollarAmount < 1) {
-      return `$${dollarAmount.toFixed(2)}`;
+    
+    // For starter plan, show as $0.99
+    if (tier.id === 'starter') {
+      return '$0.99';
     }
+    
+    // For other plans, show the dollar amount without decimals
+    if (tier.price === 4900) return '$49';
+    if (tier.price === 9900) return '$99';
+    if (tier.price === 2500) return '$25';
+    
+    // Fallback for any other prices
+    const dollarAmount = tier.price / 100;
     return `$${Math.round(dollarAmount)}`;
   };
 
