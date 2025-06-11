@@ -133,7 +133,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     if (isEmail) {
       // If it's an email, use regular email sign in
-      return signIn({ email: data.emailOrUsername, password: data.password });
+      const { error } = await supabase.auth.signInWithPassword({
+        email: data.emailOrUsername,
+        password: data.password,
+      });
+      
+      if (error) {
+        console.error('Sign in error:', error);
+      } else {
+        console.log('Sign in successful');
+      }
+      
+      return { error };
     } else {
       // If it's a username, we need to look up the email first
       console.log('Looking up email for username:', data.emailOrUsername);
@@ -151,7 +162,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         
         console.log('Found email for username:', profileData.email);
-        return signIn({ email: profileData.email, password: data.password });
+        
+        const { error } = await supabase.auth.signInWithPassword({
+          email: profileData.email,
+          password: data.password,
+        });
+        
+        if (error) {
+          console.error('Sign in error:', error);
+        } else {
+          console.log('Sign in successful');
+        }
+        
+        return { error };
       } catch (error) {
         console.error('Error looking up username:', error);
         return { error: { message: 'Invalid login credentials' } };
