@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -8,6 +7,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import BillingModels from "./pages/BillingModels";
+import Billing from "./pages/Billing";
 import Products from "./pages/Products";
 import SavedModels from "./pages/SavedModels";
 import Settings from "./pages/Settings";
@@ -65,6 +65,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <BillingModels />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/billing"
+        element={
+          <ProtectedRoute>
+            <Billing />
           </ProtectedRoute>
         }
       />
