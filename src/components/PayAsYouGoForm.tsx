@@ -6,8 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Camera, FileText, Sparkles, Upload } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Plus, Upload, FileText, Camera } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface MeteredService {
@@ -19,12 +18,12 @@ interface MeteredService {
 }
 
 const PayAsYouGoForm = () => {
-  const [productSetup, setProductSetup] = useState('create-new');
+  const [productSetup, setProductSetup] = useState('use-existing');
   const [existingProduct, setExistingProduct] = useState('');
   const [services, setServices] = useState<MeteredService[]>([
-    { id: '1', displayName: 'API Calls', apiEventName: 'api_call', pricePerUnit: 0.001, currency: 'USD' }
+    { id: '1', displayName: 'API Calls', apiEventName: 'api_call_count', pricePerUnit: 0.05, currency: 'USD' }
   ]);
-  const [extractionText, setExtractionText] = useState('');
+  const [pasteData, setPasteData] = useState('');
 
   const addService = () => {
     const newService: MeteredService = {
@@ -47,36 +46,19 @@ const PayAsYouGoForm = () => {
     setServices(services.filter(service => service.id !== id));
   };
 
-  const extractServicesFromText = () => {
-    // Simulate AI extraction
-    const extractedServices = [
-      { displayName: 'Database Queries', apiEventName: 'db_query', pricePerUnit: 0.0005, currency: 'USD' },
-      { displayName: 'Image Processing', apiEventName: 'image_process', pricePerUnit: 0.02, currency: 'USD' },
-      { displayName: 'Email Sends', apiEventName: 'email_send', pricePerUnit: 0.001, currency: 'USD' }
-    ];
-    
-    const newServices = extractedServices.map(service => ({
-      ...service,
-      id: Date.now().toString() + Math.random()
-    }));
-    
-    setServices([...services, ...newServices]);
-    setExtractionText('');
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Pay As You Go Model</CardTitle>
           <CardDescription>
-            Charge customers based on the usage of one or more metered services. You can add these to a new or an existing Stripe product. Optionally, define services via file upload, pasting data (AI parsed), or scanning an image (AI parsed) when using an existing product.
+            Charge customers based on their usage of one or more metered services. You can add these to a new or an existing Stripe product. Optionally, define services via file upload, pasting data (AI parsed), or scanning an image (AI parsed) when using an existing product.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div>
-            <Label className="text-base font-medium">Product Setup</Label>
-            <RadioGroup value={productSetup} onValueChange={setProductSetup} className="mt-3">
+            <Label className="text-base font-medium mb-3 block">Product Setup</Label>
+            <RadioGroup value={productSetup} onValueChange={setProductSetup} className="flex gap-6">
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="create-new" id="create-new" />
                 <Label htmlFor="create-new">Create New Product</Label>
@@ -89,140 +71,138 @@ const PayAsYouGoForm = () => {
           </div>
 
           {productSetup === 'use-existing' && (
-            <div>
-              <Label htmlFor="existing-product">Existing Product</Label>
-              <Select value={existingProduct} onValueChange={setExistingProduct}>
-                <SelectTrigger>
-                  <SelectValue placeholder="None (or enter ID manually below)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None (or enter ID manually below)</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="outline" className="mt-2">
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="existing-product">Existing Product</Label>
+                <Select value={existingProduct} onValueChange={setExistingProduct}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="None (or enter ID manually below)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (or enter ID manually below)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button variant="outline" size="sm">
                 Disconnect Stripe
               </Button>
             </div>
           )}
 
           {productSetup === 'use-existing' && (
-            <Card className="border-2 border-dashed border-muted-foreground/25">
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center space-x-2 text-base">
-                  <FileText className="h-5 w-5" />
-                  <span>Define Services (Optional)</span>
-                </CardTitle>
-                <CardDescription>
-                  Define metered services by uploading a file, pasting data, or scanning with your camera. These will populate the service list below for review.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-center space-x-3">
-                  <Button variant="outline" className="flex items-center space-x-2">
-                    <Upload className="h-4 w-4" />
-                    <span>Upload File</span>
-                  </Button>
-                  <Button variant="outline" className="flex items-center space-x-2">
-                    <FileText className="h-4 w-4" />
-                    <span>Paste Data</span>
-                  </Button>
-                  <Button variant="outline" className="flex items-center space-x-2">
-                    <Camera className="h-4 w-4" />
-                    <span>Scan Image</span>
-                  </Button>
-                </div>
-                
-                <div className="text-center">
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
-                    <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground mb-2">Click to upload</p>
-                    <p className="text-xs text-muted-foreground">or drag and drop</p>
-                    <p className="text-xs text-muted-foreground">CSV or XLSX files</p>
-                    <Button className="mt-4" size="sm">
-                      Choose File
-                    </Button>
-                  </div>
-                </div>
+            <div className="border rounded-lg p-4 bg-blue-50/30">
+              <div className="flex items-center space-x-2 mb-3">
+                <FileText className="h-4 w-4 text-blue-600" />
+                <Label className="font-medium">Define Services (Optional)</Label>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Define metered services by uploading a file, pasting data, or scanning with your camera. These will populate the service list below for review.
+              </p>
+              
+              <div className="flex space-x-3 mb-4">
+                <Button variant="outline" size="sm" className="flex items-center space-x-2">
+                  <Upload className="h-4 w-4" />
+                  <span>Upload File</span>
+                </Button>
+                <Button variant="outline" size="sm" className="flex items-center space-x-2">
+                  <FileText className="h-4 w-4" />
+                  <span>Paste Data</span>
+                </Button>
+                <Button variant="outline" size="sm" className="flex items-center space-x-2">
+                  <Camera className="h-4 w-4" />
+                  <span>Scan Image</span>
+                </Button>
+              </div>
 
-                <div>
-                  <Label htmlFor="paste-data">Paste Service Data</Label>
-                  <Textarea
-                    id="paste-data"
-                    placeholder="Paste your service pricing data here..."
-                    rows={4}
-                    className="mt-1"
-                  />
-                </div>
-              </CardContent>
-            </Card>
+              <div className="border-2 border-dashed border-blue-200 rounded-lg p-8 text-center bg-white">
+                <Upload className="h-8 w-8 mx-auto mb-2 text-blue-400" />
+                <p className="text-sm text-blue-600 mb-1">Click to upload</p>
+                <p className="text-xs text-muted-foreground">or drag and drop</p>
+                <p className="text-xs text-muted-foreground mb-3">CSV or XLSX files</p>
+                <Button size="sm" className="bg-gray-800 hover:bg-gray-900">
+                  Choose File
+                </Button>
+              </div>
+
+              <div className="mt-4">
+                <Label htmlFor="paste-data">Paste Service Data</Label>
+                <Textarea
+                  id="paste-data"
+                  placeholder="Paste your service pricing data here..."
+                  rows={4}
+                  className="mt-1"
+                  value={pasteData}
+                  onChange={(e) => setPasteData(e.target.value)}
+                />
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <span>Metered Services</span>
-            <Badge variant="secondary">{services.length} services</Badge>
-          </CardTitle>
-          <CardDescription>
-            Define the services you want to charge for based on usage
-          </CardDescription>
+          <CardTitle>Metered Services</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           {services.map((service, index) => (
-            <div key={service.id} className="p-4 border rounded-lg space-y-4">
-              <div className="flex items-center justify-between">
-                <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-200">
+            <div key={service.id} className="border rounded-lg p-4 bg-blue-50">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm font-medium">
                   Service #{index + 1}
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeService(service.id)}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                </div>
+                {services.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeService(service.id)}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    Remove
+                  </Button>
+                )}
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Meter Display Name</Label>
+                  <Label className="text-sm font-medium">Meter Display Name</Label>
                   <Input
                     value={service.displayName}
                     onChange={(e) => updateService(service.id, 'displayName', e.target.value)}
-                    placeholder="e.g., API Calls"
+                    placeholder="API Calls"
+                    className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label>Meter Event Name (Stripe API)</Label>
+                  <Label className="text-sm font-medium">Meter Event Name (Stripe API)</Label>
                   <Input
                     value={service.apiEventName}
                     onChange={(e) => updateService(service.id, 'apiEventName', e.target.value)}
-                    placeholder="e.g., api_call_count"
+                    placeholder="api_call_count"
+                    className="mt-1"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     This is the 'event_name' you'll use to report usage to Stripe.
                   </p>
                 </div>
                 <div>
-                  <Label>Price Per Unit</Label>
+                  <Label className="text-sm font-medium">Price Per Unit</Label>
                   <Input
                     type="number"
-                    step="0.0001"
+                    step="0.01"
                     value={service.pricePerUnit}
                     onChange={(e) => updateService(service.id, 'pricePerUnit', parseFloat(e.target.value))}
-                    placeholder="0.001"
+                    placeholder="0.05"
+                    className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label>Currency</Label>
+                  <Label className="text-sm font-medium">Currency</Label>
                   <Select 
                     value={service.currency} 
                     onValueChange={(value) => updateService(service.id, 'currency', value)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -236,28 +216,21 @@ const PayAsYouGoForm = () => {
             </div>
           ))}
           
-          <Button onClick={addService} variant="outline" className="w-full">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Another Metered Service
+          <Button onClick={addService} variant="outline" className="w-full flex items-center justify-center space-x-2">
+            <Plus className="h-4 w-4" />
+            <span>Add Another Metered Service</span>
           </Button>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex space-x-3">
-            <Button 
-              size="lg" 
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-            >
-              Create Stripe Configuration
-            </Button>
-            <Button variant="outline" size="lg">
-              Preview API Calls
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex justify-center">
+        <Button 
+          size="lg" 
+          className="w-full max-w-md bg-blue-600 hover:bg-blue-700"
+        >
+          Create Pay As You Go Model
+        </Button>
+      </div>
     </div>
   );
 };
