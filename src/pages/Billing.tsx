@@ -36,6 +36,7 @@ const Billing = () => {
   const [products, setProducts] = useState<StripeProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [activeTab, setActiveTab] = useState('products');
   const { toast } = useToast();
 
   // Form states
@@ -156,7 +157,7 @@ const Billing = () => {
       <div className="space-y-6">
         <StripeConnectionStatus />
 
-        <Tabs defaultValue="products" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="products">Products & Prices</TabsTrigger>
             <TabsTrigger value="create">Create New</TabsTrigger>
@@ -195,7 +196,7 @@ const Billing = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button onClick={() => document.querySelector('[value="create"]')?.click()}>
+                  <Button onClick={() => setActiveTab('create')}>
                     <Plus className="h-4 w-4 mr-2" />
                     Create Product
                   </Button>
