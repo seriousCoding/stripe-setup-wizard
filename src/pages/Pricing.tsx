@@ -1,12 +1,12 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, RefreshCw, AlertCircle, Activity, ArrowLeft } from 'lucide-react';
+import { Check, RefreshCw, AlertCircle, Activity, ArrowLeft, Crown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useStripePricing } from '@/hooks/useStripePricing';
+import { useSubscription } from '@/hooks/useSubscription';
 import { Link } from 'react-router-dom';
 import UsageDashboard from '@/components/UsageDashboard';
 
@@ -21,6 +21,9 @@ const Pricing = () => {
     refreshInterval: 600000 // 10 minutes
   });
 
+  // Get subscription status
+  const { subscriptionStatus, isLoading: isSubscriptionLoading, error: subscriptionError, refetch: refetchSubscription } = useSubscription();
+
   // Define usage limits for different plans from the image
   const usageLimits = {
     api_calls: 100,
@@ -32,14 +35,25 @@ const Pricing = () => {
   // Manual refresh function for immediate updates
   const handleRefreshPricing = () => {
     refetch();
+    refetchSubscription();
     toast({
-      title: "Refreshing Pricing Data",
-      description: "Fetching latest pricing information from Stripe...",
+      title: "Refreshing Data",
+      description: "Fetching latest pricing and subscription information...",
     });
   };
 
   const handleSelectPlan = async (tierId: string) => {
     console.log('Selecting plan:', tierId);
+    
+    // If user is already subscribed to this tier, don't allow selection
+    if (subscriptionStatus.subscribed && subscriptionStatus.subscription_tier === tierId) {
+      toast({
+        title: "Already Subscribed",
+        description: "You are already subscribed to this plan.",
+      });
+      return;
+    }
+
     setIsLoading(true);
     setSelectedPlan(tierId);
     
@@ -162,14 +176,18 @@ const Pricing = () => {
     }
   };
 
-  if (isPricingLoading) {
+  const isCurrentPlan = (tierId: string) => {
+    return subscriptionStatus.subscribed && subscriptionStatus.subscription_tier === tierId;
+  };
+
+  if (isPricingLoading || isSubscriptionLoading) {
     return (
       <div className="min-h-screen bg-gradient-blue-purple py-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h1 className="text-4xl font-bold mb-4 text-purple-500">Choose Your Plan</h1>
             <p className="text-white/90 max-w-2xl mx-auto text-lg">
-              Loading pricing information...
+              Loading pricing and subscription information...
             </p>
           </div>
           <div className="flex justify-center">
@@ -210,6 +228,19 @@ const Pricing = () => {
               )}
             </Button>
           </div>
+
+          {/* Current Subscription Status */}
+          {subscriptionStatus.subscribed && (
+            <div className="mb-6 p-4 bg-green-600/20 border border-green-500/30 rounded-lg max-w-md mx-auto">
+              <div className="flex items-center justify-center space-x-2">
+                <Crown className="h-5 w-5 text-green-400" />
+                <span className="text-green-300 font-semibold">
+                  Currently subscribed to: {subscriptionStatus.subscription_tier?.charAt(0).toUpperCase() + subscriptionStatus.subscription_tier?.slice(1)}
+                </span>
+              </div>
+            </div>
+          )}
+
           <p className="text-white/90 max-w-2xl mx-auto text-lg">
             Select the perfect plan for your business needs
           </p>
@@ -219,10 +250,13 @@ const Pricing = () => {
               <span className="text-sm">Auto-refreshing prices...</span>
             </div>
           )}
-          {pricingError && (
+          {(pricingError || subscriptionError) && (
             <div className="mt-4 flex items-center justify-center space-x-2 text-orange-300">
               <AlertCircle className="h-4 w-4" />
-              <span className="text-sm">Using fallback pricing data - {pricingError}</span>
+              <span className="text-sm">
+                {pricingError && `Pricing: ${pricingError}`}
+                {subscriptionError && ` | Subscription: ${subscriptionError}`}
+              </span>
             </div>
           )}
         </div>
@@ -233,88 +267,111 @@ const Pricing = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {pricingTiers.map((tier) => (
-            <Card 
-              key={tier.id} 
-              className={`relative bg-slate-800/90 backdrop-blur-sm border-slate-700 text-white h-full flex flex-col ${
-                tier.popular 
-                  ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' 
-                  : 'border border-slate-700/50'
-              }`}
-            >
-              {tier.popular && (
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <Badge className="bg-blue-600 text-white border-blue-600">
-                    Most Popular
-                  </Badge>
-                </div>
-              )}
+          {pricingTiers.map((tier) => {
+            const isActive = isCurrentPlan(tier.id);
+            
+            return (
+              <Card 
+                key={tier.id} 
+                className={`relative bg-slate-800/90 backdrop-blur-sm border-slate-700 text-white h-full flex flex-col ${
+                  isActive
+                    ? 'border-2 border-green-500 shadow-lg shadow-green-500/20'
+                    : tier.popular 
+                      ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' 
+                      : 'border border-slate-700/50'
+                }`}
+              >
+                {isActive && (
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                    <Badge className="bg-green-600 text-white border-green-600">
+                      Current Plan
+                    </Badge>
+                  </div>
+                )}
 
-              {tier.badge && tier.id === 'trial' && (
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <Badge className="bg-green-600 text-white border-green-600">
-                    Free Trial
-                  </Badge>
-                </div>
-              )}
+                {!isActive && tier.popular && (
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                    <Badge className="bg-blue-600 text-white border-blue-600">
+                      Most Popular
+                    </Badge>
+                  </div>
+                )}
 
-              <CardHeader className="text-center pb-6">
-                <div className="flex items-center justify-start space-x-3 mb-3">
-                  <div className="text-xl">{tier.icon}</div>
-                  <div className="text-left">
-                    <h3 className="text-xl font-bold text-white">{tier.name}</h3>
-                    <p className="text-sm text-slate-400">{tier.subtitle}</p>
+                {!isActive && tier.badge && tier.id === 'trial' && (
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                    <Badge className="bg-green-600 text-white border-green-600">
+                      Free Trial
+                    </Badge>
                   </div>
-                </div>
-                
-                <p className="text-slate-300 text-sm mb-6 min-h-[48px] text-left leading-relaxed">
-                  {tier.description}
-                </p>
-                
-                <div className="mb-6 text-left">
-                  <div className="text-4xl font-bold text-blue-400 mb-1">
-                    {formatPrice(tier)}
-                  </div>
-                  <div className="text-slate-400 text-sm">
-                    {getPriceSubtext(tier)}
-                  </div>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="flex-1 flex flex-col space-y-4 px-6">
-                <div className="space-y-3 flex-1">
-                  {tier.features.map((feature, index) => (
-                    <div key={index} className="flex items-start space-x-3">
-                      <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-sm text-slate-200 leading-relaxed">{feature}</span>
+                )}
+
+                <CardHeader className="text-center pb-6">
+                  <div className="flex items-center justify-start space-x-3 mb-3">
+                    <div className="text-xl">{tier.icon}</div>
+                    <div className="text-left">
+                      <h3 className="text-xl font-bold text-white">{tier.name}</h3>
+                      <p className="text-sm text-slate-400">{tier.subtitle}</p>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                  
+                  <p className="text-slate-300 text-sm mb-6 min-h-[48px] text-left leading-relaxed">
+                    {tier.description}
+                  </p>
+                  
+                  <div className="mb-6 text-left">
+                    <div className="text-4xl font-bold text-blue-400 mb-1">
+                      {formatPrice(tier)}
+                    </div>
+                    <div className="text-slate-400 text-sm">
+                      {getPriceSubtext(tier)}
+                    </div>
+                  </div>
+                </CardHeader>
                 
-                <div className="bg-slate-700/40 rounded-lg p-4 mt-4">
-                  <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
-                    Usage Limits
-                  </h4>
-                  <div className="space-y-2">
-                    {getUsageLimitsFromImage(tier.id).map((limit, index) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="text-slate-400">{limit.name}</span>
-                        <span className="text-white font-medium">{limit.value}</span>
+                <CardContent className="flex-1 flex flex-col space-y-4 px-6">
+                  <div className="space-y-3 flex-1">
+                    {tier.features.map((feature, index) => (
+                      <div key={index} className="flex items-start space-x-3">
+                        <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-slate-200 leading-relaxed">{feature}</span>
                       </div>
                     ))}
                   </div>
-                </div>
-                
-                <Button 
-                  className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors"
-                  onClick={() => handleSelectPlan(tier.id)}
-                  disabled={isLoading && selectedPlan === tier.id}
-                >
-                  {isLoading && selectedPlan === tier.id ? 'Processing...' : 'Select Plan'}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                  
+                  <div className="bg-slate-700/40 rounded-lg p-4 mt-4">
+                    <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
+                      Usage Limits
+                    </h4>
+                    <div className="space-y-2">
+                      {getUsageLimitsFromImage(tier.id).map((limit, index) => (
+                        <div key={index} className="flex justify-between text-sm">
+                          <span className="text-slate-400">{limit.name}</span>
+                          <span className="text-white font-medium">{limit.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    className={`w-full mt-6 font-medium py-3 rounded-lg transition-colors ${
+                      isActive
+                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }`}
+                    onClick={() => handleSelectPlan(tier.id)}
+                    disabled={isLoading && selectedPlan === tier.id || isActive}
+                  >
+                    {isActive 
+                      ? 'Current Plan' 
+                      : isLoading && selectedPlan === tier.id 
+                        ? 'Processing...' 
+                        : 'Select Plan'
+                    }
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         <div className="mt-12 text-center">
