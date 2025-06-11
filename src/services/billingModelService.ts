@@ -77,7 +77,7 @@ export class BillingModelService {
     }
   }
 
-  generateStripeConfiguration(model: BillingModel): any {
+  generateStripeConfiguration(model: Pick<BillingModel, 'items'>): any {
     const config = {
       products: model.items.map(item => ({
         name: item.product,
