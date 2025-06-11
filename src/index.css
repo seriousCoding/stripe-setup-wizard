@@ -1,9 +1,8 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Blue-purple gradient theme with black headers and white text */
+/* Blue-purple gradient theme with purple headers and white text */
 
 @layer base {
   :root {
@@ -100,9 +99,9 @@
     min-height: 100vh;
   }
 
-  /* Black headers styling */
+  /* Purple headers styling */
   h1, h2, h3, h4, h5, h6 {
-    color: #000000 !important;
+    color: #8b5cf6 !important;
     font-weight: 700;
   }
 
@@ -213,8 +212,8 @@
     color: white;
   }
 
-  /* Override for specific semantic elements that should be black */
+  /* Override for specific semantic elements that should be purple */
   h1, h2, h3, h4, h5, h6 {
-    color: #000000 !important;
+    color: #8b5cf6 !important;
   }
 }
