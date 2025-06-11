@@ -45,7 +45,7 @@ const DashboardLayout = ({ children, title, description }: DashboardLayoutProps)
                 <Link key={item.href} to={item.href}>
                   <Card className="card-on-gradient p-4 hover:shadow-md transition-all duration-200 hover:border-white/30 cursor-pointer group">
                     <div className="flex items-start space-x-3">
-                      <item.icon className="h-5 w-5 text-purple-400 mt-0.5 group-hover:scale-110 transition-transform" />
+                      <item.icon className="h-5 w-5 text-blue-400 mt-0.5 group-hover:scale-110 transition-transform" />
                       <div>
                         <h3 className="font-medium text-sm text-white">{item.label}</h3>
                         <p className="text-xs text-white/70 mt-1">{item.description}</p>

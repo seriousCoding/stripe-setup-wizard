@@ -107,7 +107,7 @@
   }
 
   /* Ensure white text for most content */
-  p, span, div {
+  p, span, div, label {
     color: white;
   }
 
@@ -116,5 +116,44 @@
     background: rgba(30, 41, 59, 0.9);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Button styling to match theme */
+  .btn-primary {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+    border: none;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  }
+
+  /* Input styling */
+  input, textarea, select {
+    background: rgba(30, 41, 59, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: white !important;
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: rgba(255, 255, 255, 0.6) !important;
+  }
+
+  /* Tab styling */
+  [role="tab"] {
+    color: white !important;
+  }
+
+  [role="tab"][data-state="active"] {
+    color: #000000 !important;
+    background: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* Badge styling */
+  .badge {
+    background: rgba(59, 130, 246, 0.8);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
   }
 }
