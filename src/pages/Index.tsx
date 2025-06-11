@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import SpreadsheetUpload from '@/components/SpreadsheetUpload';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, Users, DollarSign, CheckCircle } from 'lucide-react';
@@ -15,8 +16,8 @@ const Index = () => {
 
   return (
     <DashboardLayout
-      title="Dashboard Overview"
-      description="Monitor your Stripe billing configuration and recent activity"
+      title="Data Upload & Configuration"
+      description="Upload your product data and let AI help you set up your Stripe billing configuration"
     >
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -37,6 +38,8 @@ const Index = () => {
             </Card>
           ))}
         </div>
+
+        <SpreadsheetUpload />
 
         <Card>
           <CardHeader>
