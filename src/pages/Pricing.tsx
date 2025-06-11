@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, RefreshCw, AlertCircle, Database, Activity, ArrowLeft } from 'lucide-react';
+import { Check, RefreshCw, AlertCircle, Activity, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useStripePricing } from '@/hooks/useStripePricing';
@@ -12,13 +12,12 @@ import UsageDashboard from '@/components/UsageDashboard';
 const Pricing = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  const [isSeeding, setIsSeeding] = useState(false);
   const { toast } = useToast();
   
-  // Enable automatic price refresh every 30 seconds
-  const { pricingTiers, isLoading: isPricingLoading, error: pricingError, refetch, isRefreshing } = useStripePricing({
+  // Enable automatic price refresh every 10 minutes
+  const { pricingTiers, isLoading: isPricingLoading, error: pricingError, isRefreshing } = useStripePricing({
     autoRefresh: true,
-    refreshInterval: 30000
+    refreshInterval: 600000 // 10 minutes
   });
 
   // Define usage limits for different plans
@@ -27,39 +26,6 @@ const Pricing = () => {
     transactions: 50,
     ai_processing: 20,
     data_exports: 5
-  };
-
-  const handleSeedStripe = async () => {
-    setIsSeeding(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('seed-stripe-products');
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if (data?.success) {
-        toast({
-          title: "Stripe Products Created!",
-          description: "Your Stripe account has been seeded with the pricing tiers. Refreshing prices...",
-        });
-        // Refresh the pricing data after seeding
-        setTimeout(() => {
-          refetch();
-        }, 1000);
-      } else {
-        throw new Error(data?.error || 'Failed to seed Stripe products');
-      }
-    } catch (error: any) {
-      console.error('Error seeding Stripe:', error);
-      toast({
-        title: "Seeding Error",
-        description: error.message || "Failed to seed Stripe products. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSeeding(false);
-    }
   };
 
   const handleSelectPlan = async (tierId: string) => {
@@ -173,28 +139,6 @@ const Pricing = () => {
               </Button>
             </Link>
             <h1 className="text-4xl font-bold text-purple-500">Choose Your Plan</h1>
-            <div className="flex space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSeedStripe}
-                disabled={isSeeding}
-                className="bg-green-600/10 border-green-500/20 text-green-400 hover:bg-green-600/20"
-              >
-                <Database className="h-4 w-4 mr-2" />
-                {isSeeding ? 'Seeding...' : 'Seed Stripe'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refetch}
-                disabled={isRefreshing}
-                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                {isRefreshing ? 'Refreshing...' : 'Refresh Prices'}
-              </Button>
-            </div>
           </div>
           <p className="text-white/90 max-w-2xl mx-auto text-lg">
             Select the perfect plan for your business needs
@@ -317,7 +261,7 @@ const Pricing = () => {
           <p className="text-slate-300 text-sm max-w-4xl mx-auto leading-relaxed">
             All packages auto-renew unless you opt out. After package limits are reached, meter rates apply automatically. 
             No service interruption - we'll continue processing your transactions at the meter rate. 
-            Prices refresh automatically every 30 seconds.
+            Prices refresh automatically every 10 minutes.
           </p>
         </div>
       </div>
