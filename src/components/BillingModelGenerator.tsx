@@ -13,7 +13,7 @@ interface BillingItem {
   product: string;
   unit_amount: number; // Price in cents (Stripe format)
   currency: string;
-  type: 'metered' | 'recurring' | 'one-time';
+  type: 'metered' | 'recurring' | 'one_time';
   interval?: string;
   eventName?: string;
   description?: string;
