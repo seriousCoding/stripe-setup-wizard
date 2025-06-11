@@ -1,23 +1,30 @@
 
 import React from 'react';
-import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-const BillingModelTypeTabs = () => {
+interface BillingModelTypeTabsProps {
+  activeTab: string;
+  onTabChange: (value: string) => void;
+}
+
+const BillingModelTypeTabs = ({ activeTab, onTabChange }: BillingModelTypeTabsProps) => {
   return (
-    <div className="flex space-x-1 bg-muted p-1 rounded-lg">
-      <Button variant="secondary" size="sm" className="flex-1">
-        💰 Pay As You Go
-      </Button>
-      <Button variant="ghost" size="sm" className="flex-1">
-        🔄 Flat Recurring
-      </Button>
-      <Button variant="ghost" size="sm" className="flex-1">
-        ⚡ Fixed Fee & Overage
-      </Button>
-      <Button variant="ghost" size="sm" className="flex-1">
-        💺 Per Seat
-      </Button>
-    </div>
+    <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
+      <TabsList className="grid w-full grid-cols-4">
+        <TabsTrigger value="pay-as-you-go" className="flex items-center gap-2">
+          💰 Pay As You Go
+        </TabsTrigger>
+        <TabsTrigger value="flat-recurring" className="flex items-center gap-2">
+          🔄 Flat Recurring
+        </TabsTrigger>
+        <TabsTrigger value="fixed-overage" className="flex items-center gap-2">
+          ⚡ Fixed Fee & Overage
+        </TabsTrigger>
+        <TabsTrigger value="per-seat" className="flex items-center gap-2">
+          💺 Per Seat
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   );
 };
 
