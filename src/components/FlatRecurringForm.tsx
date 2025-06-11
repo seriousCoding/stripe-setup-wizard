@@ -72,11 +72,16 @@ const FlatRecurringForm = () => {
     const billingItems = plans.map(plan => ({
       id: plan.id,
       product: plan.name,
-      price: plan.price,
-      currency: plan.currency,
+      unit_amount: Math.round(plan.price * 100), // Convert to cents for Stripe
+      currency: plan.currency.toLowerCase(),
       type: 'recurring' as const,
       interval: plan.interval,
-      description: plan.description
+      description: plan.description,
+      billing_scheme: 'per_unit' as const,
+      metadata: {
+        plan_type: 'flat_recurring',
+        created_via: 'manual_entry'
+      }
     }));
 
     const model = {

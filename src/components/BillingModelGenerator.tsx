@@ -12,12 +12,16 @@ import BillingItemCard from './BillingItemCard';
 interface BillingItem {
   id: string;
   product: string;
-  price: number;
+  unit_amount: number; // Price in cents (Stripe format)
   currency: string;
-  type: 'metered' | 'recurring' | 'one-time';
+  type: 'metered' | 'recurring' | 'one_time';
   interval?: string;
   eventName?: string;
   description?: string;
+  billing_scheme?: 'per_unit' | 'tiered';
+  usage_type?: 'metered' | 'licensed';
+  aggregate_usage?: 'sum' | 'last_during_period' | 'last_ever' | 'max';
+  metadata?: Record<string, string>;
 }
 
 interface BillingModelGeneratorProps {
@@ -30,12 +34,16 @@ const BillingModelGenerator = ({ uploadedData, onModelGenerated }: BillingModelG
     uploadedData.map((item, index) => ({
       id: `item-${index}`,
       product: item.product || '',
-      price: item.price || 0,
-      currency: item.currency || 'USD',
+      unit_amount: item.unit_amount || Math.round((item.price || 0) * 100), // Ensure cents format
+      currency: (item.currency || 'USD').toLowerCase(),
       type: item.type || 'metered',
       interval: item.interval || 'month',
       eventName: item.eventName || item.product?.toLowerCase().replace(/\s+/g, '_'),
-      description: item.description || ''
+      description: item.description || '',
+      billing_scheme: item.billing_scheme || 'per_unit',
+      usage_type: item.usage_type,
+      aggregate_usage: item.aggregate_usage,
+      metadata: item.metadata || {}
     }))
   );
   
@@ -58,11 +66,12 @@ const BillingModelGenerator = ({ uploadedData, onModelGenerated }: BillingModelG
     const newItem: BillingItem = {
       id: `item-${Date.now()}`,
       product: '',
-      price: 0,
-      currency: 'USD',
+      unit_amount: 0,
+      currency: 'usd',
       type: 'metered',
       eventName: '',
-      description: ''
+      description: '',
+      billing_scheme: 'per_unit'
     };
     setBillingItems(prev => [...prev, newItem]);
   };
@@ -199,6 +208,16 @@ const BillingModelGenerator = ({ uploadedData, onModelGenerated }: BillingModelG
     });
   };
 
+  const calculateEstimatedRevenue = () => {
+    const total = billingItems.reduce((sum, item) => sum + (item.unit_amount / 100), 0);
+    return {
+      min: total,
+      max: total * 1000 // Rough estimate for usage-based items
+    };
+  };
+
+  const revenue = calculateEstimatedRevenue();
+
   return (
     <div className="space-y-6">
       <ModelHeader
@@ -256,7 +275,7 @@ const BillingModelGenerator = ({ uploadedData, onModelGenerated }: BillingModelG
             <p><strong>Model Type:</strong> {detectModelType()}</p>
             <p><strong>Recurring Items:</strong> {billingItems.filter(i => i.type === 'recurring').length}</p>
             <p><strong>Metered Items:</strong> {billingItems.filter(i => i.type === 'metered').length}</p>
-            <p><strong>Estimated Monthly Revenue Range:</strong> ${billingItems.reduce((sum, item) => sum + item.price, 0).toFixed(2)} - ${(billingItems.reduce((sum, item) => sum + item.price, 0) * 1000).toFixed(2)}</p>
+            <p><strong>Estimated Monthly Revenue Range:</strong> ${revenue.min.toFixed(2)} - ${revenue.max.toFixed(2)}</p>
           </div>
         </CardContent>
       </Card>
