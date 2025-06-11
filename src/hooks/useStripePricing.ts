@@ -109,7 +109,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     
     const tierId = metadata.tier_id || 'custom';
 
-    // Extract usage limits from metadata - handle unlimited and numeric values properly
+    // Extract usage limits from metadata
     const usageLimits = [];
     
     if (metadata.usage_limit_transactions) {
@@ -127,49 +127,9 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
         value: aiLimit === 'unlimited' ? 'Unlimited' : parseInt(aiLimit).toLocaleString() 
       });
     }
-    
-    if (metadata.usage_limit_data_exports) {
-      const exportLimit = metadata.usage_limit_data_exports;
-      usageLimits.push({ 
-        name: 'Data Exports', 
-        value: exportLimit === 'unlimited' ? 'Unlimited' : parseInt(exportLimit).toLocaleString() 
-      });
-    }
-    
-    if (metadata.usage_limit_api_calls) {
-      const apiLimit = metadata.usage_limit_api_calls;
-      usageLimits.push({ 
-        name: 'API Calls', 
-        value: apiLimit === 'unlimited' ? 'Unlimited' : parseInt(apiLimit).toLocaleString() 
-      });
-    }
 
-    if (metadata.usage_limit_storage_gb) {
-      const storageLimit = metadata.usage_limit_storage_gb;
-      usageLimits.push({ 
-        name: 'Storage', 
-        value: storageLimit === 'unlimited' ? 'Unlimited' : `${parseInt(storageLimit)} GB` 
-      });
-    }
-
-    if (metadata.usage_limit_integrations) {
-      const integrationLimit = metadata.usage_limit_integrations;
-      usageLimits.push({ 
-        name: 'Integrations', 
-        value: integrationLimit === 'unlimited' ? 'Unlimited' : parseInt(integrationLimit).toLocaleString() 
-      });
-    }
-
-    if (metadata.usage_limit_team_seats) {
-      const seatLimit = metadata.usage_limit_team_seats;
-      usageLimits.push({ 
-        name: 'Team Seats', 
-        value: seatLimit === 'unlimited' ? 'Unlimited' : parseInt(seatLimit).toLocaleString() 
-      });
-    }
-
-    // Generate features based on tier and metadata
-    const features = generateFeaturesFromTier(tierId, metadata);
+    // Generate features based on tier ID and the exact features from the image
+    const features = getFeaturesFromTierId(tierId);
 
     // Create tier from Stripe product data
     const tier: StripePricingTier = {
@@ -182,7 +142,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       icon: getIconForTier(tierId),
       features: features,
       usageLimits: usageLimits.length > 0 ? usageLimits : undefined,
-      buttonText: priceAmount === 0 ? 'Start Free Trial' : 'Select Plan',
+      buttonText: 'Select Plan',
       popular: metadata.popular === 'true',
       badge: metadata.badge || getBadgeFromTier(tierId, metadata),
       isMonthly: isRecurring,
@@ -204,61 +164,49 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
   });
 };
 
-const generateFeaturesFromTier = (tierId: string, metadata: any): string[] => {
-  const features = [];
-  
+const getFeaturesFromTierId = (tierId: string): string[] => {
   switch (tierId) {
     case 'trial':
-      features.push(
+      return [
         'Full access to all features',
         '500 transaction limit',
         'Basic AI processing',
         'Email support'
-      );
-      break;
+      ];
     case 'starter':
-      features.push(
+      return [
         'Pay only for what you use',
         'No monthly commitment',
         'Basic AI data extraction',
         'Standard support'
-      );
-      break;
+      ];
     case 'professional':
-      features.push(
+      return [
         '1,200 transaction credits',
         '15% discount on bulk purchases',
         'Advanced AI processing',
         'Priority support',
         'Usage analytics'
-      );
-      break;
+      ];
     case 'business':
-      features.push(
+      return [
         'Unlimited transactions',
         'Unlimited AI processing',
         'Advanced analytics',
         'Dedicated support',
         'Custom integrations'
-      );
-      break;
+      ];
     case 'enterprise':
-      features.push(
+      return [
         'Unlimited everything',
         'Multi-user management',
         'Advanced security',
         'SLA guarantee',
         'Custom development'
-      );
-      break;
+      ];
+    default:
+      return ['Custom features'];
   }
-  
-  // Add meter rate information if available
-  if (metadata.meter_rate && parseFloat(metadata.meter_rate) > 0) {
-    features.push(`$${metadata.meter_rate}/transaction after limit`);
-  }
-  
-  return features;
 };
 
 const getSubtitleFromBillingType = (billingType: string, isRecurring: boolean): string => {

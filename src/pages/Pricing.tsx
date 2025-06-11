@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ const Pricing = () => {
     refreshInterval: 600000 // 10 minutes
   });
 
-  // Define usage limits for different plans
+  // Define usage limits for different plans from the image
   const usageLimits = {
     api_calls: 100,
     transactions: 50,
@@ -102,30 +103,63 @@ const Pricing = () => {
   };
 
   const formatPrice = (tier: any) => {
-    if (tier.price === 0) return '$0';
+    // Exact pricing from the image
+    if (tier.price === 0 || tier.id === 'trial') return '$0';
+    if (tier.id === 'starter' || tier.price === 0.99) return '$0.99';
+    if (tier.id === 'professional' || tier.price === 49) return '$49';
+    if (tier.id === 'business' || tier.price === 99) return '$99';
+    if (tier.id === 'enterprise' || tier.price === 25) return '$25';
     
-    // For starter plan, show as $0.99
-    if (tier.id === 'starter') {
-      return '$0.99';
-    }
-    
-    // For other plans, show the dollar amount without decimals
-    if (tier.price === 4900) return '$49';
-    if (tier.price === 9900) return '$99';
-    if (tier.price === 2500) return '$25';
-    
-    // Fallback for any other prices
+    // Fallback - convert from cents to dollars
     const dollarAmount = tier.price / 100;
+    if (dollarAmount < 1) {
+      return `$${dollarAmount.toFixed(2)}`;
+    }
     return `$${Math.round(dollarAmount)}`;
   };
 
   const getPriceSubtext = (tier: any) => {
-    if (tier.price === 0 && tier.id === 'trial') return '14 days free';
+    if (tier.id === 'trial') return '14 days free';
     if (tier.id === 'starter') return 'per transaction';
     if (tier.id === 'professional') return 'prepaid credits';
-    if (tier.isMonthly && tier.id === 'enterprise') return 'per user/month';
-    if (tier.isMonthly) return 'per month';
+    if (tier.id === 'business') return 'per month';
+    if (tier.id === 'enterprise') return 'per user/month';
     return '';
+  };
+
+  const getUsageLimitsFromImage = (tierId: string) => {
+    switch (tierId) {
+      case 'trial':
+        return [
+          { name: 'Transactions', value: '500' },
+          { name: 'AI Processing', value: '50' },
+          { name: 'After limit', value: '$0.05/transaction' }
+        ];
+      case 'starter':
+        return [
+          { name: 'Transactions', value: '20' },
+          { name: 'AI Processing', value: '5' },
+          { name: 'After limit', value: '$0.05/transaction' }
+        ];
+      case 'professional':
+        return [
+          { name: 'Transactions', value: '1,200' },
+          { name: 'AI Processing', value: '300' },
+          { name: 'After limit', value: '$0.04/transaction' }
+        ];
+      case 'business':
+        return [
+          { name: 'Transactions', value: 'Unlimited' },
+          { name: 'AI Processing', value: 'Unlimited' }
+        ];
+      case 'enterprise':
+        return [
+          { name: 'Transactions', value: 'Unlimited' },
+          { name: 'AI Processing', value: 'Unlimited' }
+        ];
+      default:
+        return [];
+    }
   };
 
   if (isPricingLoading) {
@@ -219,7 +253,7 @@ const Pricing = () => {
               {tier.badge && tier.id === 'trial' && (
                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                   <Badge className="bg-green-600 text-white border-green-600">
-                    {tier.badge}
+                    Free Trial
                   </Badge>
                 </div>
               )}
@@ -257,36 +291,26 @@ const Pricing = () => {
                   ))}
                 </div>
                 
-                {tier.usageLimits && tier.usageLimits.length > 0 && (
-                  <div className="bg-slate-700/40 rounded-lg p-4 mt-4">
-                    <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
-                      Usage Limits
-                    </h4>
-                    <div className="space-y-2">
-                      {tier.usageLimits.map((limit, index) => (
-                        <div key={index} className="flex justify-between text-sm">
-                          <span className="text-slate-400">{limit.name}</span>
-                          <span className="text-white font-medium">{limit.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {tier.meterRate && tier.meterRate > 0 && (
-                      <div className="mt-3 pt-2 border-t border-slate-600">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-400">After limit</span>
-                          <span className="text-white">${tier.meterRate}/transaction</span>
-                        </div>
+                <div className="bg-slate-700/40 rounded-lg p-4 mt-4">
+                  <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
+                    Usage Limits
+                  </h4>
+                  <div className="space-y-2">
+                    {getUsageLimitsFromImage(tier.id).map((limit, index) => (
+                      <div key={index} className="flex justify-between text-sm">
+                        <span className="text-slate-400">{limit.name}</span>
+                        <span className="text-white font-medium">{limit.value}</span>
                       </div>
-                    )}
+                    ))}
                   </div>
-                )}
+                </div>
                 
                 <Button 
                   className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors"
                   onClick={() => handleSelectPlan(tier.id)}
                   disabled={isLoading && selectedPlan === tier.id}
                 >
-                  {isLoading && selectedPlan === tier.id ? 'Processing...' : tier.buttonText}
+                  {isLoading && selectedPlan === tier.id ? 'Processing...' : 'Select Plan'}
                 </Button>
               </CardContent>
             </Card>

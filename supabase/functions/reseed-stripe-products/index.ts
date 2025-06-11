@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -51,7 +52,7 @@ serve(async (req) => {
       apiVersion: '2023-10-16',
     });
 
-    // Define the products with exact pricing from the image
+    // Define the products with exact pricing and features from the image
     const productDefinitions = [
       {
         id: 'trial',
@@ -65,13 +66,20 @@ serve(async (req) => {
           billing_model_type: 'free_trial',
           created_via: 'billing_app_v1',
           popular: 'false',
-          badge: 'Free Trial'
+          badge: 'Free Trial',
+          subtitle: 'Trial'
         },
         usage_limits: {
           transactions: 500,
           ai_processing: 50,
           meter_rate_after_limit: 0.05
-        }
+        },
+        features: [
+          'Full access to all features',
+          '500 transaction limit',
+          'Basic AI processing',
+          'Email support'
+        ]
       },
       {
         id: 'starter',
@@ -84,13 +92,20 @@ serve(async (req) => {
           plan_type: 'metered',
           billing_model_type: 'pay_as_you_go',
           created_via: 'billing_app_v1',
-          popular: 'false'
+          popular: 'false',
+          subtitle: 'Pay As-You-Go'
         },
         usage_limits: {
           transactions: 20,
           ai_processing: 5,
           meter_rate_after_limit: 0.05
-        }
+        },
+        features: [
+          'Pay only for what you use',
+          'No monthly commitment',
+          'Basic AI data extraction',
+          'Standard support'
+        ]
       },
       {
         id: 'professional',
@@ -104,13 +119,21 @@ serve(async (req) => {
           billing_model_type: 'credit_burndown',
           created_via: 'billing_app_v1',
           popular: 'true',
-          badge: 'Most Popular'
+          badge: 'Most Popular',
+          subtitle: 'Credit Burndown'
         },
         usage_limits: {
           transactions: 1200,
           ai_processing: 300,
           meter_rate_after_limit: 0.04
-        }
+        },
+        features: [
+          '1,200 transaction credits',
+          '15% discount on bulk purchases',
+          'Advanced AI processing',
+          'Priority support',
+          'Usage analytics'
+        ]
       },
       {
         id: 'business',
@@ -124,13 +147,21 @@ serve(async (req) => {
           plan_type: 'recurring',
           billing_model_type: 'flat_recurring',
           created_via: 'billing_app_v1',
-          popular: 'false'
+          popular: 'false',
+          subtitle: 'Flat Fee'
         },
         usage_limits: {
           transactions: 'unlimited',
           ai_processing: 'unlimited',
           unlimited: true
-        }
+        },
+        features: [
+          'Unlimited transactions',
+          'Unlimited AI processing',
+          'Advanced analytics',
+          'Dedicated support',
+          'Custom integrations'
+        ]
       },
       {
         id: 'enterprise',
@@ -144,13 +175,21 @@ serve(async (req) => {
           plan_type: 'per_seat',
           billing_model_type: 'per_seat',
           created_via: 'billing_app_v1',
-          popular: 'false'
+          popular: 'false',
+          subtitle: 'Per Seat'
         },
         usage_limits: {
           transactions: 'unlimited',
           ai_processing: 'unlimited',
           unlimited: true
-        }
+        },
+        features: [
+          'Unlimited everything',
+          'Multi-user management',
+          'Advanced security',
+          'SLA guarantee',
+          'Custom development'
+        ]
       }
     ];
 
@@ -163,7 +202,6 @@ serve(async (req) => {
         // Enhanced metadata with usage limits
         const enhancedMetadata = {
           ...productDef.metadata,
-          subtitle: productDef.subtitle,
           // Usage limits as metadata - handle unlimited values properly
           usage_limit_transactions: productDef.usage_limits.transactions.toString(),
           usage_limit_ai_processing: productDef.usage_limits.ai_processing.toString(),
@@ -209,6 +247,7 @@ serve(async (req) => {
           subtitle: productDef.subtitle,
           amount: productDef.price,
           usage_limits: productDef.usage_limits,
+          features: productDef.features,
           status: 'success'
         });
 
