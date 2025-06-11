@@ -21,7 +21,7 @@ const BillingModels = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'pay-as-you-go':
-        return <PayAsYouGoForm />;
+        return <SpreadsheetUpload onDataUploaded={handleDataUploaded} />;
       case 'flat-recurring':
         return <FlatRecurringForm />;
       case 'fixed-overage':
@@ -29,7 +29,7 @@ const BillingModels = () => {
       case 'per-seat':
         return <PerSeatForm />;
       default:
-        return <PayAsYouGoForm />;
+        return <SpreadsheetUpload onDataUploaded={handleDataUploaded} />;
     }
   };
 
