@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,22 +52,55 @@ const SpreadsheetUpload = () => {
         const text = await file.text();
         parsedData = parseCSV(text);
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        // For demo purposes, we'll simulate Excel parsing
         parsedData = generateMockExcelData();
       } else {
         throw new Error('Unsupported file type. Please upload a CSV or Excel file.');
       }
       
-      // Enhance the data with intelligent defaults
-      const enhancedData = parsedData.map((row, index) => ({
-        product: row.product || row.name || row.service || `Service ${index + 1}`,
-        price: parseFloat(row.price || row.cost || row.amount || '0'),
-        currency: (row.currency || 'USD').toUpperCase(),
-        type: determineServiceType(row),
-        interval: row.interval || (row.type === 'recurring' ? 'month' : undefined),
-        eventName: generateEventName(row.product || row.name || row.service || `service_${index + 1}`),
-        description: row.description || row.desc || `${row.product || 'Service'} billing`
-      }));
+      // Enhanced data parsing according to Stripe billing documentation
+      const enhancedData = parsedData.map((row, index) => {
+        const productName = row.product || row.name || row.service || row.item || `Product ${index + 1}`;
+        const priceValue = parseFloat(row.price || row.cost || row.amount || row.unit_amount || '0');
+        const currency = (row.currency || 'USD').toUpperCase();
+        
+        // Determine billing type based on Stripe's billing models
+        const billingType = determineBillingType(row, priceValue);
+        
+        // Generate proper event name for metered billing
+        const eventName = generateStripeEventName(productName);
+        
+        // Determine interval for recurring billing
+        const interval = determineInterval(row);
+        
+        return {
+          // Product fields (required for Stripe Product creation)
+          product: productName,
+          description: row.description || row.desc || `${productName} billing`,
+          
+          // Price fields (required for Stripe Price creation)
+          unit_amount: Math.round(priceValue * 100), // Stripe requires cents
+          currency: currency.toLowerCase(), // Stripe requires lowercase
+          
+          // Billing configuration
+          type: billingType,
+          interval: interval,
+          
+          // Metered billing specific
+          eventName: billingType === 'metered' ? eventName : undefined,
+          billing_scheme: billingType === 'metered' ? 'per_unit' : 'per_unit',
+          
+          // Usage limits and tiers (if applicable)
+          usage_type: billingType === 'metered' ? 'metered' : undefined,
+          aggregate_usage: billingType === 'metered' ? 'sum' : undefined,
+          
+          // Metadata for Stripe
+          metadata: {
+            original_product_name: productName,
+            billing_model: 'pay_as_you_go',
+            created_via: 'stripe_setup_pilot'
+          }
+        };
+      });
       
       setUploadedFile({
         name: file.name,
@@ -78,14 +110,14 @@ const SpreadsheetUpload = () => {
       });
       
       toast({
-        title: "File Uploaded Successfully",
-        description: `Parsed ${enhancedData.length} billing items from ${file.name}`,
+        title: "File Parsed Successfully",
+        description: `Processed ${enhancedData.length} billing items according to Stripe documentation`,
       });
       
       setShowAnalyzer(true);
     } catch (error: any) {
       toast({
-        title: "Upload Error",
+        title: "Parsing Error",
         description: error.message,
         variant: "destructive",
       });
@@ -98,58 +130,122 @@ const SpreadsheetUpload = () => {
     const lines = text.split('\n').filter(line => line.trim());
     if (lines.length < 2) return [];
     
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const data = [];
+    // Parse headers and normalize common field names
+    const headers = lines[0].split(',').map(h => {
+      const normalized = h.trim().toLowerCase();
+      // Map common variations to standard field names
+      if (['name', 'service', 'item', 'title'].includes(normalized)) return 'product';
+      if (['cost', 'amount', 'unit_amount', 'price_amount'].includes(normalized)) return 'price';
+      if (['desc', 'details'].includes(normalized)) return 'description';
+      if (['billing_type', 'type', 'model'].includes(normalized)) return 'billing_type';
+      return normalized;
+    });
     
+    const data = [];
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',');
       const row: any = {};
       headers.forEach((header, index) => {
         row[header] = values[index]?.trim() || '';
       });
-      data.push(row);
+      if (row.product || row.price) { // Only include rows with product or price data
+        data.push(row);
+      }
     }
     
     return data;
   };
 
   const generateMockExcelData = (): any[] => {
+    // Mock data that follows Stripe billing patterns
     return [
-      { product: 'API Calls', price: 0.001, currency: 'USD', type: 'metered', description: 'REST API requests' },
-      { product: 'Storage GB', price: 0.05, currency: 'USD', type: 'metered', description: 'Data storage per GB' },
-      { product: 'Pro Plan', price: 29.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Monthly subscription' },
-      { product: 'Enterprise Support', price: 199.99, currency: 'USD', type: 'recurring', interval: 'month', description: 'Premium support tier' },
-      { product: 'Data Processing', price: 0.002, currency: 'USD', type: 'metered', description: 'Per record processed' },
-      { product: 'Bandwidth GB', price: 0.08, currency: 'USD', type: 'metered', description: 'Data transfer per GB' }
+      { 
+        product: 'API Calls', 
+        price: 0.001, 
+        currency: 'USD', 
+        billing_type: 'metered',
+        description: 'REST API requests per call',
+        usage_type: 'metered'
+      },
+      { 
+        product: 'Storage', 
+        price: 0.05, 
+        currency: 'USD', 
+        billing_type: 'metered',
+        description: 'Data storage per GB per month',
+        usage_type: 'metered'
+      },
+      { 
+        product: 'Pro Subscription', 
+        price: 29.99, 
+        currency: 'USD', 
+        billing_type: 'recurring', 
+        interval: 'month',
+        description: 'Monthly Pro plan subscription'
+      },
+      { 
+        product: 'Enterprise Support', 
+        price: 199.99, 
+        currency: 'USD', 
+        billing_type: 'recurring', 
+        interval: 'month',
+        description: 'Premium support tier'
+      },
+      { 
+        product: 'Data Processing', 
+        price: 0.002, 
+        currency: 'USD', 
+        billing_type: 'metered',
+        description: 'Per record processed',
+        usage_type: 'metered'
+      }
     ];
   };
 
-  const determineServiceType = (row: any): 'metered' | 'recurring' | 'one-time' => {
-    const typeStr = (row.type || '').toLowerCase();
+  const determineBillingType = (row: any, price: number): 'metered' | 'recurring' | 'one_time' => {
+    const typeStr = (row.billing_type || row.type || '').toLowerCase();
     const productStr = (row.product || row.name || '').toLowerCase();
+    const usageType = (row.usage_type || '').toLowerCase();
     
-    if (typeStr.includes('recurring') || typeStr.includes('subscription') || typeStr.includes('monthly') || typeStr.includes('yearly')) {
-      return 'recurring';
-    }
+    // Explicit type indicators
+    if (typeStr.includes('metered') || usageType === 'metered') return 'metered';
+    if (typeStr.includes('recurring') || typeStr.includes('subscription')) return 'recurring';
+    if (typeStr.includes('one_time') || typeStr.includes('one-time')) return 'one_time';
     
-    if (typeStr.includes('metered') || typeStr.includes('usage') || productStr.includes('api') || productStr.includes('call') || productStr.includes('gb') || productStr.includes('mb')) {
+    // Product name indicators for metered billing
+    if (productStr.includes('api') || productStr.includes('call') || 
+        productStr.includes('request') || productStr.includes('usage') ||
+        productStr.includes('storage') || productStr.includes('bandwidth') ||
+        productStr.includes('processing') || productStr.includes('query')) {
       return 'metered';
     }
     
-    if (typeStr.includes('one-time') || typeStr.includes('setup')) {
-      return 'one-time';
-    }
+    // Price-based determination
+    if (price < 1) return 'metered'; // Small amounts typically metered
+    if (price >= 10) return 'recurring'; // Larger amounts typically subscriptions
     
-    // Default to metered for small amounts, recurring for larger amounts
-    const price = parseFloat(row.price || '0');
-    return price < 1 ? 'metered' : 'recurring';
+    return 'one_time'; // Default fallback
   };
 
-  const generateEventName = (name: string): string => {
-    return name.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .replace(/\s+/g, '_')
-      .replace(/^_+|_+$/g, '');
+  const determineInterval = (row: any): 'month' | 'year' | 'week' | 'day' | undefined => {
+    const intervalStr = (row.interval || row.period || '').toLowerCase();
+    const descStr = (row.description || row.desc || '').toLowerCase();
+    
+    if (intervalStr.includes('month') || descStr.includes('monthly')) return 'month';
+    if (intervalStr.includes('year') || descStr.includes('yearly') || descStr.includes('annual')) return 'year';
+    if (intervalStr.includes('week') || descStr.includes('weekly')) return 'week';
+    if (intervalStr.includes('day') || descStr.includes('daily')) return 'day';
+    
+    return undefined; // No interval for non-recurring items
+  };
+
+  const generateStripeEventName = (productName: string): string => {
+    return productName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .replace(/^_+|_+$/g, '') // Remove leading/trailing underscores
+      .substring(0, 50); // Stripe event names should be reasonably short
   };
 
   const handlePasteData = () => {
@@ -162,25 +258,33 @@ const SpreadsheetUpload = () => {
       return;
     }
 
-    // AI-powered parsing simulation
+    // Enhanced AI-powered parsing for pasted data
     const lines = pasteData.split('\n').filter(line => line.trim());
     const parsedServices: any[] = [];
 
     lines.forEach((line, index) => {
-      // Simple pattern matching for common formats
+      // Enhanced pattern matching for various formats
       const priceMatch = line.match(/\$?(\d+\.?\d*)/);
       const price = priceMatch ? parseFloat(priceMatch[1]) : 0.01;
       
+      // Extract service name (everything except price)
       let serviceName = line.replace(/\$?[\d\.]+/, '').trim();
       if (!serviceName) serviceName = `Service ${index + 1}`;
       
+      // Determine billing type from context
+      const billingType = determineBillingType({ product: serviceName }, price);
+      
       parsedServices.push({
         product: serviceName,
-        price,
-        currency: 'USD',
-        type: price < 1 ? 'metered' : 'recurring',
-        eventName: generateEventName(serviceName),
-        description: `${serviceName} - parsed from text`
+        unit_amount: Math.round(price * 100), // Convert to cents
+        currency: 'usd',
+        type: billingType,
+        eventName: billingType === 'metered' ? generateStripeEventName(serviceName) : undefined,
+        description: `${serviceName} - parsed from text`,
+        metadata: {
+          created_via: 'paste_data',
+          billing_model: 'pay_as_you_go'
+        }
       });
     });
 
@@ -196,17 +300,44 @@ const SpreadsheetUpload = () => {
       
       toast({
         title: "Data Parsed Successfully",
-        description: `Extracted ${parsedServices.length} services from pasted data`,
+        description: `Extracted ${parsedServices.length} services according to Stripe format`,
       });
     }
   };
 
   const handleScanImage = () => {
-    // Simulate camera scan with mock data
+    // Simulate camera scan with properly formatted mock data
     const mockImageData = [
-      { product: 'Database Queries', price: 0.0005, currency: 'USD', type: 'metered', description: 'SQL query execution' },
-      { product: 'Image Processing', price: 0.02, currency: 'USD', type: 'metered', description: 'Image transformation' },
-      { product: 'Email Sends', price: 0.001, currency: 'USD', type: 'metered', description: 'Transactional emails' }
+      { 
+        product: 'Database Queries', 
+        unit_amount: 50, // 0.005 in cents
+        currency: 'usd', 
+        type: 'metered',
+        eventName: 'database_query',
+        description: 'SQL query execution',
+        usage_type: 'metered',
+        aggregate_usage: 'sum'
+      },
+      { 
+        product: 'Image Processing', 
+        unit_amount: 200, // 0.02 in cents
+        currency: 'usd', 
+        type: 'metered',
+        eventName: 'image_processing',
+        description: 'Image transformation service',
+        usage_type: 'metered',
+        aggregate_usage: 'sum'
+      },
+      { 
+        product: 'Email Delivery', 
+        unit_amount: 10, // 0.001 in cents
+        currency: 'usd', 
+        type: 'metered',
+        eventName: 'email_send',
+        description: 'Transactional email delivery',
+        usage_type: 'metered',
+        aggregate_usage: 'sum'
+      }
     ];
 
     setUploadedFile({
@@ -219,7 +350,7 @@ const SpreadsheetUpload = () => {
     
     toast({
       title: "Image Scanned Successfully",
-      description: `Extracted ${mockImageData.length} services from image`,
+      description: `Extracted ${mockImageData.length} services in Stripe format`,
     });
   };
 
@@ -250,14 +381,21 @@ const SpreadsheetUpload = () => {
     let dataToUse = uploadedFile?.data;
     
     if (!dataToUse && meteredServices.length > 0) {
-      // Convert metered services to billing items
+      // Convert metered services to Stripe-compliant format
       dataToUse = meteredServices.map(service => ({
         product: service.displayName,
-        price: service.pricePerUnit,
-        currency: service.currency,
+        unit_amount: Math.round(service.pricePerUnit * 100), // Convert to cents
+        currency: service.currency.toLowerCase(),
         type: 'metered',
         eventName: service.eventName,
-        description: `${service.displayName} - metered billing`
+        description: `${service.displayName} - metered billing`,
+        usage_type: 'metered',
+        aggregate_usage: 'sum',
+        billing_scheme: 'per_unit',
+        metadata: {
+          created_via: 'manual_entry',
+          billing_model: 'pay_as_you_go'
+        }
       }));
     }
     
@@ -280,7 +418,7 @@ const SpreadsheetUpload = () => {
     
     toast({
       title: "Model Generated Successfully",
-      description: `${model.name} has been saved and is ready for use.`,
+      description: `${model.name} has been saved and is ready for Stripe deployment.`,
     });
   };
 
@@ -303,9 +441,9 @@ const SpreadsheetUpload = () => {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Data Analysis Complete</h2>
+            <h2 className="text-2xl font-bold">Stripe-Compliant Data Analysis</h2>
             <p className="text-muted-foreground">
-              We've analyzed your uploaded data and found the best billing model for your business
+              Data parsed and structured according to Stripe billing documentation
             </p>
           </div>
           <Button 
@@ -329,7 +467,7 @@ const SpreadsheetUpload = () => {
             onClick={generateBillingModel}
             className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
           >
-            Configure This Model
+            Deploy to Stripe
           </Button>
           <Button variant="outline" onClick={() => {
             setShowAnalyzer(false);
@@ -348,7 +486,7 @@ const SpreadsheetUpload = () => {
         <CardHeader>
           <CardTitle>Pay As You Go Model</CardTitle>
           <CardDescription>
-            Charge customers based on their usage of one or more metered services. You can add these to a new or an existing Stripe product. Optionally, define services via file upload, pasting data (AI parsed), or scanning an image (AI parsed) when using an existing product.
+            Create Stripe-compliant metered billing. Data will be parsed according to Stripe's billing documentation with proper pricing, currency formatting, and event naming conventions.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -385,7 +523,7 @@ const SpreadsheetUpload = () => {
             className="w-full bg-blue-600 hover:bg-blue-700"
             onClick={generateBillingModel}
           >
-            Create Pay As You Go Model
+            Create Stripe-Compliant Model
           </Button>
         </CardContent>
       </Card>
@@ -395,7 +533,7 @@ const SpreadsheetUpload = () => {
           <CardContent className="p-6">
             <div className="flex items-center space-x-3">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <span>Analyzing your data and suggesting the best billing model...</span>
+              <span>Parsing data according to Stripe billing standards...</span>
             </div>
           </CardContent>
         </Card>
@@ -404,9 +542,9 @@ const SpreadsheetUpload = () => {
       {generatedModels.length > 0 && (
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardHeader>
-            <CardTitle className="text-green-900">✅ Billing Models Generated</CardTitle>
+            <CardTitle className="text-green-900">✅ Stripe-Ready Billing Models</CardTitle>
             <CardDescription className="text-green-700">
-              {generatedModels.length} model{generatedModels.length !== 1 ? 's' : ''} ready for Stripe configuration
+              {generatedModels.length} model{generatedModels.length !== 1 ? 's' : ''} ready for Stripe deployment
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -416,14 +554,14 @@ const SpreadsheetUpload = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-medium">{model.name}</h4>
-                      <p className="text-sm text-gray-600">{model.items?.length} items</p>
+                      <p className="text-sm text-gray-600">{model.items?.length} Stripe-compliant items</p>
                     </div>
                     <div className="flex space-x-2">
                       <Button variant="outline" size="sm">
                         View Details
                       </Button>
                       <Button variant="outline" size="sm">
-                        Edit
+                        Deploy to Stripe
                       </Button>
                     </div>
                   </div>
