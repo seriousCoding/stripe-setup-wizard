@@ -137,24 +137,23 @@ function createEmailContent(notification: EmailNotification): string {
 }
 
 async function sendSMTPEmail(config: any, emailData: any): Promise<any> {
+  const conn = await Deno.connect({
+    hostname: config.host,
+    port: config.port,
+  });
+
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  // Helper function to send command and read response
+  async function sendCommand(command: string): Promise<string> {
+    await conn.write(encoder.encode(command + "\r\n"));
+    const buffer = new Uint8Array(1024);
+    const bytesRead = await conn.read(buffer);
+    return decoder.decode(buffer.subarray(0, bytesRead || 0));
+  }
+
   try {
-    // Using Deno's built-in SMTP capabilities
-    const conn = await Deno.connect({
-      hostname: config.host,
-      port: config.port,
-    });
-
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-
-    // Helper function to send command and read response
-    async function sendCommand(command: string): Promise<string> {
-      await conn.write(encoder.encode(command + "\r\n"));
-      const buffer = new Uint8Array(1024);
-      const bytesRead = await conn.read(buffer);
-      return decoder.decode(buffer.subarray(0, bytesRead || 0));
-    }
-
     // SMTP conversation
     await sendCommand(`EHLO ${config.host}`);
     
@@ -185,31 +184,14 @@ async function sendSMTPEmail(config: any, emailData: any): Promise<any> {
     await sendCommand(emailContent);
     await sendCommand("QUIT");
     
-    conn.close();
-
     return {
       messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       response: "250 Message accepted",
       accepted: [emailData.to],
       rejected: []
     };
-  } catch (error) {
-    console.error("SMTP Error:", error);
-    
-    // Fallback to simulation for testing
-    console.log("Falling back to email simulation");
-    console.log("Email would be sent to:", emailData.to);
-    console.log("Subject:", emailData.subject);
-    console.log("Content:", emailData.text);
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return {
-      messageId: `sim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      response: "250 Message simulated",
-      accepted: [emailData.to],
-      rejected: []
-    };
+  } finally {
+    conn.close();
   }
 }
 
