@@ -168,7 +168,7 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
           <h2 className="text-2xl font-bold">Price Configuration</h2>
           <p className="text-muted-foreground">Configure pricing for your product</p>
         </div>
-        <Button onClick={addPriceCard} className="bg-gradient-to-r from-indigo-600 to-purple-600">
+        <Button onClick={addPriceCard}>
           <Plus className="h-4 w-4 mr-2" />
           Add Price
         </Button>
@@ -479,7 +479,7 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
         <Button variant="outline">
           Back
         </Button>
-        <Button onClick={handleSave} className="bg-gradient-to-r from-blue-600 to-purple-600">
+        <Button onClick={handleSave}>
           Save Prices
         </Button>
       </div>
