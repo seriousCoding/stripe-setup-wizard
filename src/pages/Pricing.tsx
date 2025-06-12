@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ const Pricing = () => {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [showProductModal, setShowProductModal] = useState(false);
   const [isCreatingProducts, setIsCreatingProducts] = useState(false);
+  const [isFixingPricing, setIsFixingPricing] = useState(false);
   const [showFileProcessor, setShowFileProcessor] = useState(false);
   const { toast } = useToast();
   
@@ -48,6 +48,44 @@ const Pricing = () => {
       title: "Refreshing Data",
       description: "Fetching latest pricing and subscription information...",
     });
+  };
+
+  // Fix Stripe pricing
+  const handleFixStripePricing = async () => {
+    setIsFixingPricing(true);
+    
+    try {
+      console.log('Fixing Stripe pricing...');
+      const { data, error } = await supabase.functions.invoke('fix-stripe-pricing');
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      if (data?.success) {
+        toast({
+          title: "Pricing Fixed!",
+          description: `Created ${data.summary?.prices_created || 0} missing prices in Stripe.`,
+        });
+        console.log('Pricing fixed:', data);
+        
+        // Refresh pricing data after fixing
+        setTimeout(() => {
+          refetch();
+        }, 2000);
+      } else {
+        throw new Error(data?.error || 'Failed to fix pricing');
+      }
+    } catch (error: any) {
+      console.error('Error fixing pricing:', error);
+      toast({
+        title: "Error Fixing Pricing",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsFixingPricing(false);
+    }
   };
 
   // Create subscription products with proper Stripe billing structure
@@ -187,12 +225,11 @@ const Pricing = () => {
   const formatPrice = (tier: any) => {
     if (tier.price === 0 || tier.id === 'trial') return '$0';
     
-    // Use the actual price from the tier data, not hardcoded values
-    const dollarAmount = tier.price / 100;
-    if (dollarAmount < 1) {
-      return `$${dollarAmount.toFixed(2)}`;
+    // Price is now in dollars, not cents
+    if (tier.price < 1) {
+      return `$${tier.price.toFixed(2)}`;
     }
-    return `$${Math.round(dollarAmount)}`;
+    return `$${Math.round(tier.price)}`;
   };
 
   const getPriceSubtext = (tier: any) => {
@@ -309,6 +346,20 @@ const Pricing = () => {
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFixStripePricing}
+                className="bg-blue-600/20 border-blue-500/30 text-blue-300 hover:bg-blue-600/30"
+                disabled={isFixingPricing}
+              >
+                {isFixingPricing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <CreditCard className="h-4 w-4 mr-2" />
+                )}
+                Fix Stripe Pricing
               </Button>
               <Button
                 variant="outline"

@@ -6,7 +6,7 @@ interface StripePricingTier {
   name: string;
   subtitle: string;
   description: string;
-  price: number;
+  price: number; // Price in dollars (not cents)
   currency: string;
   icon: string;
   features: string[];
@@ -62,18 +62,17 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
           setPricingTiers(tiers);
           console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length);
         } else {
-          // Return enhanced default tiers if no products found
-          console.log(`No ${useAllProducts ? '' : 'app '}products found, using enhanced defaults`);
-          setPricingTiers(getEnhancedDefaultPricingTiers());
+          console.log(`No ${useAllProducts ? '' : 'app '}products found, using defaults`);
+          setPricingTiers(getDefaultPricingTiers());
         }
       } else {
-        console.log('No products found, using enhanced defaults');
-        setPricingTiers(getEnhancedDefaultPricingTiers());
+        console.log('No products found, using defaults');
+        setPricingTiers(getDefaultPricingTiers());
       }
     } catch (err: any) {
       console.error('Error fetching pricing data:', err);
       setError(err.message);
-      setPricingTiers(getEnhancedDefaultPricingTiers());
+      setPricingTiers(getDefaultPricingTiers());
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -83,7 +82,6 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
   useEffect(() => {
     fetchPricingData();
 
-    // Only set up interval if autoRefresh is explicitly enabled
     if (autoRefresh && refreshInterval > 0) {
       intervalRef.current = setInterval(() => {
         fetchPricingData(true);
@@ -116,6 +114,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     const defaultPrice = product.default_price;
     if (!defaultPrice) return;
 
+    // Convert from cents to dollars
     const priceAmount = defaultPrice.unit_amount ? defaultPrice.unit_amount / 100 : 0;
     const isRecurring = defaultPrice.recurring?.interval === 'month';
     const metadata = product.metadata || {};
@@ -140,7 +139,6 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       });
     }
 
-    // Add meter rate information
     if (metadata.meter_rate_after_limit) {
       usageLimits.push({
         name: 'After limit',
@@ -155,7 +153,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       name: product.name || 'Custom Plan',
       subtitle: metadata.subtitle || getSubtitleFromBillingType(metadata.billing_model_type, isRecurring),
       description: product.description || getDescriptionFromTierId(tierId),
-      price: priceAmount,
+      price: priceAmount, // Now in dollars, not cents
       currency: defaultPrice.currency?.toUpperCase() || 'USD',
       icon: getIconForTier(tierId),
       features: features,
@@ -192,21 +190,20 @@ const getFeaturesFromTierId = (tierId: string): string[] => {
       ];
     case 'starter':
       return [
-        'True pay-as-you-go pricing',
-        'No monthly commitment',
-        'No setup fees or minimums',
+        'Monthly subscription billing',
+        '1,000 transactions included',
+        'Overage billing at $0.02/transaction',
         'Basic AI data extraction',
         'Standard support'
       ];
     case 'professional':
       return [
-        'Prepaid credit system',
-        '20% bonus credits included',
-        '1,500 transaction credits',
+        'Monthly subscription billing',
+        '5,000 transactions included',
+        'Overage billing at $0.015/transaction',
         'Advanced AI processing',
         'Priority support',
-        'Usage analytics',
-        'Credit expiration: 1 year'
+        'Usage analytics'
       ];
     case 'business':
       return [
@@ -214,17 +211,15 @@ const getFeaturesFromTierId = (tierId: string): string[] => {
         'Unlimited AI processing',
         'Advanced analytics',
         'Dedicated support',
-        'Custom integrations',
-        'Priority processing'
+        'Custom integrations'
       ];
     case 'enterprise':
       return [
-        'Unlimited everything',
+        'Unlimited everything per user',
         'Multi-user management',
         'Advanced security features',
         'SLA guarantee',
-        'Custom development',
-        'White-label options'
+        'Custom development'
       ];
     default:
       return ['Custom features'];
@@ -234,15 +229,15 @@ const getFeaturesFromTierId = (tierId: string): string[] => {
 const getDescriptionFromTierId = (tierId: string): string => {
   switch (tierId) {
     case 'trial':
-      return 'Try all features risk-free before committing to a paid plan.';
+      return 'Try all features risk-free with included transactions.';
     case 'starter':
-      return 'Perfect for occasional use with true pay-as-you-go pricing.';
+      return 'Perfect for small teams with included transactions and overage billing.';
     case 'professional':
-      return 'Get 20% bonus credits with our prepaid credit system.';
+      return 'Great for growing businesses with more included transactions.';
     case 'business':
-      return 'Unlimited usage with predictable monthly costs for growing teams.';
+      return 'Unlimited usage with predictable monthly costs.';
     case 'enterprise':
-      return 'Scale with your organization with per-user pricing and enterprise features.';
+      return 'Scale with your organization with per-user pricing.';
     default:
       return 'Custom pricing plan tailored to your needs.';
   }
@@ -251,10 +246,10 @@ const getDescriptionFromTierId = (tierId: string): string => {
 const getButtonTextFromTier = (tierId: string): string => {
   switch (tierId) {
     case 'trial': return 'Start Free Trial';
-    case 'starter': return 'Start Using';
-    case 'professional': return 'Buy Credits';
+    case 'starter': return 'Subscribe Now';
+    case 'professional': return 'Subscribe Now';
     case 'business': return 'Subscribe Now';
-    case 'enterprise': return 'Contact Sales';
+    case 'enterprise': return 'Subscribe Now';
     default: return 'Select Plan';
   }
 };
@@ -264,9 +259,9 @@ const getSubtitleFromBillingType = (billingType: string, isRecurring: boolean): 
     case 'free_trial': return 'Trial';
     case 'pay_as_you_go': return 'Pay As-You-Go';
     case 'credit_burndown': return 'Credit Burndown';
-    case 'flat_recurring': return 'Flat Fee';
+    case 'flat_recurring': return 'Fixed Fee + Overage';
     case 'per_seat': return 'Per Seat';
-    default: return isRecurring ? 'Monthly Plan' : 'Pay-as-you-go';
+    default: return isRecurring ? 'Fixed Fee + Overage' : 'Pay-as-you-go';
   }
 };
 
@@ -291,32 +286,11 @@ const getIconForTier = (tierId: string): string => {
 const getDefaultPricingTiers = (): StripePricingTier[] => {
   return [
     {
-      id: 'default',
-      name: 'Default Plan',
-      subtitle: 'Setup Required',
-      description: 'Please run the Stripe cleanup and reseed process to see proper billing tiers with usage limits.',
-      price: 0,
-      currency: 'USD',
-      icon: '⚙️',
-      features: [
-        'Use the management tools above',
-        'Clean up existing products',
-        'Reseed with proper structure',
-        'Usage limits will appear after setup'
-      ],
-      buttonText: 'Setup Required',
-    }
-  ];
-};
-
-const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
-  return [
-    {
       id: 'trial',
       name: 'Free Trial',
       subtitle: 'Trial',
       description: 'Try all features risk-free with 500 included transactions monthly.',
-      price: 0,
+      price: 0, // In dollars
       currency: 'USD',
       icon: '🎁',
       features: [
@@ -340,7 +314,7 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Starter',
       subtitle: 'Fixed Fee + Overage',
       description: 'Perfect for small teams with 1,000 included transactions monthly.',
-      price: 1900, // $19.00
+      price: 19, // In dollars
       currency: 'USD',
       icon: '📄',
       features: [
@@ -363,7 +337,7 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Professional',
       subtitle: 'Fixed Fee + Overage',
       description: 'Great for growing businesses with 5,000 included transactions monthly.',
-      price: 4900, // $49.00
+      price: 49, // In dollars
       currency: 'USD',
       icon: '💼',
       features: [
@@ -372,8 +346,7 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
         'Overage billing at $0.015/transaction',
         'Advanced AI processing',
         'Priority support',
-        'Usage analytics',
-        'Advanced features'
+        'Usage analytics'
       ],
       usageLimits: [
         { name: 'Base Fee', value: '$49/month' },
@@ -390,7 +363,7 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Business',
       subtitle: 'Flat Rate',
       description: 'Unlimited usage with predictable monthly costs for growing teams.',
-      price: 9900, // $99.00
+      price: 99, // In dollars
       currency: 'USD',
       icon: '⚡',
       features: [
@@ -398,8 +371,7 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
         'Unlimited AI processing',
         'Advanced analytics',
         'Dedicated support',
-        'Custom integrations',
-        'Priority processing'
+        'Custom integrations'
       ],
       usageLimits: [
         { name: 'Monthly Fee', value: '$99 flat rate' },
@@ -414,7 +386,7 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Enterprise',
       subtitle: 'Per Seat',
       description: 'Scale with your organization with per-user pricing and enterprise features.',
-      price: 2500, // $25.00
+      price: 25, // In dollars
       currency: 'USD',
       icon: '👥',
       features: [
@@ -422,8 +394,7 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
         'Multi-user management',
         'Advanced security features',
         'SLA guarantee',
-        'Custom development',
-        'White-label options'
+        'Custom development'
       ],
       usageLimits: [
         { name: 'Per User', value: '$25/month' },

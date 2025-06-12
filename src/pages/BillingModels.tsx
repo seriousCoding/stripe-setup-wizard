@@ -7,9 +7,8 @@ import PayAsYouGoForm from '@/components/PayAsYouGoForm';
 import FlatRecurringForm from '@/components/FlatRecurringForm';
 import FixedOverageForm from '@/components/FixedOverageForm';
 import PerSeatForm from '@/components/PerSeatForm';
-import StripeConnectionStatus from '@/components/StripeConnectionStatus';
-import StripeManagement from '@/components/StripeManagement';
 import BillingModelGenerator from '@/components/BillingModelGenerator';
+import BillingDataImporter from '@/components/BillingDataImporter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp } from 'lucide-react';
@@ -85,12 +84,8 @@ const BillingModels = () => {
       description="Set up common billing patterns with guided forms"
     >
       <div className="space-y-6">
-        <MinimizableCard id="stripe-connection" title="Stripe Connection">
-          <StripeConnectionStatus />
-        </MinimizableCard>
-
-        <MinimizableCard id="stripe-management" title="Stripe Management">
-          <StripeManagement />
+        <MinimizableCard id="billing-data-importer" title="Import Billing Data">
+          <BillingDataImporter onDataImported={handleServicesDetected} />
         </MinimizableCard>
 
         <MinimizableCard id="service-definition" title="Service Definition">
