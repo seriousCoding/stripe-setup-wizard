@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,8 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Trash2, Plus, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-interface PriceCard {
-  id: string;
+interface PriceFormData {
   type: 'recurring' | 'one-off';
   pricingModel: 'flatRate' | 'package' | 'tiered' | 'usageBased';
   amount: string;
@@ -21,6 +21,10 @@ interface PriceCard {
   taxBehavior: 'inclusive' | 'exclusive' | 'unspecified';
   description: string;
   lookupKey: string;
+}
+
+interface PriceCard extends PriceFormData {
+  id: string;
   preview: {
     quantity: number;
     subtotal: number;
@@ -55,6 +59,14 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
       }
     }
   ]);
+
+  const { control, handleSubmit, watch, setValue, formState: { errors } } = useForm<{ prices: PriceFormData[] }>({
+    defaultValues: {
+      prices: priceCards.map(({ preview, id, ...rest }) => rest)
+    }
+  });
+
+  const watchedPrices = watch('prices');
 
   const pricingModels = [
     {
@@ -106,8 +118,15 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
           updated.preview = {
             ...updated.preview,
             subtotal: amount * updated.preview.quantity,
-            total: amount * updated.preview.quantity // Simplified - would include tax calculation
+            total: amount * updated.preview.quantity
           };
+        }
+        
+        // Sync with form
+        const cardIndex = priceCards.findIndex(c => c.id === id);
+        if (cardIndex !== -1) {
+          const { preview, id: cardId, ...formData } = updated;
+          setValue(`prices.${cardIndex}`, formData);
         }
         
         return updated;
@@ -135,13 +154,24 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
       }
     };
     setPriceCards(prev => [...prev, newCard]);
+    
+    // Add to form
+    const { preview, id, ...formData } = newCard;
+    setValue('prices', [...watchedPrices, formData]);
   };
 
   const removePriceCard = (id: string) => {
     setPriceCards(prev => prev.filter(card => card.id !== id));
+    
+    // Remove from form
+    const updatedPrices = watchedPrices.filter((_, index) => {
+      const cardIndex = priceCards.findIndex(c => c.id === id);
+      return index !== cardIndex;
+    });
+    setValue('prices', updatedPrices);
   };
 
-  const handleSave = () => {
+  const onSubmit = (data: { prices: PriceFormData[] }) => {
     // Validate required fields
     const isValid = priceCards.every(card => card.amount && parseFloat(card.amount) > 0);
     
@@ -162,13 +192,13 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
   };
 
   return (
-    <div className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Price Configuration</h2>
           <p className="text-muted-foreground">Configure pricing for your product</p>
         </div>
-        <Button onClick={addPriceCard} className="bg-gradient-to-r from-indigo-600 to-purple-600">
+        <Button type="button" onClick={addPriceCard} className="bg-gradient-to-r from-indigo-600 to-purple-600">
           <Plus className="h-4 w-4 mr-2" />
           Add Price
         </Button>
@@ -183,6 +213,7 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
                   <CardTitle className="text-lg">Price {index + 1}</CardTitle>
                   {priceCards.length > 1 && (
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => removePriceCard(card.id)}
@@ -198,55 +229,71 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
                 {/* Price Type Selection */}
                 <div className="space-y-3">
                   <Label className="text-base font-medium">Price Type</Label>
-                  <RadioGroup
-                    value={card.type}
-                    onValueChange={(value: 'recurring' | 'one-off') => 
-                      updatePriceCard(card.id, 'type', value)
-                    }
-                    className="grid grid-cols-2 gap-4"
-                  >
-                    <div className="flex items-center space-x-2 border rounded-lg p-4">
-                      <RadioGroupItem value="recurring" id={`recurring-${card.id}`} />
-                      <div>
-                        <Label htmlFor={`recurring-${card.id}`} className="font-medium">
-                          Recurring
-                        </Label>
-                        <p className="text-sm text-muted-foreground">Charge an ongoing fee</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2 border rounded-lg p-4">
-                      <RadioGroupItem value="one-off" id={`one-off-${card.id}`} />
-                      <div>
-                        <Label htmlFor={`one-off-${card.id}`} className="font-medium">
-                          One-off
-                        </Label>
-                        <p className="text-sm text-muted-foreground">Charge a one-time fee</p>
-                      </div>
-                    </div>
-                  </RadioGroup>
+                  <Controller
+                    name={`prices.${index}.type`}
+                    control={control}
+                    render={({ field }) => (
+                      <RadioGroup
+                        value={field.value}
+                        onValueChange={(value: 'recurring' | 'one-off') => {
+                          field.onChange(value);
+                          updatePriceCard(card.id, 'type', value);
+                        }}
+                        className="grid grid-cols-2 gap-4"
+                      >
+                        <div className="flex items-center space-x-2 border rounded-lg p-4">
+                          <RadioGroupItem value="recurring" id={`recurring-${card.id}`} />
+                          <div>
+                            <Label htmlFor={`recurring-${card.id}`} className="font-medium">
+                              Recurring
+                            </Label>
+                            <p className="text-sm text-muted-foreground">Charge an ongoing fee</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2 border rounded-lg p-4">
+                          <RadioGroupItem value="one-off" id={`one-off-${card.id}`} />
+                          <div>
+                            <Label htmlFor={`one-off-${card.id}`} className="font-medium">
+                              One-off
+                            </Label>
+                            <p className="text-sm text-muted-foreground">Charge a one-time fee</p>
+                          </div>
+                        </div>
+                      </RadioGroup>
+                    )}
+                  />
                 </div>
 
                 {/* Pricing Model */}
                 <div className="space-y-3">
                   <Label className="text-base font-medium">Pricing Model</Label>
-                  <Select
-                    value={card.pricingModel}
-                    onValueChange={(value) => updatePriceCard(card.id, 'pricingModel', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pricingModels.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>
-                          <div>
-                            <div className="font-medium">{model.name}</div>
-                            <div className="text-sm text-muted-foreground">{model.description}</div>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Controller
+                    name={`prices.${index}.pricingModel`}
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          updatePriceCard(card.id, 'pricingModel', value);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {pricingModels.map((model) => (
+                            <SelectItem key={model.id} value={model.id}>
+                              <div>
+                                <div className="font-medium">{model.name}</div>
+                                <div className="text-sm text-muted-foreground">{model.description}</div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                   {card.pricingModel === 'flatRate' && (
                     <p className="text-sm text-muted-foreground">
                       A single, fixed price.{' '}
@@ -272,31 +319,53 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
                       <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
                         $
                       </span>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={card.amount}
-                        onChange={(e) => updatePriceCard(card.id, 'amount', e.target.value)}
-                        className="pl-8"
+                      <Controller
+                        name={`prices.${index}.amount`}
+                        control={control}
+                        rules={{ required: "Amount is required", min: { value: 0.01, message: "Amount must be greater than 0" } }}
+                        render={({ field }) => (
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            className="pl-8"
+                            onChange={(e) => {
+                              field.onChange(e.target.value);
+                              updatePriceCard(card.id, 'amount', e.target.value);
+                            }}
+                          />
+                        )}
                       />
+                      {errors.prices?.[index]?.amount && (
+                        <p className="text-sm text-red-500 mt-1">{errors.prices[index]?.amount?.message}</p>
+                      )}
                     </div>
-                    <Select
-                      value={card.currency}
-                      onValueChange={(value) => updatePriceCard(card.id, 'currency', value)}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {currencies.map((currency) => (
-                          <SelectItem key={currency.value} value={currency.value}>
-                            {currency.value}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Controller
+                      name={`prices.${index}.currency`}
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          value={field.value}
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            updatePriceCard(card.id, 'currency', value);
+                          }}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {currencies.map((currency) => (
+                              <SelectItem key={currency.value} value={currency.value}>
+                                {currency.value}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
                   </div>
                 </div>
 
@@ -306,29 +375,38 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
                     <Label className="text-base font-medium">Include tax in price</Label>
                     <Info className="h-4 w-4 text-muted-foreground" />
                   </div>
-                  <Select
-                    value={card.taxBehavior}
-                    onValueChange={(value) => updatePriceCard(card.id, 'taxBehavior', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unspecified">Select...</SelectItem>
-                      <SelectItem value="inclusive">
-                        <div>
-                          <div className="font-medium">Yes</div>
-                          <div className="text-sm text-muted-foreground">Tax is included in the price.</div>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="exclusive">
-                        <div>
-                          <div className="font-medium">No</div>
-                          <div className="text-sm text-muted-foreground">Tax is added to the price.</div>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Controller
+                    name={`prices.${index}.taxBehavior`}
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          updatePriceCard(card.id, 'taxBehavior', value);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unspecified">Select...</SelectItem>
+                          <SelectItem value="inclusive">
+                            <div>
+                              <div className="font-medium">Yes</div>
+                              <div className="text-sm text-muted-foreground">Tax is included in the price.</div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="exclusive">
+                            <div>
+                              <div className="font-medium">No</div>
+                              <div className="text-sm text-muted-foreground">Tax is added to the price.</div>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                 </div>
 
                 {/* Billing Period (for recurring) */}
@@ -337,21 +415,30 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
                     <Separator />
                     <div className="space-y-3">
                       <Label className="text-base font-medium">Billing Period</Label>
-                      <Select
-                        value={card.interval}
-                        onValueChange={(value) => updatePriceCard(card.id, 'interval', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {intervals.map((interval) => (
-                            <SelectItem key={interval.value} value={interval.value}>
-                              {interval.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name={`prices.${index}.interval`}
+                        control={control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={(value) => {
+                              field.onChange(value);
+                              updatePriceCard(card.id, 'interval', value);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {intervals.map((interval) => (
+                                <SelectItem key={interval.value} value={interval.value}>
+                                  {interval.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
                     </div>
                   </>
                 )}
@@ -366,10 +453,19 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
                     <p className="text-sm text-muted-foreground">
                       Use to organize your prices. Not shown to customers.
                     </p>
-                    <Input
-                      placeholder="Enter description"
-                      value={card.description}
-                      onChange={(e) => updatePriceCard(card.id, 'description', e.target.value)}
+                    <Controller
+                      name={`prices.${index}.description`}
+                      control={control}
+                      render={({ field }) => (
+                        <Input
+                          {...field}
+                          placeholder="Enter description"
+                          onChange={(e) => {
+                            field.onChange(e.target.value);
+                            updatePriceCard(card.id, 'description', e.target.value);
+                          }}
+                        />
+                      )}
                     />
                   </div>
 
@@ -386,10 +482,19 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
                       </a>{' '}
                       make it easier to manage and make future pricing changes by using a unique key for each price.
                     </p>
-                    <Input
-                      placeholder="e.g. standard_monthly"
-                      value={card.lookupKey}
-                      onChange={(e) => updatePriceCard(card.id, 'lookupKey', e.target.value)}
+                    <Controller
+                      name={`prices.${index}.lookupKey`}
+                      control={control}
+                      render={({ field }) => (
+                        <Input
+                          {...field}
+                          placeholder="e.g. standard_monthly"
+                          onChange={(e) => {
+                            field.onChange(e.target.value);
+                            updatePriceCard(card.id, 'lookupKey', e.target.value);
+                          }}
+                        />
+                      )}
                     />
                   </div>
                 </div>
@@ -476,14 +581,14 @@ const StripePricingForm = ({ productId, onSave }: StripePricingFormProps) => {
 
       {/* Action Buttons */}
       <div className="flex justify-end space-x-3 pt-6 border-t">
-        <Button variant="outline">
+        <Button type="button" variant="outline">
           Back
         </Button>
-        <Button onClick={handleSave} className="bg-gradient-to-r from-blue-600 to-purple-600">
+        <Button type="submit" className="bg-gradient-to-r from-blue-600 to-purple-600">
           Save Prices
         </Button>
       </div>
-    </div>
+    </form>
   );
 };
 
