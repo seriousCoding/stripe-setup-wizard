@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { BillingModel, BillingItem } from './stripeService';
 
@@ -245,6 +244,17 @@ export class BillingModelService {
       const meterName = item['Meter Name'] || item.meter_name;
       const unit = item.Unit || item.unit;
       
+      // Create base metadata object with proper typing
+      const baseMetadata: Record<string, string> = {
+        ai_optimized: 'true',
+        original_price: price.toString(),
+        confidence_score: confidence.toString(),
+        detected_patterns: detectedPatterns.join(', '),
+        unit_type: unit || 'units',
+        meter_name: meterName || '',
+        billing_strategy: meteringStrategy
+      };
+
       const optimizedItem = {
         id: `item_${index}`,
         product: productName,
@@ -257,18 +267,10 @@ export class BillingModelService {
         billing_scheme: 'per_unit',
         usage_type: this.intelligentTypeDetection(item, price, productName) === 'metered' ? 'metered' : undefined,
         aggregate_usage: this.intelligentTypeDetection(item, price, productName) === 'metered' ? 'sum' : undefined,
-        metadata: {
-          ai_optimized: 'true',
-          original_price: price.toString(),
-          confidence_score: confidence.toString(),
-          detected_patterns: detectedPatterns.join(', '),
-          unit_type: unit || 'units',
-          meter_name: meterName || '',
-          billing_strategy: meteringStrategy
-        }
+        metadata: baseMetadata
       };
 
-      // Add Stripe-specific enhancements
+      // Add Stripe-specific enhancements for metered items
       if (optimizedItem.type === 'metered') {
         optimizedItem.metadata.meter_aggregation = this.determineAggregation(unit);
         optimizedItem.metadata.pricing_tier = this.determinePricingTier(price);
