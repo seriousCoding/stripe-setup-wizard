@@ -123,7 +123,7 @@ const StripePricing = () => {
 
       // Add billing scheme and usage type
       if (data.billingScheme) {
-        priceData.billing_scheme = data.billingScheme;
+        priceData.billing_scheme = data.billingScheme as 'per_unit' | 'tiered';
       }
 
       // Add transform quantity if specified
@@ -156,8 +156,12 @@ const StripePricing = () => {
         priceData.recurring = {
           interval,
           interval_count,
-          usage_type: data.usageType,
         };
+
+        // Add usage type for recurring prices
+        if (data.usageType) {
+          priceData.usage_type = data.usageType as 'licensed' | 'metered';
+        }
 
         // Add trial period if specified
         if (data.trialPeriodDays) {
@@ -178,11 +182,12 @@ const StripePricing = () => {
           unit_amount: Math.round(parseFloat(data.meteredPricePerUnit) * 100),
           currency: data.currency.toLowerCase(),
           nickname: `${data.nickname || 'Metered'} - Usage`,
-          billing_scheme: 'per_unit',
+          billing_scheme: 'per_unit' as const,
+          usage_type: 'metered' as const,
+          aggregate_usage: data.meteredAggregation,
           recurring: {
             interval: 'month' as const,
-            usage_type: 'metered' as const,
-            aggregate_usage: data.meteredAggregation,
+            interval_count: 1,
           },
           metadata: {
             pricing_model: 'metered_usage',
