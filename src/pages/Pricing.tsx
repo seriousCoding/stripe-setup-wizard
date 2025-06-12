@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, RefreshCw, AlertCircle, Activity, ArrowLeft, Crown, Info, CreditCard } from 'lucide-react';
+import { Check, RefreshCw, AlertCircle, Activity, ArrowLeft, Crown, Info, CreditCard, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useStripePricing } from '@/hooks/useStripePricing';
@@ -17,6 +17,7 @@ const Pricing = () => {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [showProductModal, setShowProductModal] = useState(false);
+  const [isCreatingProducts, setIsCreatingProducts] = useState(false);
   const { toast } = useToast();
   
   // Remove automated refresh - only manual refresh
@@ -45,6 +46,44 @@ const Pricing = () => {
       title: "Refreshing Data",
       description: "Fetching latest pricing and subscription information...",
     });
+  };
+
+  // Create subscription products with proper Stripe billing structure
+  const handleCreateSubscriptionProducts = async () => {
+    setIsCreatingProducts(true);
+    
+    try {
+      console.log('Creating subscription products with meters and pricing...');
+      const { data, error } = await supabase.functions.invoke('create-subscription-products');
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      if (data?.success) {
+        toast({
+          title: "Subscription Products Created!",
+          description: `Created ${data.summary?.products_created || 0} subscription products with billing meters.`,
+        });
+        console.log('Subscription products created:', data);
+        
+        // Refresh pricing data after creating products
+        setTimeout(() => {
+          refetch();
+        }, 2000);
+      } else {
+        throw new Error(data?.error || 'Failed to create subscription products');
+      }
+    } catch (error: any) {
+      console.error('Error creating subscription products:', error);
+      toast({
+        title: "Error Creating Products",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingProducts(false);
+    }
   };
 
   const handleProductInfo = (tier: any) => {
@@ -246,19 +285,35 @@ const Pricing = () => {
               </Button>
             </Link>
             <h1 className="text-4xl font-bold text-purple-500">Choose Your Plan</h1>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefreshPricing}
-              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-              disabled={isRefreshing}
-            >
-              {isRefreshing ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-            </Button>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefreshPricing}
+                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                disabled={isRefreshing}
+              >
+                {isRefreshing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCreateSubscriptionProducts}
+                className="bg-green-600/20 border-green-500/30 text-green-300 hover:bg-green-600/30"
+                disabled={isCreatingProducts}
+              >
+                {isCreatingProducts ? (
+                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Settings className="h-4 w-4 mr-2" />
+                )}
+                Create Subscription Products
+              </Button>
+            </div>
           </div>
 
           {/* Enhanced Current Subscription Status */}
@@ -285,6 +340,17 @@ const Pricing = () => {
         <div className="mb-8">
           <UsageDashboard period="current_month" limits={usageLimits} />
         </div>
+
+        {/* Show setup notice if no products found */}
+        {pricingTiers.length === 0 && (
+          <div className="mb-8 p-6 bg-yellow-600/20 border border-yellow-500/30 rounded-lg text-center">
+            <AlertCircle className="h-8 w-8 text-yellow-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-yellow-300 mb-2">Subscription Products Not Found</h3>
+            <p className="text-yellow-200 mb-4">
+              Click "Create Subscription Products" above to set up the proper Stripe billing structure with meters, pricing tiers, and subscription products.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {pricingTiers.map((tier) => {
