@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
 import { aiParsingService, ParsedData } from '@/services/aiParsingService';
 import EnhancedFileProcessor from './EnhancedFileProcessor';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ServiceDefinitionProps {
   pasteData: string;
@@ -36,6 +36,7 @@ const ServiceDefinition = ({
   const [aiAnalysis, setAiAnalysis] = useState<ParsedData | null>(null);
   const [internalPasteData, setInternalPasteData] = useState('');
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const cleanAndNormalizeText = (text: string): string => {
     // Remove non-printable characters and normalize
@@ -161,7 +162,7 @@ const ServiceDefinition = ({
       processedData = parseRawData(rawText);
     }
     
-    const analysis = aiParsingService.parseData(processedData, 'enhanced');
+    const analysis = aiParsingService.parseData(processedData, 'text');
     setAiAnalysis(analysis);
     
     if (analysis.items.length > 0) {
@@ -198,7 +199,7 @@ const ServiceDefinition = ({
       const directParsed = parseRawData(internalPasteData);
       
       if (directParsed.length > 0) {
-        const analysis = aiParsingService.parseData(directParsed, 'paste');
+        const analysis = aiParsingService.parseData(directParsed, 'text');
         setAiAnalysis(analysis);
         
         if (analysis.items.length > 0) {
@@ -262,7 +263,7 @@ const ServiceDefinition = ({
           // Final fallback - try our direct parser anyway
           const fallbackData = parseRawData(internalPasteData);
           if (fallbackData.length > 0) {
-            const analysis = aiParsingService.parseData(fallbackData, 'fallback');
+            const analysis = aiParsingService.parseData(fallbackData, 'text');
             setAiAnalysis(analysis);
             setDetectedServices(analysis.items);
             onServicesDetected?.(analysis.items);
@@ -345,6 +346,21 @@ The parser will automatically detect and extract:
           </div>
         </CardContent>
       </Card>
+
+      {/* Only show camera option on mobile */}
+      {isMobile && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="space-y-4">
+              <Label>Take Photo (Mobile Only)</Label>
+              <Button onClick={handleScanImage} className="w-full">
+                <Camera className="h-4 w-4 mr-2" />
+                Take Photo of Pricing Document
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {aiAnalysis && (
         <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">

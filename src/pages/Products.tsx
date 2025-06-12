@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,6 +57,10 @@ interface StripeProduct {
   usage_records?: any[];
   subscription_data?: any;
   billing_thresholds?: any;
+  // Computed properties
+  totalPriceOptions?: number;
+  hasMeteredPricing?: boolean;
+  isRecurring?: boolean;
 }
 
 interface ProductFormData {
@@ -167,8 +170,8 @@ const Products = () => {
   const getBillingTierInfo = (product: StripeProduct) => {
     const metadata = product.metadata || {};
     const defaultPrice = product.default_price;
-    const hasMetered = product.hasMeteredPricing;
-    const isRecurring = product.isRecurring;
+    const hasMetered = product.hasMeteredPricing || false;
+    const isRecurring = product.isRecurring || false;
     
     // Check metadata for tier information
     if (metadata.tier_id) {
