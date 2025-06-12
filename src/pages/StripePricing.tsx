@@ -11,6 +11,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { stripeService } from '@/services/stripeService';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 
 interface PricingFormData {
   billingType: 'recurring' | 'oneOff';
@@ -22,6 +24,8 @@ interface PricingFormData {
   description: string;
   lookupKey: string;
   unitQuantity: string;
+  productName: string;
+  productDescription: string;
 }
 
 const StripePricing = () => {
@@ -41,6 +45,8 @@ const StripePricing = () => {
       description: '',
       lookupKey: '',
       unitQuantity: '1',
+      productName: '',
+      productDescription: '',
     },
   });
 
@@ -61,8 +67,8 @@ const StripePricing = () => {
 
       // First create the product
       const productResult = await stripeService.createProduct({
-        name: `Product for ${data.pricingModel} pricing`,
-        description: data.description || undefined,
+        name: data.productName || `Product for ${data.pricingModel} pricing`,
+        description: data.productDescription || data.description || undefined,
       });
 
       if (productResult.error) {
@@ -140,6 +146,21 @@ const StripePricing = () => {
     }).format(num);
   };
 
+  const getPricingModelDescription = (model: string) => {
+    switch (model) {
+      case 'flatRate':
+        return 'Offer a fixed price for a single unit or package.';
+      case 'package':
+        return 'Price by package, bundle, or group of units.';
+      case 'tiered':
+        return 'Offer different price points based on unit quantity.';
+      case 'usageBased':
+        return 'Pay-as-you-go billing based on metered usage.';
+      default:
+        return '';
+    }
+  };
+
   return (
     <DashboardLayout
       title="Stripe Pricing Builder"
@@ -167,7 +188,7 @@ const StripePricing = () => {
                           <RadioGroup
                             value={field.value}
                             onValueChange={field.onChange}
-                            className="flex space-x-4"
+                            className="flex space-x-6"
                           >
                             <div className="flex items-center space-x-2">
                               <RadioGroupItem value="recurring" id="recurring" />
@@ -223,7 +244,7 @@ const StripePricing = () => {
                             <SelectItem value="tiered">
                               <div>
                                 <div className="font-medium">Tiered pricing</div>
-                                <div className="text-sm text-muted-foreground">Offer different price points base on unit quantity.</div>
+                                <div className="text-sm text-muted-foreground">Offer different price points based on unit quantity.</div>
                               </div>
                             </SelectItem>
                             <SelectItem value="usageBased">
@@ -234,10 +255,63 @@ const StripePricing = () => {
                             </SelectItem>
                           </SelectContent>
                         </Select>
+                        <div className="text-sm text-muted-foreground mt-2">
+                          {getPricingModelDescription(watchedValues.pricingModel)}
+                          {watchedValues.pricingModel === 'flatRate' && (
+                            <span>
+                              {' '}
+                              <a 
+                                href="https://stripe.com/docs/products-prices/pricing-models#flat-rate" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline"
+                              >
+                                View docs
+                              </a>
+                            </span>
+                          )}
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  <Separator />
+
+                  {/* Product Information */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Product Information</h3>
+                    
+                    <FormField
+                      control={form.control}
+                      name="productName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Product Name (required)</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Enter product name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="productDescription"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Product Description</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Describe what customers are purchasing" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <Separator />
 
                   {/* Price Section */}
                   <div className="space-y-4">
@@ -261,7 +335,7 @@ const StripePricing = () => {
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                className="rounded-l-none"
+                                className="rounded-l-none border-l-0"
                               />
                             </FormControl>
                             <FormControl>
@@ -273,6 +347,8 @@ const StripePricing = () => {
                                   <SelectItem value="USD">USD</SelectItem>
                                   <SelectItem value="EUR">EUR</SelectItem>
                                   <SelectItem value="GBP">GBP</SelectItem>
+                                  <SelectItem value="CAD">CAD</SelectItem>
+                                  <SelectItem value="AUD">AUD</SelectItem>
                                 </SelectContent>
                               </Select>
                             </FormControl>
@@ -288,7 +364,7 @@ const StripePricing = () => {
                       name="taxBehavior"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Tax behavior</FormLabel>
+                          <FormLabel>Include tax in price</FormLabel>
                           <Select value={field.value} onValueChange={field.onChange}>
                             <FormControl>
                               <SelectTrigger>
@@ -319,36 +395,41 @@ const StripePricing = () => {
 
                   {/* Billing Period (only for recurring) */}
                   {watchedValues.billingType === 'recurring' && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">Billing period</h3>
-                      <FormField
-                        control={form.control}
-                        name="interval"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Price recurring interval</FormLabel>
-                            <Select value={field.value} onValueChange={field.onChange}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="day">Daily</SelectItem>
-                                <SelectItem value="week">Weekly</SelectItem>
-                                <SelectItem value="month">Monthly</SelectItem>
-                                <SelectItem value="year">Yearly</SelectItem>
-                                <SelectItem value="quarter">Every 3 months</SelectItem>
-                                <SelectItem value="semiannual">Every 6 months</SelectItem>
-                                <SelectItem value="custom">Custom</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                    <>
+                      <Separator />
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold">Billing period</h3>
+                        <FormField
+                          control={form.control}
+                          name="interval"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Price recurring interval</FormLabel>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="day">Daily</SelectItem>
+                                  <SelectItem value="week">Weekly</SelectItem>
+                                  <SelectItem value="month">Monthly</SelectItem>
+                                  <SelectItem value="year">Yearly</SelectItem>
+                                  <SelectItem value="quarter">Every 3 months</SelectItem>
+                                  <SelectItem value="semiannual">Every 6 months</SelectItem>
+                                  <SelectItem value="custom">Custom</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </>
                   )}
+
+                  <Separator />
 
                   {/* Advanced Section */}
                   <div className="space-y-4">
@@ -378,7 +459,15 @@ const StripePricing = () => {
                             <Input {...field} placeholder="e.g. standard_monthly" />
                           </FormControl>
                           <div className="text-sm text-muted-foreground">
-                            Lookup keys make it easier to manage and make future pricing changes by using a unique key for each price.
+                            <a
+                              href="https://stripe.com/docs/products-prices/manage-prices#lookup-keys"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              Lookup keys
+                            </a>{' '}
+                            make it easier to manage and make future pricing changes by using a unique key for each price.
                           </div>
                           <FormMessage />
                         </FormItem>
@@ -421,11 +510,15 @@ const StripePricing = () => {
                 />
               </div>
 
+              <Separator />
+
               <div className="text-sm">
                 {previewQuantity} × {formatCurrency(watchedValues.amount || '0')} = {formatCurrency(previewAmount)}
               </div>
 
-              <div className="border-t pt-4 space-y-2">
+              <Separator />
+
+              <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
                   <span className="font-medium">{formatCurrency(previewAmount)}</span>

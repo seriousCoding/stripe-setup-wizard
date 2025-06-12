@@ -116,10 +116,14 @@ const Pricing = () => {
     }
 
     try {
+      // For starter and professional plans, use one-time payment mode
+      const isOneTimePayment = planId === 'starter' || planId === 'professional';
+      
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: { 
           tier_id: planId,
-          user_email: user.email
+          user_email: user.email,
+          mode: isOneTimePayment ? 'payment' : 'subscription'
         }
       });
 
@@ -128,6 +132,7 @@ const Pricing = () => {
       }
 
       if (data?.url) {
+        // Navigate in the same tab instead of opening a new one
         window.location.href = data.url;
       }
     } catch (error: any) {
