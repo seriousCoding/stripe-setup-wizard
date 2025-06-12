@@ -98,89 +98,148 @@ serve(async (req) => {
       );
     }
 
-    // Fetch products from Stripe to find the right price
+    // Find products with proper subscription setup
     const products = await stripe.products.list({
       active: true,
       limit: 100,
+      expand: ['data.default_price']
     });
 
     logStep("Found products", { count: products.data.length });
 
-    // Find the product that matches our plan
     let targetPrice = null;
+    let targetProduct = null;
+
+    // Look for existing properly configured subscription products
     for (const product of products.data) {
-      if (product.metadata?.created_via === 'billing_app_v1') {
+      if (product.metadata?.created_via === 'billing_app_v1' || 
+          product.metadata?.tier_id === priceId ||
+          product.name.toLowerCase().includes(planName.toLowerCase())) {
+        
+        // Get all prices for this product
         const prices = await stripe.prices.list({
           product: product.id,
           active: true,
         });
         
-        // Match based on plan tier or product name
-        if (product.metadata?.tier_id === priceId || 
-            product.name.toLowerCase().includes(planName.toLowerCase())) {
-          targetPrice = prices.data[0];
-          logStep("Found matching price", { 
-            priceId: targetPrice?.id, 
-            productName: product.name,
-            tierMatch: product.metadata?.tier_id,
-            isRecurring: !!targetPrice?.recurring,
-            unitAmount: targetPrice?.unit_amount
-          });
-          break;
+        logStep("Checking product prices", { 
+          productId: product.id, 
+          productName: product.name, 
+          priceCount: prices.data.length 
+        });
+
+        // For business and enterprise plans, we need recurring prices
+        if (priceId === 'business' || priceId === 'enterprise') {
+          const recurringPrice = prices.data.find(p => p.recurring?.interval === 'month');
+          if (recurringPrice) {
+            targetPrice = recurringPrice;
+            targetProduct = product;
+            logStep("Found recurring price for subscription plan", { 
+              priceId: targetPrice.id, 
+              amount: targetPrice.unit_amount,
+              interval: targetPrice.recurring?.interval
+            });
+            break;
+          }
+        } else {
+          // For starter and professional, we can use one-time prices
+          const oneTimePrice = prices.data.find(p => !p.recurring);
+          if (oneTimePrice) {
+            targetPrice = oneTimePrice;
+            targetProduct = product;
+            logStep("Found one-time price for credit plan", { 
+              priceId: targetPrice.id, 
+              amount: targetPrice.unit_amount
+            });
+            break;
+          }
         }
       }
     }
 
-    // If no price found, create appropriate price based on plan type
-    if (!targetPrice) {
-      logStep("No existing price found, creating new price");
+    // If no properly configured product found, create one
+    if (!targetPrice || !targetProduct) {
+      logStep("No existing properly configured product found, creating new subscription product");
       
-      const priceAmount = {
-        'starter': 99, // $0.99
-        'professional': 4900, // $49
-        'business': 9900, // $99
-        'enterprise': 2500 // $25
-      }[priceId] || 99;
-
-      // Create product first
-      const product = await stripe.products.create({
+      // Create product with proper metadata
+      const productData = {
         name: `${planName} Plan`,
+        description: `${planName} subscription plan with metered usage`,
         metadata: {
           tier_id: priceId,
-          created_via: 'billing_app_v1'
+          created_via: 'billing_app_v1',
+          billing_model_type: priceId === 'business' || priceId === 'enterprise' ? 'flat_recurring' : 'credit_burndown'
         }
-      });
+      };
 
-      // Determine billing model based on plan
-      const billingModel = {
-        'starter': 'one_time', // Pay-as-you-go, one-time purchase
-        'professional': 'one_time', // Credit package, one-time purchase
-        'business': 'recurring', // Monthly subscription
-        'enterprise': 'recurring' // Monthly subscription
-      }[priceId] || 'one_time';
+      targetProduct = await stripe.products.create(productData);
+      logStep("Created new product", { productId: targetProduct.id, name: targetProduct.name });
+
+      // Create appropriate price based on plan type
+      const priceAmount = {
+        'starter': 99, // $0.99 - pay as you go
+        'professional': 4900, // $49 - credit package
+        'business': 9900, // $99/month - unlimited recurring
+        'enterprise': 2500 // $25/month per user
+      }[priceId] || 99;
 
       const priceData: any = {
         currency: 'usd',
         unit_amount: priceAmount,
-        product: product.id,
+        product: targetProduct.id,
         metadata: {
           tier_id: priceId,
           plan_name: planName
         }
       };
 
-      // Add recurring billing only for business and enterprise
-      if (billingModel === 'recurring') {
+      // Add recurring billing for subscription plans
+      if (priceId === 'business' || priceId === 'enterprise') {
         priceData.recurring = { interval: 'month' };
+        logStep("Creating recurring price for subscription plan");
+      } else {
+        logStep("Creating one-time price for credit plan");
       }
 
       targetPrice = await stripe.prices.create(priceData);
-      
       logStep("Created new price", { 
         priceId: targetPrice.id, 
         amount: priceAmount,
-        recurring: billingModel === 'recurring'
+        recurring: !!priceData.recurring
       });
+
+      // For subscription plans, ensure we have proper meters set up
+      if (priceId === 'business' || priceId === 'enterprise') {
+        try {
+          // Check if meter exists
+          const meters = await stripe.billing.meters.list({ limit: 100 });
+          let transactionMeter = meters.data.find(m => m.event_name === 'transaction_usage');
+          
+          if (!transactionMeter) {
+            // Create transaction usage meter
+            transactionMeter = await stripe.billing.meters.create({
+              display_name: 'Transaction Usage',
+              event_name: 'transaction_usage',
+              customer_mapping: {
+                event_payload_key: 'customer_id',
+                type: 'by_id'
+              },
+              default_aggregation: {
+                formula: 'sum'
+              },
+              value_settings: {
+                event_payload_key: 'value'
+              }
+            });
+            logStep("Created transaction usage meter", { meterId: transactionMeter.id });
+          } else {
+            logStep("Found existing transaction usage meter", { meterId: transactionMeter.id });
+          }
+        } catch (meterError) {
+          logStep("Error setting up meters", { error: meterError.message });
+          // Continue without meters for now - they can be set up later
+        }
+      }
     }
 
     // Determine checkout mode based on price type
@@ -204,6 +263,7 @@ serve(async (req) => {
         user_id: data.user.id,
         plan_id: priceId,
         plan_name: planName,
+        product_id: targetProduct.id
       },
     };
 
@@ -214,6 +274,7 @@ serve(async (req) => {
           plan_id: priceId,
           plan_name: planName,
           user_id: data.user.id,
+          product_id: targetProduct.id
         }
       };
       logStep("Added subscription metadata");
@@ -225,6 +286,7 @@ serve(async (req) => {
       sessionId: session.id, 
       mode: mode,
       priceId: targetPrice.id,
+      productId: targetProduct.id,
       url: session.url
     });
 

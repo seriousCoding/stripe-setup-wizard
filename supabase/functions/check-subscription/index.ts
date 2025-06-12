@@ -42,11 +42,12 @@ serve(async (req) => {
     const { data, error: authError } = await supabaseClient.auth.getUser(token);
     
     if (authError || !data.user) {
-      logStep("Auth error", { error: authError });
+      logStep("Authentication failed", { error: authError?.message });
       throw new Error('User not authenticated');
     }
 
-    logStep("User authenticated", { email: data.user.email });
+    const user = data.user;
+    logStep("User authenticated", { userId: user.id, email: user.email });
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
@@ -54,7 +55,7 @@ serve(async (req) => {
 
     // Find customer by email
     const customers = await stripe.customers.list({
-      email: data.user.email,
+      email: user.email,
       limit: 1
     });
 
@@ -77,16 +78,56 @@ serve(async (req) => {
     const customer = customers.data[0];
     logStep("Customer found", { customerId: customer.id });
 
-    // Get all subscriptions (not just active ones) to see current status
+    // Get active subscriptions
     const subscriptions = await stripe.subscriptions.list({
       customer: customer.id,
+      status: 'active',
+      expand: ['data.items.data.price.product'],
       limit: 10
     });
 
-    logStep("All subscriptions found", { count: subscriptions.data.length });
+    logStep("Active subscriptions found", { count: subscriptions.data.length });
 
     if (subscriptions.data.length === 0) {
-      logStep("No subscriptions found");
+      // Check for one-time payments/credits by looking at recent payment intents
+      const paymentIntents = await stripe.paymentIntents.list({
+        customer: customer.id,
+        limit: 10
+      });
+
+      const recentSuccessfulPayment = paymentIntents.data.find(
+        pi => pi.status === 'succeeded' && 
+        pi.created > Math.floor(Date.now() / 1000) - (30 * 24 * 60 * 60) // Last 30 days
+      );
+
+      if (recentSuccessfulPayment) {
+        logStep("Found recent successful payment, checking for credit plans");
+        
+        // This could be a credit purchase - determine tier based on amount
+        const amount = recentSuccessfulPayment.amount;
+        let creditTier = 'starter';
+        
+        if (amount >= 4900) { // $49 or more
+          creditTier = 'professional';
+        }
+
+        return new Response(
+          JSON.stringify({ 
+            subscribed: true,
+            subscription_tier: creditTier,
+            subscription_status: 'credit_active',
+            customer_id: customer.id,
+            payment_intent_id: recentSuccessfulPayment.id,
+            price_amount: amount
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      }
+
+      logStep("No subscriptions or recent payments found");
       return new Response(
         JSON.stringify({ 
           subscribed: false,
@@ -101,14 +142,15 @@ serve(async (req) => {
       );
     }
 
-    // Find the most recent subscription
+    // Process the most recent active subscription
     const subscription = subscriptions.data[0];
     const price = subscription.items.data[0].price;
     
-    logStep("Subscription found", { 
+    logStep("Processing subscription", { 
       subscriptionId: subscription.id,
       status: subscription.status,
-      currentPeriodEnd: subscription.current_period_end
+      currentPeriodEnd: subscription.current_period_end,
+      priceId: price.id
     });
     
     // Determine tier based on product metadata or price amount
@@ -117,35 +159,36 @@ serve(async (req) => {
     
     // Get the product to check for tier metadata
     let product = null;
-    if (price.product && typeof price.product === 'string') {
+    if (price.product && typeof price.product === 'object') {
+      product = price.product;
+    } else if (typeof price.product === 'string') {
       try {
         product = await stripe.products.retrieve(price.product);
-        logStep("Product retrieved", { productId: product.id, metadata: product.metadata });
-        
-        // Check for tier_id in product metadata first
-        if (product.metadata?.tier_id) {
-          subscriptionTier = product.metadata.tier_id;
-          logStep("Tier from metadata", { tier: subscriptionTier });
-        }
       } catch (error) {
         logStep("Error retrieving product", { error: error.message });
       }
     }
-    
-    // Fallback to price-based tier determination if no metadata
-    if (subscriptionTier === 'unknown') {
-      if (amount === 0) {
-        subscriptionTier = 'trial';
-      } else if (amount === 99) {
-        subscriptionTier = 'starter';
-      } else if (amount === 4900) {
-        subscriptionTier = 'professional';
-      } else if (amount === 9900) {
-        subscriptionTier = 'business';
-      } else if (amount === 2500) {
-        subscriptionTier = 'enterprise';
+
+    if (product) {
+      logStep("Product retrieved", { productId: product.id, metadata: product.metadata });
+      
+      // Check for tier_id in product metadata first
+      if (product.metadata?.tier_id) {
+        subscriptionTier = product.metadata.tier_id;
+        logStep("Tier from metadata", { tier: subscriptionTier });
+      } else {
+        // Fallback to price-based tier determination
+        if (amount === 9900) {
+          subscriptionTier = 'business';
+        } else if (amount === 2500) {
+          subscriptionTier = 'enterprise';
+        } else if (amount >= 4900) {
+          subscriptionTier = 'professional';
+        } else if (amount <= 99) {
+          subscriptionTier = 'starter';
+        }
+        logStep("Tier from price amount", { amount, tier: subscriptionTier });
       }
-      logStep("Tier from price", { amount, tier: subscriptionTier });
     }
 
     // Check if subscription is currently active
@@ -153,11 +196,28 @@ serve(async (req) => {
     const isTrialing = subscription.status === 'trialing';
     const subscribed = isActive || isTrialing;
 
+    // For recurring subscriptions, check if meters are properly set up
+    if (subscribed && price.recurring) {
+      try {
+        const meters = await stripe.billing.meters.list({ limit: 100 });
+        const transactionMeter = meters.data.find(m => m.event_name === 'transaction_usage');
+        
+        if (transactionMeter) {
+          logStep("Transaction meter found", { meterId: transactionMeter.id });
+        } else {
+          logStep("No transaction meter found - subscription may not be fully configured");
+        }
+      } catch (meterError) {
+        logStep("Error checking meters", { error: meterError.message });
+      }
+    }
+
     logStep("Final subscription status", { 
       subscribed,
       tier: subscriptionTier,
       status: subscription.status,
-      amount: amount
+      amount: amount,
+      isRecurring: !!price.recurring
     });
 
     return new Response(
@@ -168,7 +228,9 @@ serve(async (req) => {
         subscription_id: subscription.id,
         customer_id: customer.id,
         current_period_end: subscription.current_period_end,
-        price_amount: amount
+        price_amount: amount,
+        is_recurring: !!price.recurring,
+        product_id: product?.id
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -188,7 +250,6 @@ serve(async (req) => {
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
       }
     );
   }
