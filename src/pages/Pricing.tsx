@@ -19,13 +19,13 @@ const Pricing = () => {
   const [showProductModal, setShowProductModal] = useState(false);
   const { toast } = useToast();
   
-  // Enable automatic price refresh every 10 minutes
+  // Remove automated refresh - only manual refresh
   const { pricingTiers, isLoading: isPricingLoading, error: pricingError, isRefreshing, refetch } = useStripePricing({
-    autoRefresh: true,
-    refreshInterval: 600000 // 10 minutes
+    autoRefresh: false,
+    useAllProducts: false
   });
 
-  // Get subscription status with auto-refresh
+  // Get subscription status without auto-refresh
   const { subscriptionStatus, isLoading: isSubscriptionLoading, error: subscriptionError, refetch: refetchSubscription } = useSubscription();
 
   // Define usage limits for different plans
@@ -77,23 +77,41 @@ const Pricing = () => {
 
       // Handle special case for free trial plan
       if (tierId === 'trial') {
-        toast({
-          title: "Free Trial Activated!",
-          description: `You now have access to the trial plan with 500 transaction credits.`,
+        console.log('Creating trial subscription directly...');
+        const { data, error } = await supabase.functions.invoke('create-checkout', {
+          body: {
+            priceId: tierId,
+            planName: selectedTier.name,
+            mode: 'subscription'
+          }
         });
-        setTimeout(() => refetchSubscription(), 1000);
-        return;
+
+        console.log('Trial checkout response:', { data, error });
+
+        if (error) {
+          console.error('Trial checkout error:', error);
+          throw new Error(error.message || 'Failed to create trial subscription');
+        }
+
+        if (data?.success) {
+          toast({
+            title: "Free Trial Activated!",
+            description: `You now have access to the trial plan.`,
+          });
+          setTimeout(() => refetchSubscription(), 1000);
+          return;
+        }
       }
 
-      // Create checkout session for subscription-based billing using tier ID
+      // Create checkout session for paid subscription plans
       console.log('Creating subscription checkout session...');
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: {
-          priceId: tierId, // Use tier ID to find the product
+          priceId: tierId,
           planName: selectedTier.name,
           amount: selectedTier.price,
           currency: selectedTier.currency.toLowerCase(),
-          mode: 'subscription' // All plans are now subscription-based
+          mode: 'subscription'
         }
       });
 
@@ -106,7 +124,8 @@ const Pricing = () => {
 
       if (data?.url) {
         console.log('Redirecting to checkout:', data.url);
-        window.location.href = data.url;
+        // Open checkout in new tab to prevent page reload issues
+        window.open(data.url, '_blank');
       } else {
         throw new Error('No checkout URL received');
       }
@@ -260,12 +279,6 @@ const Pricing = () => {
           <p className="text-white/90 max-w-2xl mx-auto text-lg">
             Select the perfect subscription plan for your business needs. All plans include flexible usage-based billing!
           </p>
-          {isRefreshing && (
-            <div className="mt-2 flex items-center justify-center space-x-2 text-blue-300">
-              <Activity className="h-4 w-4 animate-pulse" />
-              <span className="text-sm">Auto-refreshing prices...</span>
-            </div>
-          )}
         </div>
 
         {/* Usage Dashboard */}

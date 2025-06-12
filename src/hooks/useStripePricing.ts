@@ -83,7 +83,8 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
   useEffect(() => {
     fetchPricingData();
 
-    if (autoRefresh) {
+    // Only set up interval if autoRefresh is explicitly enabled
+    if (autoRefresh && refreshInterval > 0) {
       intervalRef.current = setInterval(() => {
         fetchPricingData(true);
       }, refreshInterval);
