@@ -85,11 +85,11 @@ const Pricing = () => {
         return;
       }
 
-      // Create checkout session for subscription-based billing
+      // Create checkout session for subscription-based billing using tier ID
       console.log('Creating subscription checkout session...');
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: {
-          priceId: tierId,
+          priceId: tierId, // Use tier ID to find the product
           planName: selectedTier.name,
           amount: selectedTier.price,
           currency: selectedTier.currency.toLowerCase(),
@@ -126,11 +126,8 @@ const Pricing = () => {
 
   const formatPrice = (tier: any) => {
     if (tier.price === 0 || tier.id === 'trial') return '$0';
-    if (tier.id === 'starter') return '$19';
-    if (tier.id === 'professional') return '$49'; 
-    if (tier.id === 'business') return '$99';
-    if (tier.id === 'enterprise') return '$25';
     
+    // Use the actual price from the tier data, not hardcoded values
     const dollarAmount = tier.price / 100;
     if (dollarAmount < 1) {
       return `$${dollarAmount.toFixed(2)}`;
@@ -145,39 +142,45 @@ const Pricing = () => {
       case 'professional': return 'per month + usage';
       case 'business': return 'per month';
       case 'enterprise': return 'per user/month';
-      default: return '';
+      default: return tier.isMonthly ? 'per month' : '';
     }
   };
 
-  const getUsageLimitsFromImage = (tierId: string) => {
-    switch (tierId) {
+  const getUsageLimitsFromTier = (tier: any) => {
+    // Use actual tier data instead of hardcoded values
+    if (tier.usageLimits && tier.usageLimits.length > 0) {
+      return tier.usageLimits;
+    }
+    
+    // Fallback to calculated limits based on tier metadata
+    switch (tier.id) {
       case 'trial':
         return [
-          { name: 'Transactions', value: '500 included' },
+          { name: 'Transactions', value: tier.includedUsage ? `${tier.includedUsage} included` : '500 included' },
           { name: 'AI Processing', value: '50 included' },
-          { name: 'After limit', value: '$0.05/transaction' }
+          { name: 'After limit', value: tier.meterRate ? `$${tier.meterRate}/transaction` : '$0.05/transaction' }
         ];
       case 'starter':
         return [
-          { name: 'Base Fee', value: '$19/month' },
-          { name: 'Included Usage', value: '1,000 transactions' },
-          { name: 'Overage', value: '$0.02/transaction' }
+          { name: 'Base Fee', value: formatPrice(tier) + '/month' },
+          { name: 'Included Usage', value: tier.includedUsage ? `${tier.includedUsage.toLocaleString()} transactions` : '1,000 transactions' },
+          { name: 'Overage', value: tier.meterRate ? `$${tier.meterRate}/transaction` : '$0.02/transaction' }
         ];
       case 'professional':
         return [
-          { name: 'Base Fee', value: '$49/month' },
-          { name: 'Included Usage', value: '5,000 transactions' },
-          { name: 'Overage', value: '$0.015/transaction' }
+          { name: 'Base Fee', value: formatPrice(tier) + '/month' },
+          { name: 'Included Usage', value: tier.includedUsage ? `${tier.includedUsage.toLocaleString()} transactions` : '5,000 transactions' },
+          { name: 'Overage', value: tier.meterRate ? `$${tier.meterRate}/transaction` : '$0.015/transaction' }
         ];
       case 'business':
         return [
           { name: 'Transactions', value: 'Unlimited' },
           { name: 'AI Processing', value: 'Unlimited' },
-          { name: 'Monthly Fee', value: '$99 flat rate' }
+          { name: 'Monthly Fee', value: formatPrice(tier) + ' flat rate' }
         ];
       case 'enterprise':
         return [
-          { name: 'Per User', value: '$25/month' },
+          { name: 'Per User', value: formatPrice(tier) + '/month' },
           { name: 'Transactions', value: 'Unlimited' },
           { name: 'AI Processing', value: 'Unlimited' }
         ];
@@ -364,7 +367,7 @@ const Pricing = () => {
                       Pricing Details
                     </h4>
                     <div className="space-y-2">
-                      {getUsageLimitsFromImage(tier.id).map((limit, index) => (
+                      {getUsageLimitsFromTier(tier).map((limit, index) => (
                         <div key={index} className="flex justify-between text-sm">
                           <span className="text-slate-400">{limit.name}</span>
                           <span className="text-white font-medium">{limit.value}</span>
