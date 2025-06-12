@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -48,13 +47,13 @@ serve(async (req) => {
 
     logStep("User authenticated", { email: data.user.email });
 
-    const { priceId, planName } = await req.json();
+    const { priceId, planName, mode } = await req.json();
 
     if (!priceId || !planName) {
       throw new Error('Missing required parameters: priceId and planName');
     }
 
-    logStep("Request params", { priceId, planName });
+    logStep("Request params", { priceId, planName, mode });
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
@@ -98,7 +97,11 @@ serve(async (req) => {
       );
     }
 
-    // Find products with proper subscription setup
+    // Find or create the appropriate product and price
+    let targetPrice = null;
+    let targetProduct = null;
+
+    // Enhanced product finding logic
     const products = await stripe.products.list({
       active: true,
       limit: 100,
@@ -107,16 +110,11 @@ serve(async (req) => {
 
     logStep("Found products", { count: products.data.length });
 
-    let targetPrice = null;
-    let targetProduct = null;
-
-    // Look for existing properly configured subscription products
+    // Look for existing properly configured products
     for (const product of products.data) {
-      if (product.metadata?.created_via === 'billing_app_v1' || 
-          product.metadata?.tier_id === priceId ||
+      if (product.metadata?.tier_id === priceId || 
           product.name.toLowerCase().includes(planName.toLowerCase())) {
         
-        // Get all prices for this product
         const prices = await stripe.prices.list({
           product: product.id,
           active: true,
@@ -128,8 +126,9 @@ serve(async (req) => {
           priceCount: prices.data.length 
         });
 
-        // For business and enterprise plans, we need recurring prices
+        // Select appropriate price based on plan type
         if (priceId === 'business' || priceId === 'enterprise') {
+          // These need recurring prices
           const recurringPrice = prices.data.find(p => p.recurring?.interval === 'month');
           if (recurringPrice) {
             targetPrice = recurringPrice;
@@ -142,12 +141,12 @@ serve(async (req) => {
             break;
           }
         } else {
-          // For starter and professional, we can use one-time prices
+          // Starter and Professional use one-time prices
           const oneTimePrice = prices.data.find(p => !p.recurring);
           if (oneTimePrice) {
             targetPrice = oneTimePrice;
             targetProduct = product;
-            logStep("Found one-time price for credit plan", { 
+            logStep("Found one-time price", { 
               priceId: targetPrice.id, 
               amount: targetPrice.unit_amount
             });
@@ -157,18 +156,24 @@ serve(async (req) => {
       }
     }
 
-    // If no properly configured product found, create one
+    // If no existing product found, create one
     if (!targetPrice || !targetProduct) {
-      logStep("No existing properly configured product found, creating new subscription product");
+      logStep("No existing product found, creating new one");
       
-      // Create product with proper metadata
+      const billingModelType = {
+        'starter': 'pay_as_you_go',
+        'professional': 'credit_burndown', 
+        'business': 'flat_recurring',
+        'enterprise': 'per_seat'
+      }[priceId] || 'pay_as_you_go';
+
       const productData = {
         name: `${planName} Plan`,
-        description: `${planName} subscription plan with metered usage`,
+        description: getProductDescription(priceId),
         metadata: {
           tier_id: priceId,
           created_via: 'billing_app_v1',
-          billing_model_type: priceId === 'business' || priceId === 'enterprise' ? 'flat_recurring' : 'credit_burndown'
+          billing_model_type: billingModelType
         }
       };
 
@@ -177,9 +182,9 @@ serve(async (req) => {
 
       // Create appropriate price based on plan type
       const priceAmount = {
-        'starter': 99, // $0.99 - pay as you go
-        'professional': 4900, // $49 - credit package
-        'business': 9900, // $99/month - unlimited recurring
+        'starter': 99, // $0.99 per transaction
+        'professional': 4900, // $49 for credits
+        'business': 9900, // $99/month
         'enterprise': 2500 // $25/month per user
       }[priceId] || 99;
 
@@ -198,7 +203,7 @@ serve(async (req) => {
         priceData.recurring = { interval: 'month' };
         logStep("Creating recurring price for subscription plan");
       } else {
-        logStep("Creating one-time price for credit plan");
+        logStep("Creating one-time price");
       }
 
       targetPrice = await stripe.prices.create(priceData);
@@ -207,46 +212,13 @@ serve(async (req) => {
         amount: priceAmount,
         recurring: !!priceData.recurring
       });
-
-      // For subscription plans, ensure we have proper meters set up
-      if (priceId === 'business' || priceId === 'enterprise') {
-        try {
-          // Check if meter exists
-          const meters = await stripe.billing.meters.list({ limit: 100 });
-          let transactionMeter = meters.data.find(m => m.event_name === 'transaction_usage');
-          
-          if (!transactionMeter) {
-            // Create transaction usage meter
-            transactionMeter = await stripe.billing.meters.create({
-              display_name: 'Transaction Usage',
-              event_name: 'transaction_usage',
-              customer_mapping: {
-                event_payload_key: 'customer_id',
-                type: 'by_id'
-              },
-              default_aggregation: {
-                formula: 'sum'
-              },
-              value_settings: {
-                event_payload_key: 'value'
-              }
-            });
-            logStep("Created transaction usage meter", { meterId: transactionMeter.id });
-          } else {
-            logStep("Found existing transaction usage meter", { meterId: transactionMeter.id });
-          }
-        } catch (meterError) {
-          logStep("Error setting up meters", { error: meterError.message });
-          // Continue without meters for now - they can be set up later
-        }
-      }
     }
 
-    // Determine checkout mode based on price type
-    const mode = targetPrice.recurring ? 'subscription' : 'payment';
-    logStep("Determined checkout mode", { mode, priceId: targetPrice.id });
+    // Determine checkout mode and session data
+    const checkoutMode = targetPrice.recurring ? 'subscription' : 'payment';
+    logStep("Determined checkout mode", { mode: checkoutMode, priceId: targetPrice.id });
     
-    // Create checkout session
+    // Create checkout session with enhanced metadata
     const sessionData: any = {
       customer: customerId,
       payment_method_types: ['card'],
@@ -256,19 +228,20 @@ serve(async (req) => {
           quantity: 1,
         },
       ],
-      mode: mode,
+      mode: checkoutMode,
       success_url: `${req.headers.get('origin')}/pricing?success=true&plan=${priceId}`,
       cancel_url: `${req.headers.get('origin')}/pricing?canceled=true`,
       metadata: {
         user_id: data.user.id,
         plan_id: priceId,
         plan_name: planName,
-        product_id: targetProduct.id
+        product_id: targetProduct.id,
+        billing_model: targetProduct.metadata?.billing_model_type || 'standard'
       },
     };
 
-    // Add subscription metadata only for subscription mode
-    if (mode === 'subscription') {
+    // Add subscription-specific metadata
+    if (checkoutMode === 'subscription') {
       sessionData.subscription_data = {
         metadata: {
           plan_id: priceId,
@@ -278,13 +251,19 @@ serve(async (req) => {
         }
       };
       logStep("Added subscription metadata");
+    } else if (priceId === 'professional') {
+      // Add credit-specific metadata for professional plan
+      sessionData.metadata.credit_amount = '12000'; // $120 in cents
+      sessionData.metadata.purchase_amount = '4900'; // $49 in cents
+      sessionData.metadata.credit_multiplier = '1.2'; // 20% bonus
+      logStep("Added credit purchase metadata");
     }
 
     const session = await stripe.checkout.sessions.create(sessionData);
 
     logStep('Checkout session created successfully', { 
       sessionId: session.id, 
-      mode: mode,
+      mode: checkoutMode,
       priceId: targetPrice.id,
       productId: targetProduct.id,
       url: session.url
@@ -310,3 +289,14 @@ serve(async (req) => {
     );
   }
 });
+
+// Helper function to get product descriptions
+function getProductDescription(priceId: string): string {
+  const descriptions = {
+    'starter': 'True pay-as-you-go pricing with no commitments or limits.',
+    'professional': 'Prepaid credit system with 20% bonus credits included.',
+    'business': 'Unlimited usage with predictable monthly costs.',
+    'enterprise': 'Per-user pricing with enterprise-grade features.'
+  };
+  return descriptions[priceId] || 'Custom pricing plan';
+}
