@@ -48,8 +48,8 @@ class OCRService {
 
       const confidence = result.data.confidence || 0;
       const text = result.data.text || '';
-      // Fix: Access words correctly from Tesseract result structure
-      const words = result.data.words || [];
+      // Fix: Extract words from the proper Tesseract result structure
+      const words = this.extractWordsFromResult(result.data);
 
       console.log('OCR completed. Confidence:', confidence, 'Text length:', text.length);
 
@@ -82,6 +82,36 @@ class OCRService {
       } else {
         throw new Error(`OCR processing failed: ${error.message || 'Unknown error'}`);
       }
+    }
+  }
+
+  private extractWordsFromResult(data: any): any[] {
+    try {
+      // Try to extract words from the Tesseract result structure
+      if (data.paragraphs && Array.isArray(data.paragraphs)) {
+        const allWords: any[] = [];
+        data.paragraphs.forEach((paragraph: any) => {
+          if (paragraph.lines && Array.isArray(paragraph.lines)) {
+            paragraph.lines.forEach((line: any) => {
+              if (line.words && Array.isArray(line.words)) {
+                allWords.push(...line.words);
+              }
+            });
+          }
+        });
+        return allWords;
+      }
+      
+      // Fallback: if words exist directly (though unlikely with current Tesseract.js)
+      if (data.words && Array.isArray(data.words)) {
+        return data.words;
+      }
+      
+      // Return empty array if no words structure found
+      return [];
+    } catch (error) {
+      console.warn('Error extracting words from OCR result:', error);
+      return [];
     }
   }
 
