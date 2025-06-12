@@ -38,22 +38,34 @@ const ProductSetup = ({
   const fetchStripeProducts = async () => {
     setIsLoading(true);
     try {
+      console.log('Fetching Stripe products...');
       const { data, error } = await supabase.functions.invoke('fetch-stripe-data');
       
       if (error) {
+        console.error('Error invoking function:', error);
         throw new Error(error.message);
       }
 
-      if (data?.products) {
-        const activeProducts = data.products.filter((product: any) => product.active);
+      console.log('Received data:', data);
+      
+      if (data?.success && data?.all_products) {
+        const activeProducts = data.all_products.filter((product: any) => product.active);
+        console.log('Active products:', activeProducts);
         setProducts(activeProducts);
         setFilteredProducts(activeProducts);
+        
+        toast({
+          title: "Products Loaded",
+          description: `Found ${activeProducts.length} active products`,
+        });
+      } else {
+        throw new Error(data?.error || 'No products found');
       }
     } catch (error: any) {
       console.error('Error fetching products:', error);
       toast({
         title: "Error",
-        description: "Failed to fetch Stripe products. Please check your connection.",
+        description: `Failed to fetch Stripe products: ${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -179,9 +191,6 @@ const ProductSetup = ({
             >
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Refresh Products
-            </Button>
-            <Button variant="outline" size="sm">
-              Disconnect Stripe
             </Button>
           </div>
         </div>

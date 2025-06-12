@@ -20,14 +20,13 @@ serve(async (req) => {
 
   try {
     logStep("Function started");
-    
+
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeSecretKey) {
       throw new Error('Stripe secret key not configured');
     }
-    logStep("Stripe secret key found");
 
-    // Authenticate user with enhanced verification
+    // Authenticate user
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -35,53 +34,21 @@ serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      logStep("ERROR: No authorization header provided");
-      throw new Error('Authorization header missing - user must be logged in');
-    }
-
-    if (!authHeader.startsWith('Bearer ')) {
-      logStep("ERROR: Invalid authorization header format");
-      throw new Error('Invalid authorization header format');
+      throw new Error('Authorization header missing');
     }
 
     const token = authHeader.replace('Bearer ', '');
-    if (!token || token.trim() === '') {
-      logStep("ERROR: Empty or invalid token");
-      throw new Error('Invalid or empty authentication token');
-    }
-
-    logStep("Attempting to authenticate user with token", { tokenLength: token.length });
-    
     const { data, error: authError } = await supabaseClient.auth.getUser(token);
     
-    if (authError) {
-      logStep("AUTH ERROR", { error: authError, code: authError.code, message: authError.message });
-      throw new Error(`Authentication failed: ${authError.message}`);
+    if (authError || !data.user) {
+      throw new Error('User not authenticated');
     }
 
-    if (!data || !data.user) {
-      logStep("ERROR: No user data returned from auth");
-      throw new Error('User not authenticated - no user data returned');
-    }
+    const user = data.user;
+    logStep("User authenticated", { userId: user.id, email: user.email });
 
-    if (!data.user.email) {
-      logStep("ERROR: User has no email", { userId: data.user.id });
-      throw new Error('User account has no email address');
-    }
-
-    logStep("User successfully authenticated", { 
-      email: data.user.email, 
-      userId: data.user.id,
-      emailConfirmed: !!data.user.email_confirmed_at
-    });
-
-    const { priceId, planName } = await req.json();
-
-    if (!priceId || !planName) {
-      throw new Error('Missing required parameters: priceId and planName');
-    }
-
-    logStep("Request params", { priceId, planName });
+    const { tier_id, price_id, user_email } = await req.json();
+    logStep("Request body", { tier_id, price_id, user_email });
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
@@ -89,123 +56,125 @@ serve(async (req) => {
 
     // Check if customer exists
     const customers = await stripe.customers.list({
-      email: data.user.email,
-      limit: 1,
+      email: user.email,
+      limit: 1
     });
 
     let customerId;
     if (customers.data.length > 0) {
       customerId = customers.data[0].id;
-      logStep('Existing customer found', { customerId });
+      logStep("Found existing customer", { customerId });
     } else {
-      // Create new customer
       const customer = await stripe.customers.create({
-        email: data.user.email,
+        email: user.email,
         metadata: {
-          user_id: data.user.id,
-        },
+          user_id: user.id
+        }
       });
       customerId = customer.id;
-      logStep('New customer created', { customerId });
+      logStep("Created new customer", { customerId });
     }
 
-    // Handle free trial - create trial subscription directly
-    if (priceId === 'trial') {
-      logStep("Free trial selected - creating trial subscription directly");
-      
-      // Get all products and find trial product
+    // Find the right price for this tier
+    let priceToUse = price_id;
+    
+    if (!priceToUse) {
+      // Get products with billing_app_v1 metadata
       const products = await stripe.products.list({
         active: true,
-        limit: 100,
+        limit: 100
       });
 
-      logStep("All products found", { count: products.data.length });
-
-      // Look for trial product with multiple possible identifiers
-      const trialProduct = products.data.find(p => 
-        (p.metadata?.tier_id === 'trial') ||
-        (p.name?.toLowerCase().includes('trial')) ||
-        (p.metadata?.plan_type === 'trial')
+      const appProducts = products.data.filter(product => 
+        product.metadata?.created_via === 'billing_app_v1' &&
+        product.metadata?.tier_id === tier_id
       );
 
-      if (!trialProduct) {
-        logStep("ERROR: Trial product not found", { 
-          availableProducts: products.data.map(p => ({
-            id: p.id,
-            name: p.name,
-            metadata: p.metadata
-          }))
+      logStep("Found app products for tier", { tier_id, count: appProducts.length });
+
+      if (appProducts.length > 0) {
+        const product = appProducts[0];
+        
+        // Get prices for this product
+        const prices = await stripe.prices.list({
+          product: product.id,
+          active: true
         });
-        throw new Error('Trial product not found. Please run create-subscription-products first.');
-      }
 
-      logStep("Found trial product", { productId: trialProduct.id, name: trialProduct.name });
-
-      // Get ALL prices for the trial product
-      const prices = await stripe.prices.list({
-        product: trialProduct.id,
-        active: true,
-        limit: 100,
-      });
-
-      logStep("Found prices for trial product", { 
-        count: prices.data.length,
-        prices: prices.data.map(p => ({
-          id: p.id,
-          type: p.type,
-          billing_scheme: p.billing_scheme,
-          unit_amount: p.unit_amount,
-          recurring: p.recurring
-        }))
-      });
-
-      if (prices.data.length === 0) {
-        logStep("ERROR: No price found for trial product");
-        throw new Error('No price found for trial product');
-      }
-
-      // Use the first available price
-      const trialPrice = prices.data[0];
-      logStep("Using trial price", { 
-        priceId: trialPrice.id, 
-        billing_scheme: trialPrice.billing_scheme,
-        type: trialPrice.type,
-        recurring: trialPrice.recurring 
-      });
-
-      // Create trial subscription
-      const subscriptionData: any = {
-        customer: customerId,
-        items: [
-          {
-            price: trialPrice.id,
-            quantity: 1,
-          }
-        ],
-        metadata: {
-          user_id: data.user.id,
-          plan_id: priceId,
-          plan_name: planName,
-          product_id: trialProduct.id,
-          billing_model: 'free_trial'
+        if (prices.data.length > 0) {
+          priceToUse = prices.data[0].id;
+          logStep("Found price for product", { productId: product.id, priceId: priceToUse });
         }
-      };
+      }
+    }
 
-      // Add trial period if it's a recurring price
-      if (trialPrice.type === 'recurring') {
-        subscriptionData.trial_period_days = 14;
+    // If still no price found, create a default based on tier
+    if (!priceToUse) {
+      logStep("No price found, creating default for tier", { tier_id });
+      
+      let unitAmount = 0;
+      let productName = '';
+      
+      switch (tier_id) {
+        case 'trial':
+          unitAmount = 0;
+          productName = 'Free Trial';
+          break;
+        case 'starter':
+          unitAmount = 1900; // $19.00
+          productName = 'Starter Plan';
+          break;
+        case 'professional':
+          unitAmount = 4900; // $49.00
+          productName = 'Professional Plan';
+          break;
+        case 'business':
+          unitAmount = 9900; // $99.00
+          productName = 'Business Plan';
+          break;
+        case 'enterprise':
+          unitAmount = 2500; // $25.00 per seat
+          productName = 'Enterprise Plan';
+          break;
+        default:
+          throw new Error(`Unknown tier: ${tier_id}`);
       }
 
-      const subscription = await stripe.subscriptions.create(subscriptionData);
-      
-      logStep("Trial subscription created", { subscriptionId: subscription.id });
+      // Create product if it doesn't exist
+      const product = await stripe.products.create({
+        name: productName,
+        metadata: {
+          created_via: 'billing_app_v1',
+          tier_id: tier_id
+        }
+      });
 
+      // Create price
+      const price = await stripe.prices.create({
+        product: product.id,
+        unit_amount: unitAmount,
+        currency: 'usd',
+        recurring: tier_id !== 'trial' ? { interval: 'month' } : undefined,
+        metadata: {
+          tier_id: tier_id
+        }
+      });
+
+      priceToUse = price.id;
+      logStep("Created new product and price", { productId: product.id, priceId: priceToUse, unitAmount });
+    }
+
+    // Handle free trial separately
+    if (tier_id === 'trial') {
+      logStep("Handling free trial signup");
+      
+      // For free trial, we might want to create a subscription with a $0 price
+      // or just redirect to a success page
       return new Response(
         JSON.stringify({ 
-          success: true, 
-          message: 'Free trial activated',
-          subscription_id: subscription.id,
-          redirect: `${req.headers.get('origin')}/pricing?success=true&plan=trial`
+          success: true,
+          url: `${req.headers.get('origin')}/payment-success?tier=trial`,
+          message: 'Free trial activated'
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -214,132 +183,30 @@ serve(async (req) => {
       );
     }
 
-    // Find the appropriate subscription product for paid plans
-    const products = await stripe.products.list({
-      active: true,
-      limit: 100,
-    });
-
-    logStep("Found products", { count: products.data.length });
-
-    // Enhanced product search - try multiple criteria
-    let targetProduct = products.data.find(p => 
-      p.metadata?.tier_id === priceId
-    );
-
-    if (!targetProduct) {
-      targetProduct = products.data.find(p => 
-        p.name?.toLowerCase().includes(priceId.toLowerCase())
-      );
-    }
-
-    if (!targetProduct) {
-      targetProduct = products.data.find(p => 
-        p.metadata?.plan_type === priceId
-      );
-    }
-
-    if (!targetProduct) {
-      logStep("ERROR: Product not found", { 
-        searchingFor: priceId,
-        availableProducts: products.data.map(p => ({
-          id: p.id,
-          name: p.name,
-          metadata: p.metadata
-        }))
-      });
-      throw new Error(`No subscription product found for plan: ${priceId}. Please run create-subscription-products first.`);
-    }
-
-    logStep("Found target product", { productId: targetProduct.id, name: targetProduct.name });
-
-    // Get ALL prices for this product and find the best match
-    const allPrices = await stripe.prices.list({
-      product: targetProduct.id,
-      active: true,
-      limit: 100,
-    });
-
-    logStep("Found prices for product", { 
-      count: allPrices.data.length,
-      prices: allPrices.data.map(p => ({
-        id: p.id,
-        type: p.type,
-        billing_scheme: p.billing_scheme,
-        unit_amount: p.unit_amount,
-        recurring: p.recurring,
-        tiers_mode: p.tiers_mode
-      }))
-    });
-
-    if (allPrices.data.length === 0) {
-      throw new Error('No price found for this product');
-    }
-
-    // Use the first available price - the system should handle any pricing structure
-    const productPrice = allPrices.data[0];
-    logStep("Using product price", { 
-      priceId: productPrice.id, 
-      billing_scheme: productPrice.billing_scheme,
-      tiers_mode: productPrice.tiers_mode,
-      type: productPrice.type,
-      recurring: productPrice.recurring
-    });
-
-    // Create checkout session for subscription
-    const lineItems = [
-      {
-        price: productPrice.id,
-        quantity: 1,
-      }
-    ];
-
-    const sessionData: any = {
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      payment_method_types: ['card'],
-      line_items: lineItems,
+      line_items: [{
+        price: priceToUse,
+        quantity: 1,
+      }],
       mode: 'subscription',
-      success_url: `${req.headers.get('origin')}/pricing?success=true&plan=${priceId}`,
-      cancel_url: `${req.headers.get('origin')}/pricing?canceled=true`,
+      success_url: `${req.headers.get('origin')}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${req.headers.get('origin')}/payment-cancel`,
       metadata: {
-        user_id: data.user.id,
-        plan_id: priceId,
-        plan_name: planName,
-        product_id: targetProduct.id,
-        billing_model: targetProduct.metadata?.billing_model_type || 'subscription'
-      },
-      subscription_data: {
-        metadata: {
-          plan_id: priceId,
-          plan_name: planName,
-          user_id: data.user.id,
-          product_id: targetProduct.id,
-          billing_model: targetProduct.metadata?.billing_model_type || 'subscription'
-        }
+        user_id: user.id,
+        tier_id: tier_id
       }
-    };
-
-    // For enterprise plans, allow quantity adjustment
-    if (priceId === 'enterprise') {
-      sessionData.line_items[0].adjustable_quantity = {
-        enabled: true,
-        minimum: 1,
-        maximum: 100
-      };
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionData);
-
-    logStep('Subscription checkout session created successfully', { 
-      sessionId: session.id, 
-      mode: 'subscription',
-      lineItemCount: lineItems.length,
-      productId: targetProduct.id,
-      url: session.url
     });
+
+    logStep("Checkout session created", { sessionId: session.id, url: session.url });
 
     return new Response(
-      JSON.stringify({ url: session.url }),
+      JSON.stringify({ 
+        success: true,
+        url: session.url,
+        session_id: session.id
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
@@ -347,10 +214,13 @@ serve(async (req) => {
     );
 
   } catch (error: any) {
-    logStep("ERROR in create-checkout", { message: error.message, stack: error.stack });
+    logStep("ERROR", { message: error.message });
     
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        success: false,
+        error: error.message 
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,

@@ -1,579 +1,236 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+
+import React, { useEffect, useState } from 'react';
+import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, RefreshCw, AlertCircle, Activity, ArrowLeft, Crown, Info, CreditCard, Settings } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Check, Zap, Users, Building, Crown, Loader2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { useStripePricing } from '@/hooks/useStripePricing';
-import { useSubscription } from '@/hooks/useSubscription';
-import { Link } from 'react-router-dom';
-import UsageDashboard from '@/components/UsageDashboard';
-import ProductDetailModal from '@/components/ProductDetailModal';
-import FileUploadProcessor from '@/components/FileUploadProcessor';
 
 const Pricing = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
-  const [showProductModal, setShowProductModal] = useState(false);
-  const [isCreatingProducts, setIsCreatingProducts] = useState(false);
-  const [isFixingPricing, setIsFixingPricing] = useState(false);
-  const [showFileProcessor, setShowFileProcessor] = useState(false);
+  const { user } = useAuth();
   const { toast } = useToast();
-  
-  // Remove automated refresh - only manual refresh
-  const { pricingTiers, isLoading: isPricingLoading, error: pricingError, isRefreshing, refetch } = useStripePricing({
-    autoRefresh: false,
-    useAllProducts: false
-  });
+  const { pricingData, isLoading, error, refetch } = useStripePricing();
+  const [checkingOut, setCheckingOut] = useState<string | null>(null);
+  const [fixingPricing, setFixingPricing] = useState(false);
 
-  // Get subscription status without auto-refresh
-  const { subscriptionStatus, isLoading: isSubscriptionLoading, error: subscriptionError, refetch: refetchSubscription } = useSubscription();
-
-  // Define usage limits for different plans
-  const usageLimits = {
-    api_calls: 100,
-    transactions: 50,
-    ai_processing: 20,
-    data_exports: 5
-  };
-
-  // Manual refresh function for immediate updates
-  const handleRefreshPricing = async () => {
-    console.log('Manual refresh triggered');
-    refetch();
-    await refetchSubscription();
-    toast({
-      title: "Refreshing Data",
-      description: "Fetching latest pricing and subscription information...",
-    });
-  };
-
-  // Fix Stripe pricing
-  const handleFixStripePricing = async () => {
-    setIsFixingPricing(true);
-    
-    try {
-      console.log('Fixing Stripe pricing...');
-      const { data, error } = await supabase.functions.invoke('fix-stripe-pricing');
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      if (data?.success) {
-        toast({
-          title: "Pricing Fixed!",
-          description: `Created ${data.summary?.prices_created || 0} missing prices in Stripe.`,
-        });
-        console.log('Pricing fixed:', data);
-        
-        // Refresh pricing data after fixing
-        setTimeout(() => {
-          refetch();
-        }, 2000);
-      } else {
-        throw new Error(data?.error || 'Failed to fix pricing');
-      }
-    } catch (error: any) {
-      console.error('Error fixing pricing:', error);
+  const handleSubscribe = async (tierId: string, priceId?: string) => {
+    if (!user) {
       toast({
-        title: "Error Fixing Pricing",
-        description: error.message,
+        title: "Authentication Required",
+        description: "Please sign in to subscribe to a plan.",
         variant: "destructive",
-      });
-    } finally {
-      setIsFixingPricing(false);
-    }
-  };
-
-  // Create subscription products with proper Stripe billing structure
-  const handleCreateSubscriptionProducts = async () => {
-    setIsCreatingProducts(true);
-    
-    try {
-      console.log('Creating subscription products with meters and pricing...');
-      const { data, error } = await supabase.functions.invoke('create-subscription-products');
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      if (data?.success) {
-        toast({
-          title: "Subscription Products Created!",
-          description: `Created ${data.summary?.products_created || 0} subscription products with billing meters.`,
-        });
-        console.log('Subscription products created:', data);
-        
-        // Refresh pricing data after creating products
-        setTimeout(() => {
-          refetch();
-        }, 2000);
-      } else {
-        throw new Error(data?.error || 'Failed to create subscription products');
-      }
-    } catch (error: any) {
-      console.error('Error creating subscription products:', error);
-      toast({
-        title: "Error Creating Products",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreatingProducts(false);
-    }
-  };
-
-  const handleProductInfo = (tier: any) => {
-    setSelectedProduct(tier);
-    setShowProductModal(true);
-  };
-
-  const handleSelectPlan = async (tierId: string) => {
-    console.log('Selecting plan:', tierId);
-    
-    // If user is already subscribed to this tier, don't allow selection
-    if (subscriptionStatus.subscribed && subscriptionStatus.subscription_tier === tierId) {
-      toast({
-        title: "Already Subscribed",
-        description: "You are already subscribed to this plan.",
       });
       return;
     }
 
-    setIsLoading(true);
-    setSelectedPlan(tierId);
+    setCheckingOut(tierId);
     
     try {
-      const selectedTier = pricingTiers.find(tier => tier.id === tierId);
-      if (!selectedTier) {
-        throw new Error('Invalid plan selected');
-      }
-
-      console.log('Selected tier details:', selectedTier);
-
-      // Handle special case for free trial plan
-      if (tierId === 'trial') {
-        console.log('Creating trial subscription directly...');
-        const { data, error } = await supabase.functions.invoke('create-checkout', {
-          body: {
-            priceId: tierId,
-            planName: selectedTier.name,
-            mode: 'subscription'
-          }
-        });
-
-        console.log('Trial checkout response:', { data, error });
-
-        if (error) {
-          console.error('Trial checkout error:', error);
-          throw new Error(error.message || 'Failed to create trial subscription');
-        }
-
-        if (data?.success) {
-          toast({
-            title: "Free Trial Activated!",
-            description: `You now have access to the trial plan.`,
-          });
-          setTimeout(() => refetchSubscription(), 1000);
-          return;
-        }
-      }
-
-      // Create checkout session for paid subscription plans
-      console.log('Creating subscription checkout session...');
+      console.log(`Creating checkout for tier: ${tierId}, priceId: ${priceId}`);
+      
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: {
-          priceId: tierId,
-          planName: selectedTier.name,
-          amount: selectedTier.price,
-          currency: selectedTier.currency.toLowerCase(),
-          mode: 'subscription'
+        body: { 
+          tier_id: tierId,
+          price_id: priceId,
+          user_email: user.email
         }
       });
 
-      console.log('Checkout response:', { data, error });
-
       if (error) {
         console.error('Checkout error:', error);
-        throw new Error(error.message || 'Failed to create checkout session');
+        throw error;
       }
 
       if (data?.url) {
         console.log('Redirecting to checkout:', data.url);
-        // Open checkout in new tab to prevent page reload issues
-        window.open(data.url, '_blank');
+        // Open in same window for proper navigation
+        window.location.href = data.url;
       } else {
         throw new Error('No checkout URL received');
       }
-
     } catch (error: any) {
-      console.error('Error selecting plan:', error);
+      console.error('Subscribe error:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to process plan selection. Please try again.",
+        title: "Checkout Error", 
+        description: error.message || "Failed to create checkout session",
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
-      setSelectedPlan(null);
+      setCheckingOut(null);
     }
   };
 
-  const formatPrice = (tier: any) => {
-    if (tier.price === 0 || tier.id === 'trial') return '$0';
-    
-    // Price is now in dollars, not cents
-    if (tier.price < 1) {
-      return `$${tier.price.toFixed(2)}`;
-    }
-    return `$${Math.round(tier.price)}`;
-  };
+  const handleFixPricing = async () => {
+    setFixingPricing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fix-stripe-pricing');
+      
+      if (error) {
+        throw error;
+      }
 
-  const getPriceSubtext = (tier: any) => {
-    switch (tier.id) {
-      case 'trial': return '14 days free';
-      case 'starter': return 'per month + usage';
-      case 'professional': return 'per month + usage';
-      case 'business': return 'per month';
-      case 'enterprise': return 'per user/month';
-      default: return tier.isMonthly ? 'per month' : '';
-    }
-  };
-
-  const getUsageLimitsFromTier = (tier: any) => {
-    // Use actual tier data instead of hardcoded values
-    if (tier.usageLimits && tier.usageLimits.length > 0) {
-      return tier.usageLimits;
-    }
-    
-    // Fallback to calculated limits based on tier metadata
-    switch (tier.id) {
-      case 'trial':
-        return [
-          { name: 'Transactions', value: tier.includedUsage ? `${tier.includedUsage} included` : '500 included' },
-          { name: 'AI Processing', value: '50 included' },
-          { name: 'After limit', value: tier.meterRate ? `$${tier.meterRate}/transaction` : '$0.05/transaction' }
-        ];
-      case 'starter':
-        return [
-          { name: 'Base Fee', value: formatPrice(tier) + '/month' },
-          { name: 'Included Usage', value: tier.includedUsage ? `${tier.includedUsage.toLocaleString()} transactions` : '1,000 transactions' },
-          { name: 'Overage', value: tier.meterRate ? `$${tier.meterRate}/transaction` : '$0.02/transaction' }
-        ];
-      case 'professional':
-        return [
-          { name: 'Base Fee', value: formatPrice(tier) + '/month' },
-          { name: 'Included Usage', value: tier.includedUsage ? `${tier.includedUsage.toLocaleString()} transactions` : '5,000 transactions' },
-          { name: 'Overage', value: tier.meterRate ? `$${tier.meterRate}/transaction` : '$0.015/transaction' }
-        ];
-      case 'business':
-        return [
-          { name: 'Transactions', value: 'Unlimited' },
-          { name: 'AI Processing', value: 'Unlimited' },
-          { name: 'Monthly Fee', value: formatPrice(tier) + ' flat rate' }
-        ];
-      case 'enterprise':
-        return [
-          { name: 'Per User', value: formatPrice(tier) + '/month' },
-          { name: 'Transactions', value: 'Unlimited' },
-          { name: 'AI Processing', value: 'Unlimited' }
-        ];
-      default:
-        return [];
+      if (data?.success) {
+        toast({
+          title: "Pricing Fixed",
+          description: `Successfully processed ${data.summary?.products_processed || 0} products and created ${data.summary?.prices_created || 0} prices.`,
+        });
+        
+        // Refetch pricing data
+        refetch();
+      } else {
+        throw new Error(data?.error || 'Failed to fix pricing');
+      }
+    } catch (error: any) {
+      console.error('Fix pricing error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to fix pricing",
+        variant: "destructive",
+      });
+    } finally {
+      setFixingPricing(false);
     }
   };
 
-  const isCurrentPlan = (tierId: string) => {
-    return subscriptionStatus.subscribed && subscriptionStatus.subscription_tier === tierId;
-  };
-
-  const handleDataProcessed = (data: any[], metadata: any) => {
-    console.log('Processed data:', data);
-    console.log('Metadata:', metadata);
-    toast({
-      title: "File Processed Successfully",
-      description: `Extracted ${data.length} items from ${metadata.fileName}`,
-    });
-  };
-
-  if (isPricingLoading || isSubscriptionLoading) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-blue-purple py-12 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold mb-4 text-purple-500">Choose Your Plan</h1>
-            <p className="text-white/90 max-w-2xl mx-auto text-lg">
-              Loading pricing and subscription information...
-            </p>
-          </div>
-          <div className="flex justify-center">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-400" />
+      <DashboardLayout title="Pricing Plans" description="Choose the perfect plan for your business">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout title="Pricing Plans" description="Choose the perfect plan for your business">
+        <div className="text-center py-12">
+          <p className="text-red-600 mb-4">Error loading pricing: {error}</p>
+          <div className="space-x-2">
+            <Button onClick={refetch} variant="outline">Retry</Button>
+            <Button onClick={handleFixPricing} disabled={fixingPricing}>
+              {fixingPricing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Fix Stripe Pricing
+            </Button>
           </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-blue-purple py-12 px-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center space-x-4 mb-4">
-            <Link to="/">
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Dashboard
-              </Button>
-            </Link>
-            <h1 className="text-4xl font-bold text-purple-500">Choose Your Plan</h1>
-            <div className="flex space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefreshPricing}
-                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-                disabled={isRefreshing}
-              >
-                {isRefreshing ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleFixStripePricing}
-                className="bg-blue-600/20 border-blue-500/30 text-blue-300 hover:bg-blue-600/30"
-                disabled={isFixingPricing}
-              >
-                {isFixingPricing ? (
-                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <CreditCard className="h-4 w-4 mr-2" />
-                )}
-                Fix Stripe Pricing
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCreateSubscriptionProducts}
-                className="bg-green-600/20 border-green-500/30 text-green-300 hover:bg-green-600/30"
-                disabled={isCreatingProducts}
-              >
-                {isCreatingProducts ? (
-                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Settings className="h-4 w-4 mr-2" />
-                )}
-                Create Subscription Products
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowFileProcessor(!showFileProcessor)}
-                className="bg-blue-600/20 border-blue-500/30 text-blue-300 hover:bg-blue-600/30"
-              >
-                {showFileProcessor ? 'Hide' : 'Show'} File Processor
-              </Button>
-            </div>
-          </div>
-
-          {/* Enhanced Current Subscription Status */}
-          {subscriptionStatus.subscribed && (
-            <div className="mb-6 p-4 bg-green-600/20 border border-green-500/30 rounded-lg max-w-md mx-auto">
-              <div className="flex items-center justify-center space-x-2">
-                <Crown className="h-5 w-5 text-green-400" />
-                <span className="text-green-300 font-semibold">
-                  Currently subscribed to: {subscriptionStatus.subscription_tier?.charAt(0).toUpperCase() + subscriptionStatus.subscription_tier?.slice(1)}
-                </span>
-              </div>
-              <div className="text-xs text-green-400 mt-1">
-                Status: {subscriptionStatus.subscription_status} | ID: {subscriptionStatus.subscription_id?.substring(0, 8)}...
-              </div>
-            </div>
-          )}
-
-          <p className="text-white/90 max-w-2xl mx-auto text-lg">
-            Select the perfect subscription plan for your business needs. All plans include flexible usage-based billing!
-          </p>
+    <DashboardLayout title="Pricing Plans" description="Choose the perfect plan for your business">
+      <div className="space-y-8">
+        {/* Fix Pricing Button */}
+        <div className="flex justify-end">
+          <Button onClick={handleFixPricing} disabled={fixingPricing} variant="outline" size="sm">
+            {fixingPricing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Fix Stripe Pricing
+          </Button>
         </div>
 
-        {/* File Processor Section */}
-        {showFileProcessor && (
-          <div className="mb-8">
-            <FileUploadProcessor onDataProcessed={handleDataProcessed} />
-          </div>
-        )}
-
-        {/* Usage Dashboard */}
-        <div className="mb-8">
-          <UsageDashboard period="current_month" limits={usageLimits} />
-        </div>
-
-        {/* Show setup notice if no products found */}
-        {pricingTiers.length === 0 && (
-          <div className="mb-8 p-6 bg-yellow-600/20 border border-yellow-500/30 rounded-lg text-center">
-            <AlertCircle className="h-8 w-8 text-yellow-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-yellow-300 mb-2">Subscription Products Not Found</h3>
-            <p className="text-yellow-200 mb-4">
-              Click "Create Subscription Products" above to set up the proper Stripe billing structure with meters, pricing tiers, and subscription products.
-            </p>
-          </div>
-        )}
-
-        {/* Pricing Tiers Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {pricingTiers.map((tier) => {
-            const isActive = isCurrentPlan(tier.id);
-            
-            return (
-              <Card 
-                key={tier.id} 
-                className={`relative bg-slate-800/90 backdrop-blur-sm border-slate-700 text-white h-full flex flex-col transform transition-all duration-300 hover:scale-105 hover:z-10 ${
-                  isActive
-                    ? 'border-2 border-green-500 shadow-2xl shadow-green-500/30 z-20'
-                    : tier.popular 
-                      ? 'border-2 border-blue-500 shadow-2xl shadow-blue-500/30 z-10' 
-                      : 'border border-slate-700/50 shadow-xl shadow-black/30 hover:shadow-2xl hover:shadow-blue-500/20'
-                }`}
-                style={{
-                  boxShadow: isActive 
-                    ? '0 25px 50px -12px rgba(34, 197, 94, 0.4), 0 0 0 1px rgba(34, 197, 94, 0.3)'
-                    : tier.popular
-                      ? '0 25px 50px -12px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.3)'
-                      : '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2)'
-                }}
-              >
-                {isActive && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-30">
-                    <Badge className="bg-green-600 text-white border-green-600">
-                      Current Plan
-                    </Badge>
-                  </div>
-                )}
-
-                {!isActive && tier.popular && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-30">
-                    <Badge className="bg-blue-600 text-white border-blue-600">
-                      Most Popular
-                    </Badge>
-                  </div>
-                )}
-
-                {!isActive && tier.id === 'trial' && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-30">
-                    <Badge className="bg-green-600 text-white border-green-600">
-                      Free Trial
-                    </Badge>
-                  </div>
-                )}
-
-                <CardHeader className="text-center pb-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                      <div className="text-xl">{tier.icon}</div>
-                      <div className="text-left">
-                        <h3 className="text-xl font-bold text-white">{tier.name}</h3>
-                        <p className="text-sm text-slate-400">{tier.subtitle}</p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleProductInfo(tier)}
-                      className="text-slate-400 hover:text-white"
-                    >
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  <p className="text-slate-300 text-sm mb-6 min-h-[48px] text-left leading-relaxed">
-                    {tier.description}
-                  </p>
-                  
-                  <div className="mb-6 text-left">
-                    <div className="text-4xl font-bold text-blue-400 mb-1">
-                      {formatPrice(tier)}
-                    </div>
-                    <div className="text-slate-400 text-sm">
-                      {getPriceSubtext(tier)}
-                    </div>
-                  </div>
-                </CardHeader>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {pricingData.map((plan) => (
+            <Card key={plan.id} className={`relative ${plan.popular ? 'border-primary shadow-lg' : ''}`}>
+              {plan.popular && (
+                <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
+                  <Badge className="bg-primary">Most Popular</Badge>
+                </div>
+              )}
+              
+              <CardHeader className="text-center pb-2">
+                <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center bg-primary/10 rounded-lg">
+                  {plan.id === 'trial' && <Zap className="h-6 w-6 text-primary" />}
+                  {plan.id === 'starter' && <Users className="h-6 w-6 text-primary" />}
+                  {plan.id === 'professional' && <Building className="h-6 w-6 text-primary" />}
+                  {plan.id === 'business' && <Crown className="h-6 w-6 text-primary" />}
+                  {plan.id === 'enterprise' && <Crown className="h-6 w-6 text-primary" />}
+                </div>
                 
-                <CardContent className="flex-1 flex flex-col space-y-4 px-6">
-                  <div className="space-y-3 flex-1">
-                    {tier.features.map((feature, index) => (
-                      <div key={index} className="flex items-start space-x-3">
-                        <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm text-slate-200 leading-relaxed">{feature}</span>
-                      </div>
-                    ))}
+                <CardTitle className="text-xl">{plan.name}</CardTitle>
+                <CardDescription>{plan.description}</CardDescription>
+                
+                <div className="mt-4">
+                  <div className="text-3xl font-bold">
+                    {plan.price === 0 ? 'Free' : `$${plan.price}`}
+                    {plan.price > 0 && <span className="text-sm font-normal text-muted-foreground">/{plan.interval}</span>}
                   </div>
-                  
-                  <div className="bg-slate-700/40 rounded-lg p-4 mt-4">
-                    <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
-                      Pricing Details
-                    </h4>
-                    <div className="space-y-2">
-                      {getUsageLimitsFromTier(tier).map((limit, index) => (
-                        <div key={index} className="flex justify-between text-sm">
-                          <span className="text-slate-400">{limit.name}</span>
-                          <span className="text-white font-medium">{limit.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    className={`w-full mt-6 font-medium py-3 rounded-lg transition-all duration-300 transform hover:scale-105 ${
-                      isActive
-                        ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl'
-                    }`}
-                    onClick={() => handleSelectPlan(tier.id)}
-                    disabled={isLoading && selectedPlan === tier.id || isActive}
-                  >
-                    {isActive 
-                      ? 'Current Plan' 
-                      : isLoading && selectedPlan === tier.id 
-                        ? 'Processing...' 
-                        : 'Subscribe Now'
-                    }
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
+                </div>
+              </CardHeader>
+              
+              <CardContent className="pt-4">
+                <ul className="space-y-2 mb-6">
+                  {plan.features.map((feature, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                      <span className="text-sm">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                
+                <Button 
+                  onClick={() => handleSubscribe(plan.id, plan.stripeProductId)}
+                  disabled={checkingOut === plan.id}
+                  className="w-full"
+                  variant={plan.popular ? "default" : "outline"}
+                >
+                  {checkingOut === plan.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  {plan.price === 0 ? 'Start Free Trial' : 'Subscribe'}
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        <div className="mt-12 text-center">
-          <p className="text-slate-300 text-sm max-w-4xl mx-auto leading-relaxed">
-            <strong>New Subscription Model:</strong> All plans now include a monthly base fee with included usage and overage billing. 
-            <strong> Trial:</strong> Free with 500 included transactions. 
-            <strong> Starter:</strong> $19/month with 1,000 included transactions. 
-            <strong> Professional:</strong> $49/month with 5,000 included transactions. 
-            <strong> Business:</strong> $99/month unlimited. 
-            <strong> Enterprise:</strong> $25/user/month unlimited.
-          </p>
+        {/* Features Comparison */}
+        <div className="mt-12">
+          <h3 className="text-2xl font-bold text-center mb-8">Feature Comparison</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse border border-gray-200">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="border border-gray-200 p-4 text-left">Features</th>
+                  <th className="border border-gray-200 p-4 text-center">Free Trial</th>
+                  <th className="border border-gray-200 p-4 text-center">Starter</th>
+                  <th className="border border-gray-200 p-4 text-center">Professional</th>
+                  <th className="border border-gray-200 p-4 text-center">Business</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border border-gray-200 p-4">API Calls</td>
+                  <td className="border border-gray-200 p-4 text-center">1,000/month</td>
+                  <td className="border border-gray-200 p-4 text-center">10,000/month</td>
+                  <td className="border border-gray-200 p-4 text-center">100,000/month</td>
+                  <td className="border border-gray-200 p-4 text-center">Unlimited</td>
+                </tr>
+                <tr className="bg-gray-50">
+                  <td className="border border-gray-200 p-4">Support</td>
+                  <td className="border border-gray-200 p-4 text-center">Community</td>
+                  <td className="border border-gray-200 p-4 text-center">Email</td>
+                  <td className="border border-gray-200 p-4 text-center">Priority</td>
+                  <td className="border border-gray-200 p-4 text-center">24/7 Phone</td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-200 p-4">Custom Integration</td>
+                  <td className="border border-gray-200 p-4 text-center">❌</td>
+                  <td className="border border-gray-200 p-4 text-center">❌</td>
+                  <td className="border border-gray-200 p-4 text-center">✅</td>
+                  <td className="border border-gray-200 p-4 text-center">✅</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-
-      <ProductDetailModal
-        isOpen={showProductModal}
-        onClose={() => setShowProductModal(false)}
-        product={selectedProduct}
-        onSelectPlan={handleSelectPlan}
-      />
-    </div>
+    </DashboardLayout>
   );
 };
 
