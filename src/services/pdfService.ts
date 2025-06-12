@@ -1,8 +1,8 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set the worker source
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Use a working CDN for the PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js';
 
 export interface PDFParseResult {
   text: string;
@@ -58,12 +58,13 @@ class PDFService {
     const lines = text.split('\n').filter(line => line.trim());
     const data: any[] = [];
     const pricePattern = /\$\d+\.?\d*/g;
+    const numberPattern = /\d+\.?\d*/;
     
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
-      if (!trimmedLine) return;
+      if (!trimmedLine || trimmedLine.length < 3) return;
 
-      // Enhanced pattern matching for pricing data
+      // Split by various delimiters
       let parts = trimmedLine.split('\t');
       if (parts.length === 1) {
         parts = trimmedLine.split(/\s{2,}/);
@@ -74,55 +75,61 @@ class PDFService {
 
       parts = parts.filter(part => part.trim());
 
-      if (parts.length >= 2 && pricePattern.test(trimmedLine)) {
+      if (parts.length >= 1) {
         const prices = trimmedLine.match(pricePattern) || [];
+        const hasPrice = prices.length > 0;
+        const hasNumbers = numberPattern.test(trimmedLine);
         
-        const item: any = {
-          id: `pdf-${index}`,
-          product: parts[0] || `Service ${index + 1}`,
-          description: parts[0] || `Service ${index + 1}`,
-          source: 'pdf',
-          lineNumber: index + 1,
-          originalLine: trimmedLine
-        };
+        // Only process lines that seem to contain product/service information
+        if (hasPrice || hasNumbers || parts.length >= 2) {
+          const item: any = {
+            id: `pdf-${index}`,
+            product: parts[0] || `Service ${index + 1}`,
+            description: parts[0] || `Service ${index + 1}`,
+            source: 'pdf',
+            lineNumber: index + 1,
+            originalLine: trimmedLine
+          };
 
-        // Detect meter name
-        if (parts.length > 1 && parts[1] !== '0' && !parts[1].match(/^\$/)) {
-          item.eventName = parts[1];
-          item.meter_name = parts[1];
+          // Check for additional product details
+          if (parts.length > 1) {
+            item.details = parts.slice(1).join(' ');
+          }
+
+          // Extract pricing information
+          if (hasPrice) {
+            const mainPrice = prices[prices.length - 1] || prices[0];
+            item.price = parseFloat(mainPrice.replace('$', '')) || 0;
+            item.unit_amount = Math.round(item.price * 100);
+          } else {
+            item.price = 0;
+            item.unit_amount = 0;
+          }
+
+          // Determine product type based on content
+          const lowerLine = trimmedLine.toLowerCase();
+          if (lowerLine.includes('per') || lowerLine.includes('usage') || lowerLine.includes('meter')) {
+            item.type = 'metered';
+            item.billing_scheme = 'per_unit';
+            item.usage_type = 'metered';
+            item.aggregate_usage = 'sum';
+          } else if (lowerLine.includes('month') || lowerLine.includes('subscription')) {
+            item.type = 'recurring';
+            item.billing_scheme = 'per_unit';
+            item.interval = 'month';
+          } else {
+            item.type = 'one_time';
+          }
+
+          item.currency = 'usd';
+          item.metadata = {
+            auto_detected_type: item.type,
+            source: 'pdf_parser',
+            confidence: 75
+          };
+
+          data.push(item);
         }
-
-        // Detect unit
-        if (parts.length > 2 && parts[2] !== '0' && !parts[2].match(/^\$/)) {
-          item.unit = parts[2];
-          item.unit_label = parts[2];
-        }
-
-        // Extract pricing
-        if (prices.length > 0) {
-          const mainPrice = prices[prices.length - 1] || prices[0];
-          item.price = parseFloat(mainPrice.replace('$', '')) || 0;
-          item.unit_amount = Math.round(item.price * 100);
-        }
-
-        // Set billing type
-        if (item.eventName && item.unit) {
-          item.type = 'metered';
-          item.billing_scheme = 'per_unit';
-          item.usage_type = 'metered';
-          item.aggregate_usage = 'sum';
-        } else {
-          item.type = 'one_time';
-        }
-
-        item.currency = 'usd';
-        item.metadata = {
-          auto_detected_type: item.type,
-          source: 'pdf_parser',
-          confidence: 80
-        };
-
-        data.push(item);
       }
     });
 

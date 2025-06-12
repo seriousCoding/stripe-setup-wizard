@@ -13,17 +13,32 @@ class OCRService {
     try {
       console.log('Starting OCR processing for:', imageFile.name);
       
+      // Validate image file
+      if (!imageFile.type.startsWith('image/')) {
+        throw new Error('File is not a valid image');
+      }
+
+      // Check file size (limit to 10MB)
+      if (imageFile.size > 10 * 1024 * 1024) {
+        throw new Error('Image file is too large (max 10MB)');
+      }
+
       const result = await Tesseract.recognize(imageFile, 'eng', {
-        logger: m => console.log('OCR Progress:', m)
+        logger: m => console.log('OCR Progress:', m),
+        errorHandler: err => console.error('OCR Error:', err)
       });
+
+      if (!result.data) {
+        throw new Error('OCR processing returned no data');
+      }
 
       console.log('OCR Result:', result.data);
 
       const extractedData = this.extractStructuredData(result.data.text);
 
       return {
-        text: result.data.text,
-        confidence: result.data.confidence,
+        text: result.data.text || '',
+        confidence: result.data.confidence || 0,
         words: (result.data as any).words || [],
         data: extractedData
       };
@@ -56,10 +71,11 @@ class OCRService {
     const lines = text.split('\n').filter(line => line.trim());
     const data: any[] = [];
     const pricePattern = /\$\d+\.?\d*/g;
+    const numberPattern = /\d+\.?\d*/;
     
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
-      if (!trimmedLine) return;
+      if (!trimmedLine || trimmedLine.length < 3) return;
 
       // Split by tabs, multiple spaces, or single spaces
       let parts = trimmedLine.split('\t');
@@ -72,58 +88,61 @@ class OCRService {
 
       parts = parts.filter(part => part.trim());
 
-      if (parts.length >= 2) {
+      if (parts.length >= 1) {
         const prices = trimmedLine.match(pricePattern) || [];
+        const hasPrice = prices.length > 0;
+        const hasNumbers = numberPattern.test(trimmedLine);
         
-        const item: any = {
-          id: `ocr-${index}`,
-          product: parts[0] || `Service ${index + 1}`,
-          description: parts[0] || `Service ${index + 1}`,
-          source: 'ocr',
-          lineNumber: index + 1,
-          originalLine: trimmedLine
-        };
+        // Process any line that could contain product information
+        if (hasPrice || hasNumbers || parts.length >= 2) {
+          const item: any = {
+            id: `ocr-${index}`,
+            product: parts[0] || `Service ${index + 1}`,
+            description: parts[0] || `Service ${index + 1}`,
+            source: 'ocr',
+            lineNumber: index + 1,
+            originalLine: trimmedLine
+          };
 
-        // Detect meter name (usually second column)
-        if (parts.length > 1 && parts[1] !== '0' && !parts[1].match(/^\$/)) {
-          item.eventName = parts[1];
-          item.meter_name = parts[1];
+          // Add additional details if available
+          if (parts.length > 1) {
+            item.details = parts.slice(1).join(' ');
+          }
+
+          // Extract pricing
+          if (hasPrice) {
+            const mainPrice = prices[prices.length - 1] || prices[0];
+            item.price = parseFloat(mainPrice.replace('$', '')) || 0;
+            item.unit_amount = Math.round(item.price * 100);
+          } else {
+            item.price = 0;
+            item.unit_amount = 0;
+          }
+
+          // Determine product type
+          const lowerLine = trimmedLine.toLowerCase();
+          if (lowerLine.includes('per') || lowerLine.includes('usage') || lowerLine.includes('meter')) {
+            item.type = 'metered';
+            item.billing_scheme = 'per_unit';
+            item.usage_type = 'metered';
+            item.aggregate_usage = 'sum';
+          } else if (lowerLine.includes('month') || lowerLine.includes('subscription')) {
+            item.type = 'recurring';
+            item.billing_scheme = 'per_unit';
+            item.interval = 'month';
+          } else {
+            item.type = 'one_time';
+          }
+
+          item.currency = 'usd';
+          item.metadata = {
+            auto_detected_type: item.type,
+            source: 'ocr_parser',
+            confidence: 80
+          };
+
+          data.push(item);
         }
-
-        // Detect unit (usually third column)
-        if (parts.length > 2 && parts[2] !== '0' && !parts[2].match(/^\$/)) {
-          item.unit = parts[2];
-          item.unit_label = parts[2];
-        }
-
-        // Extract pricing
-        if (prices.length > 0) {
-          const mainPrice = prices[prices.length - 1] || prices[0];
-          item.price = parseFloat(mainPrice.replace('$', '')) || 0;
-          item.unit_amount = Math.round(item.price * 100);
-        } else {
-          item.price = 0;
-          item.unit_amount = 0;
-        }
-
-        // Set billing type
-        if (item.eventName && item.unit) {
-          item.type = 'metered';
-          item.billing_scheme = 'per_unit';
-          item.usage_type = 'metered';
-          item.aggregate_usage = 'sum';
-        } else {
-          item.type = 'one_time';
-        }
-
-        item.currency = 'usd';
-        item.metadata = {
-          auto_detected_type: item.type,
-          source: 'ocr_parser',
-          confidence: 85
-        };
-
-        data.push(item);
       }
     });
 

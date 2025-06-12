@@ -250,10 +250,11 @@ class DataExtractionService {
     const lines = text.split('\n').filter(line => line.trim());
     const data: any[] = [];
     const pricePattern = /\$\d+\.?\d*/g;
+    const numberPattern = /\d+\.?\d*/;
     
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
-      if (!trimmedLine) return;
+      if (!trimmedLine || trimmedLine.length < 3) return;
 
       let parts = trimmedLine.split('\t');
       if (parts.length === 1) {
@@ -265,38 +266,55 @@ class DataExtractionService {
 
       parts = parts.filter(part => part.trim());
 
-      if (parts.length >= 2) {
+      if (parts.length >= 1) {
         const prices = trimmedLine.match(pricePattern) || [];
+        const hasPrice = prices.length > 0;
+        const hasNumbers = numberPattern.test(trimmedLine);
         
-        const item: any = {
-          id: `text-${index}`,
-          product: parts[0] || `Service ${index + 1}`,
-          description: parts[0] || `Service ${index + 1}`,
-          source: 'text',
-          lineNumber: index + 1,
-          originalLine: trimmedLine
-        };
+        // Process lines that contain product information
+        if (hasPrice || hasNumbers || parts.length >= 2) {
+          const item: any = {
+            id: `text-${index}`,
+            product: parts[0] || `Service ${index + 1}`,
+            description: parts[0] || `Service ${index + 1}`,
+            source: 'text',
+            lineNumber: index + 1,
+            originalLine: trimmedLine
+          };
 
-        if (parts.length > 1) {
-          item.eventName = parts[1];
-          item.meter_name = parts[1];
+          if (parts.length > 1) {
+            item.details = parts.slice(1).join(' ');
+          }
+
+          if (hasPrice) {
+            const mainPrice = prices[prices.length - 1] || prices[0];
+            item.price = parseFloat(mainPrice.replace('$', '')) || 0;
+            item.unit_amount = Math.round(item.price * 100);
+          } else {
+            item.price = 0;
+            item.unit_amount = 0;
+          }
+
+          // Determine type
+          const lowerLine = trimmedLine.toLowerCase();
+          if (lowerLine.includes('per') || lowerLine.includes('usage') || lowerLine.includes('meter')) {
+            item.type = 'metered';
+          } else if (lowerLine.includes('month') || lowerLine.includes('subscription')) {
+            item.type = 'recurring';
+            item.interval = 'month';
+          } else {
+            item.type = 'one_time';
+          }
+
+          item.currency = 'usd';
+          item.metadata = {
+            auto_detected_type: item.type,
+            source: 'text_parser',
+            confidence: 85
+          };
+
+          data.push(item);
         }
-
-        if (parts.length > 2) {
-          item.unit = parts[2];
-          item.unit_label = parts[2];
-        }
-
-        if (prices.length > 0) {
-          const mainPrice = prices[prices.length - 1] || prices[0];
-          item.price = parseFloat(mainPrice.replace('$', '')) || 0;
-          item.unit_amount = Math.round(item.price * 100);
-        }
-
-        item.type = item.eventName && item.unit ? 'metered' : 'one_time';
-        item.currency = 'usd';
-
-        data.push(item);
       }
     });
 
@@ -323,16 +341,18 @@ class DataExtractionService {
     normalized.price = normalized.price || 0;
     normalized.unit_amount = Math.round(normalized.price * 100);
 
-    // Handle meter/event names
-    normalized.eventName = normalized.eventName || normalized['Meter Name'] || normalized.meter_name;
-    normalized.unit = normalized.unit || normalized.Unit || normalized.unit_label;
+    // Determine product type based on content
+    const productText = `${normalized.product} ${normalized.description || ''} ${normalized.details || ''}`.toLowerCase();
     
-    // Set billing type
-    if (normalized.eventName && normalized.unit) {
+    if (productText.includes('per') || productText.includes('usage') || productText.includes('meter') || productText.includes('api call')) {
       normalized.type = 'metered';
       normalized.billing_scheme = 'per_unit';
       normalized.usage_type = 'metered';
       normalized.aggregate_usage = 'sum';
+    } else if (productText.includes('month') || productText.includes('subscription') || productText.includes('recurring')) {
+      normalized.type = 'recurring';
+      normalized.billing_scheme = 'per_unit';
+      normalized.interval = 'month';
     } else {
       normalized.type = 'one_time';
     }

@@ -18,16 +18,16 @@ const TopNavigation = () => {
   ];
 
   return (
-    <div className="bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 border-b border-purple-500/30 shadow-xl z-40 relative">
+    <div className="bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 border-b border-purple-500/30 shadow-xl relative">
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Logo and Brand */}
-          <div className="flex items-center space-x-3 z-50 relative">
+          <div className="flex items-center space-x-3">
             <div className="bg-gradient-to-r from-teal-500 to-emerald-500 p-2 rounded-lg shadow-lg">
               <Upload className="h-6 w-6 text-white" />
             </div>
-            <div className="z-50 relative">
-              <h1 className="text-xl font-bold text-black relative z-50 bg-white/90 px-3 py-1 rounded-md shadow-sm">
+            <div>
+              <h1 className="text-xl font-bold text-black bg-white px-3 py-1 rounded-md shadow-sm">
                 Stripe Setup Pilot
               </h1>
               <p className="text-sm text-purple-200">Automate your Stripe configuration</p>
