@@ -12,6 +12,8 @@ export interface EmailNotification {
 class EmailService {
   async sendNotification(notification: EmailNotification): Promise<{ success: boolean; error?: string }> {
     try {
+      console.log('Sending email notification:', notification);
+      
       const { data, error } = await supabase.functions.invoke('send-notification', {
         body: notification
       });
@@ -21,6 +23,7 @@ class EmailService {
         return { success: false, error: error.message };
       }
 
+      console.log('Email notification sent successfully:', data);
       return { success: true };
     } catch (error: any) {
       console.error('Error sending notification:', error);
