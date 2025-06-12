@@ -8,9 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Save, Key, Bell, Shield, Trash2 } from 'lucide-react';
+import { Save, Key, Bell, Shield, Trash2, RefreshCw, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import StripeConnectionStatus from '@/components/StripeConnectionStatus';
+import StripeManagement from '@/components/StripeManagement';
 
 const Settings = () => {
   const { user, profile } = useAuth();
@@ -37,13 +39,6 @@ const Settings = () => {
     toast({
       title: "Settings Saved",
       description: "Your preferences have been updated successfully.",
-    });
-  };
-
-  const handleStripeConnection = () => {
-    toast({
-      title: "Stripe Connection",
-      description: "Stripe OAuth flow would be initiated here.",
     });
   };
 
@@ -112,6 +107,7 @@ const Settings = () => {
           </CardContent>
         </Card>
 
+        {/* Stripe Integration Section */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -119,35 +115,12 @@ const Settings = () => {
               <span>Stripe Integration</span>
             </CardTitle>
             <CardDescription>
-              Connect your Stripe account to enable billing model deployment
+              Connect your Stripe account to enable billing model deployment and subscription management
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <h4 className="font-medium">Stripe Account</h4>
-                <p className="text-sm text-gray-600">Not connected</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Badge variant="secondary">Disconnected</Badge>
-                <Button onClick={handleStripeConnection}>
-                  Connect Stripe
-                </Button>
-              </div>
-            </div>
-            
-            <div>
-              <Label htmlFor="webhook-endpoint">Webhook Endpoint (Optional)</Label>
-              <Input
-                id="webhook-endpoint"
-                value={settings.webhookEndpoint}
-                onChange={(e) => setSettings({...settings, webhookEndpoint: e.target.value})}
-                placeholder="https://your-app.com/webhooks/stripe"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Configure webhook endpoint for real-time payment notifications
-              </p>
-            </div>
+            <StripeConnectionStatus />
+            <StripeManagement />
           </CardContent>
         </Card>
 

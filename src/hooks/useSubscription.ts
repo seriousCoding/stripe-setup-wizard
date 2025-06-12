@@ -43,10 +43,11 @@ export const useSubscription = () => {
       const { data, error } = await supabase.functions.invoke('check-subscription');
 
       if (error) {
+        console.error('Subscription check error:', error);
         throw new Error(error.message);
       }
 
-      console.log('Subscription check result:', data);
+      console.log('Raw subscription check result:', data);
       
       // Ensure we have a valid response structure
       const validatedData = {
@@ -59,7 +60,11 @@ export const useSubscription = () => {
         price_amount: data?.price_amount || undefined
       };
 
+      console.log('Validated subscription data:', validatedData);
       setSubscriptionStatus(validatedData);
+
+      // Store in localStorage for persistence
+      localStorage.setItem('subscription_status', JSON.stringify(validatedData));
 
     } catch (err: any) {
       console.error('Error checking subscription:', err);
@@ -76,17 +81,32 @@ export const useSubscription = () => {
 
   // Check subscription when user changes
   useEffect(() => {
-    checkSubscription();
+    if (user) {
+      // Try to load from localStorage first for immediate display
+      const cached = localStorage.getItem('subscription_status');
+      if (cached) {
+        try {
+          const cachedData = JSON.parse(cached);
+          setSubscriptionStatus(cachedData);
+          setIsLoading(false);
+        } catch (e) {
+          console.warn('Failed to parse cached subscription status');
+        }
+      }
+      
+      // Then fetch fresh data
+      checkSubscription();
+    }
   }, [user]);
 
-  // Auto-refresh subscription status every 30 seconds when on pricing page
+  // Auto-refresh subscription status every 60 seconds when user is present
   useEffect(() => {
     if (!user) return;
 
     const interval = setInterval(() => {
       console.log('Auto-refreshing subscription status...');
       checkSubscription();
-    }, 30000); // 30 seconds
+    }, 60000); // 60 seconds
 
     return () => clearInterval(interval);
   }, [user]);

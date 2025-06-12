@@ -1,13 +1,15 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Camera, FileText, Image, Upload, AlertCircle, CheckCircle } from 'lucide-react';
+import { Camera, FileText, Image, Upload, AlertCircle, CheckCircle, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { ocrService } from '@/services/ocrService';
+import { pdfService } from '@/services/pdfService';
 
 interface ProcessedFile {
   name: string;
@@ -17,6 +19,7 @@ interface ProcessedFile {
   data?: any[];
   error?: string;
   confidence?: number;
+  processingProgress?: number;
 }
 
 interface EnhancedFileProcessorProps {
@@ -29,7 +32,15 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
+
+  const updateFileProgress = (fileName: string, progress: number) => {
+    setProcessedFiles(prev => prev.map(f => 
+      f.name === fileName ? { ...f, processingProgress: progress } : f
+    ));
+  };
 
   const handleFileUpload = async (files: FileList) => {
     setIsProcessing(true);
@@ -37,7 +48,8 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
       name: file.name,
       type: file.type,
       size: file.size,
-      status: 'processing'
+      status: 'processing',
+      processingProgress: 0
     }));
 
     setProcessedFiles(prev => [...prev, ...newFiles]);
@@ -45,11 +57,12 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
+        updateFileProgress(file.name, 10);
         const result = await processFile(file);
         
         setProcessedFiles(prev => prev.map(f => 
           f.name === file.name && f.size === file.size
-            ? { ...f, status: 'completed', data: result.data, confidence: result.confidence }
+            ? { ...f, status: 'completed', data: result.data, confidence: result.confidence, processingProgress: 100 }
             : f
         ));
 
@@ -64,7 +77,7 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
       } catch (error: any) {
         setProcessedFiles(prev => prev.map(f => 
           f.name === file.name && f.size === file.size
-            ? { ...f, status: 'error', error: error.message }
+            ? { ...f, status: 'error', error: error.message, processingProgress: 0 }
             : f
         ));
 
@@ -84,26 +97,31 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
 
     // Handle XLSX/XLS files
     if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      updateFileProgress(file.name, 30);
       return await processExcelFile(file);
     }
 
-    // Handle PDF files (mock implementation for now)
+    // Handle PDF files
     if (file.type === 'application/pdf') {
+      updateFileProgress(file.name, 20);
       return await processPDFFile(file);
     }
 
     // Handle image files (OCR)
     if (file.type.startsWith('image/')) {
+      updateFileProgress(file.name, 25);
       return await processImageFile(file);
     }
 
     // Handle CSV/text files
     if (fileName.endsWith('.csv') || file.type === 'text/csv') {
+      updateFileProgress(file.name, 40);
       return await processCSVFile(file);
     }
 
     // Handle JSON files
     if (file.type === 'application/json') {
+      updateFileProgress(file.name, 50);
       return await processJSONFile(file);
     }
 
@@ -111,22 +129,23 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
   };
 
   const processExcelFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
+    updateFileProgress(file.name, 50);
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
     
-    // Convert to JSON with headers
+    updateFileProgress(file.name, 70);
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
     
     if (jsonData.length === 0) {
       throw new Error('Excel file appears to be empty');
     }
 
-    // Convert to object format
     const headers = jsonData[0] as string[];
     const rows = jsonData.slice(1) as any[][];
     
+    updateFileProgress(file.name, 90);
     const data = rows
       .filter(row => row.length > 0 && row.some(cell => cell !== null && cell !== undefined && cell !== ''))
       .map(row => {
@@ -147,73 +166,105 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
   };
 
   const processPDFFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
-    // Mock PDF processing - in reality, you'd use a library like PDF.js
-    // or send to a backend service for OCR processing
-    
-    toast({
-      title: "PDF Processing",
-      description: "PDF processing requires additional OCR setup. This is a demonstration of the workflow.",
-    });
-
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Return mock data that represents what OCR might extract
-    const mockData = [
-      {
-        product: "Document Processing Service",
-        eventName: "document_processing",
-        price: 0.05,
-        unit: "page",
-        description: "Extracted from PDF via OCR"
-      },
-      {
-        product: "Text Analysis",
-        eventName: "text_analysis", 
-        price: 0.02,
-        unit: "word",
-        description: "PDF content analysis"
+    try {
+      updateFileProgress(file.name, 30);
+      const pdfResult = await pdfService.parsePDF(file);
+      
+      updateFileProgress(file.name, 60);
+      const tabularData = pdfService.extractTabularData(pdfResult.text);
+      
+      updateFileProgress(file.name, 90);
+      
+      if (tabularData.length === 0) {
+        // If no tabular data found, create a basic structure from text
+        const data = [{
+          product: `PDF Content from ${file.name}`,
+          description: pdfResult.text.substring(0, 200) + (pdfResult.text.length > 200 ? '...' : ''),
+          pages: pdfResult.numPages,
+          extractedText: pdfResult.text
+        }];
+        
+        return {
+          data,
+          confidence: 60,
+          method: 'pdf_text_extraction'
+        };
       }
-    ];
 
-    return {
-      data: mockData,
-      confidence: 75,
-      method: 'pdf_ocr_mock'
-    };
+      return {
+        data: tabularData,
+        confidence: 80,
+        method: 'pdf_tabular_extraction'
+      };
+    } catch (error) {
+      console.error('PDF processing error:', error);
+      throw new Error(`PDF processing failed: ${error}`);
+    }
   };
 
   const processImageFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
-    // Mock OCR processing - in reality, you'd use Tesseract.js or a cloud OCR service
-    
-    toast({
-      title: "OCR Processing",
-      description: "Image OCR processing requires additional setup. This demonstrates the workflow.",
-    });
+    try {
+      updateFileProgress(file.name, 30);
+      
+      toast({
+        title: "OCR Processing",
+        description: "Processing image with OCR. This may take a moment...",
+      });
 
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 3000));
+      const ocrResult = await ocrService.processImage(file);
+      
+      updateFileProgress(file.name, 80);
+      
+      // Try to extract structured data from OCR text
+      const lines = ocrResult.text.split('\n').filter(line => line.trim());
+      const data: any[] = [];
+      
+      // Simple pattern matching for pricing data
+      const pricePattern = /\$\d+\.?\d*/;
+      const servicePattern = /^[A-Za-z\s]+/;
+      
+      lines.forEach((line, index) => {
+        if (pricePattern.test(line) && servicePattern.test(line)) {
+          const priceMatch = line.match(pricePattern);
+          const serviceMatch = line.match(servicePattern);
+          
+          if (priceMatch && serviceMatch) {
+            data.push({
+              product: serviceMatch[0].trim(),
+              price: priceMatch[0],
+              source: 'OCR',
+              confidence: ocrResult.confidence,
+              originalLine: line,
+              lineNumber: index + 1
+            });
+          }
+        }
+      });
 
-    // Return mock data that represents what OCR might extract
-    const mockData = [
-      {
-        product: "OCR Service",
-        eventName: "ocr_processing",
-        price: 0.10,
-        unit: "image",
-        description: "Extracted from image via OCR"
+      // If no structured data found, return the raw text
+      if (data.length === 0) {
+        data.push({
+          product: `OCR Text from ${file.name}`,
+          description: ocrResult.text.substring(0, 300) + (ocrResult.text.length > 300 ? '...' : ''),
+          confidence: ocrResult.confidence,
+          fullText: ocrResult.text
+        });
       }
-    ];
 
-    return {
-      data: mockData,
-      confidence: 68,
-      method: 'image_ocr_mock'
-    };
+      return {
+        data,
+        confidence: Math.round(ocrResult.confidence),
+        method: 'image_ocr'
+      };
+    } catch (error) {
+      console.error('OCR processing error:', error);
+      throw new Error(`OCR processing failed: ${error}`);
+    }
   };
 
   const processCSVFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
     return new Promise((resolve, reject) => {
+      updateFileProgress(file.name, 40);
       Papa.parse(file, {
         complete: (result) => {
           if (result.errors.length > 0) {
@@ -221,6 +272,7 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
             return;
           }
 
+          updateFileProgress(file.name, 90);
           resolve({
             data: result.data as any[],
             confidence: 98,
@@ -235,9 +287,11 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
   };
 
   const processJSONFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
+    updateFileProgress(file.name, 40);
     const text = await file.text();
     const jsonData = JSON.parse(text);
     
+    updateFileProgress(file.name, 80);
     let data: any[];
     if (Array.isArray(jsonData)) {
       data = jsonData;
@@ -257,14 +311,22 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
       });
       setCameraStream(stream);
       setIsCameraActive(true);
       
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      
       toast({
         title: "Camera Active",
-        description: "Camera is ready. Take a photo to process with OCR.",
+        description: "Camera is ready. Position document and take a photo to process with OCR.",
       });
     } catch (error) {
       toast({
@@ -283,17 +345,83 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
     }
   };
 
-  const capturePhoto = () => {
-    // Mock photo capture and OCR processing
-    toast({
-      title: "Photo Captured",
-      description: "Processing image with OCR... (This requires additional setup)",
-    });
+  const capturePhoto = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    const context = canvas.getContext('2d');
     
-    // In a real implementation, you'd:
-    // 1. Capture frame from video stream
-    // 2. Convert to image blob
-    // 3. Process with OCR service
+    if (!context) return;
+
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw video frame to canvas
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    try {
+      toast({
+        title: "Processing Capture",
+        description: "Processing captured image with OCR...",
+      });
+
+      const ocrResult = await ocrService.processCameraCapture(canvas);
+      
+      // Process the OCR result similar to image file processing
+      const lines = ocrResult.text.split('\n').filter(line => line.trim());
+      const data: any[] = [];
+      
+      const pricePattern = /\$\d+\.?\d*/;
+      const servicePattern = /^[A-Za-z\s]+/;
+      
+      lines.forEach((line, index) => {
+        if (pricePattern.test(line) && servicePattern.test(line)) {
+          const priceMatch = line.match(pricePattern);
+          const serviceMatch = line.match(servicePattern);
+          
+          if (priceMatch && serviceMatch) {
+            data.push({
+              product: serviceMatch[0].trim(),
+              price: priceMatch[0],
+              source: 'Camera OCR',
+              confidence: ocrResult.confidence,
+              originalLine: line,
+              lineNumber: index + 1
+            });
+          }
+        }
+      });
+
+      if (data.length === 0) {
+        data.push({
+          product: 'Camera Capture OCR',
+          description: ocrResult.text.substring(0, 300) + (ocrResult.text.length > 300 ? '...' : ''),
+          confidence: ocrResult.confidence,
+          fullText: ocrResult.text
+        });
+      }
+
+      onDataProcessed(data, {
+        fileName: 'camera-capture.jpg',
+        fileType: 'image/jpeg',
+        confidence: Math.round(ocrResult.confidence),
+        processingMethod: 'camera_ocr'
+      });
+
+      toast({
+        title: "Capture Processed",
+        description: `OCR completed with ${Math.round(ocrResult.confidence)}% confidence`,
+      });
+
+    } catch (error: any) {
+      toast({
+        title: "OCR Processing Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
     
     stopCamera();
   };
@@ -370,6 +498,7 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
             <Button 
               variant="outline" 
               onClick={isCameraActive ? capturePhoto : startCamera}
+              disabled={isProcessing}
             >
               <Camera className="h-4 w-4 mr-2" />
               {isCameraActive ? 'Capture Photo' : 'Start Camera'}
@@ -383,23 +512,28 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
           </div>
 
           {/* Camera Preview */}
-          {isCameraActive && cameraStream && (
+          {isCameraActive && (
             <Card>
               <CardContent className="p-4">
-                <video
-                  autoPlay
-                  playsInline
-                  ref={(video) => {
-                    if (video && cameraStream) {
-                      video.srcObject = cameraStream;
-                    }
-                  }}
-                  className="w-full max-w-md mx-auto rounded-lg"
-                />
-                <div className="flex justify-center mt-2">
+                <div className="relative">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full max-w-md mx-auto rounded-lg"
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    className="hidden"
+                  />
+                </div>
+                <div className="flex justify-center mt-4 space-x-2">
                   <Button onClick={capturePhoto}>
                     <Camera className="h-4 w-4 mr-2" />
                     Capture & Process
+                  </Button>
+                  <Button variant="outline" onClick={stopCamera}>
+                    Cancel
                   </Button>
                 </div>
               </CardContent>
@@ -414,41 +548,53 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
               </CardHeader>
               <CardContent className="space-y-3">
                 {processedFiles.map((file, index) => (
-                  <div key={index} className="flex items-center justify-between p-2 border rounded">
-                    <div className="flex items-center space-x-3">
-                      {file.status === 'processing' && (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
-                      )}
-                      {file.status === 'completed' && (
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      )}
-                      {file.status === 'error' && (
-                        <AlertCircle className="h-4 w-4 text-red-600" />
-                      )}
-                      
-                      <div>
-                        <div className="text-sm font-medium">{file.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {(file.size / 1024).toFixed(1)} KB
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-center justify-between p-2 border rounded">
+                      <div className="flex items-center space-x-3">
+                        {file.status === 'processing' && (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
+                        )}
+                        {file.status === 'completed' && (
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        )}
+                        {file.status === 'error' && (
+                          <AlertCircle className="h-4 w-4 text-red-600" />
+                        )}
+                        
+                        <div>
+                          <div className="text-sm font-medium">{file.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {(file.size / 1024).toFixed(1)} KB
+                          </div>
                         </div>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        {file.confidence && (
+                          <Badge variant="outline">
+                            {file.confidence}% confidence
+                          </Badge>
+                        )}
+                        <Badge 
+                          variant={
+                            file.status === 'completed' ? 'default' :
+                            file.status === 'error' ? 'destructive' : 'secondary'
+                          }
+                        >
+                          {file.status}
+                        </Badge>
                       </div>
                     </div>
                     
-                    <div className="flex items-center space-x-2">
-                      {file.confidence && (
-                        <Badge variant="outline">
-                          {file.confidence}% confidence
-                        </Badge>
-                      )}
-                      <Badge 
-                        variant={
-                          file.status === 'completed' ? 'default' :
-                          file.status === 'error' ? 'destructive' : 'secondary'
-                        }
-                      >
-                        {file.status}
-                      </Badge>
-                    </div>
+                    {file.status === 'processing' && file.processingProgress !== undefined && (
+                      <Progress value={file.processingProgress} className="h-2" />
+                    )}
+                    
+                    {file.status === 'error' && file.error && (
+                      <div className="text-xs text-red-600 ml-7">
+                        Error: {file.error}
+                      </div>
+                    )}
                   </div>
                 ))}
               </CardContent>
