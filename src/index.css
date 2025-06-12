@@ -76,3 +76,37 @@
 h1, h2, h3, h4, h5, h6 {
   color: #6d28d9 !important;
 }
+
+/* Enhanced 3D effects */
+.shadow-3xl {
+  box-shadow: 0 35px 60px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Card on gradient background */
+.card-on-gradient {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Custom animations */
+@keyframes shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+/* Enhanced button effects */
+.btn-3d {
+  transform: perspective(1000px) rotateX(0deg);
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.btn-3d:hover {
+  transform: perspective(1000px) rotateX(-5deg) translateY(-5px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}

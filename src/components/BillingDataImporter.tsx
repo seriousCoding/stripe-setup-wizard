@@ -30,7 +30,7 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const handleTextPaste = () => {
+  const handleTextPaste = async () => {
     if (!pastedText.trim()) {
       toast({
         title: "No Text",
@@ -43,6 +43,7 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
     setIsProcessing(true);
     
     try {
+      console.log('Processing pasted text:', pastedText);
       const extractedData = parseTextFormats(pastedText);
       const result: ProcessedData = {
         type: 'text',
@@ -62,6 +63,7 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
       setPastedText('');
     } catch (error: any) {
       setIsProcessing(false);
+      console.error('Text processing error:', error);
       toast({
         title: "Processing Error",
         description: error.message,
@@ -182,6 +184,7 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
     setIsProcessing(true);
     
     try {
+      console.log('Processing Excel file:', file.name);
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
@@ -223,6 +226,7 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
     setIsProcessing(true);
     
     try {
+      console.log('Processing CSV file:', file.name);
       const text = await file.text();
       const extractedData = parseTextFormats(text);
       
@@ -289,6 +293,8 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
     const lines = cleanText.split(/\r?\n/).filter(line => line.trim());
     
     if (lines.length === 0) return items;
+
+    console.log('Parsing lines:', lines);
 
     // Enhanced parsing for different formats
     lines.forEach((line, index) => {
@@ -357,17 +363,18 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
           });
         }
       } catch (e) {
-        // Not JSON, that's okay
+        console.log('Not JSON format, that\'s okay');
       }
     }
 
+    console.log('Parsed items:', items);
     return items;
   };
 
   return (
     <div className="space-y-6">
       {/* Text Import Section */}
-      <Card className="shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]">
+      <Card className="shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 transform z-10 relative">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <FileText className="h-5 w-5" />
@@ -388,12 +395,12 @@ CSV: Service Name, Price, Description
 JSON: [{'name': 'API Calls', 'price': 0.02}]
 Text: API Calls - $0.02 per call"
             rows={6}
-            className="font-mono text-sm shadow-inner"
+            className="font-mono text-sm shadow-inner hover:shadow-lg transition-shadow duration-300"
           />
           <Button
             onClick={handleTextPaste}
             disabled={isProcessing || !pastedText.trim()}
-            className="w-full shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105"
+            className="w-full shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 transform z-10 relative"
           >
             {isProcessing ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -406,7 +413,7 @@ Text: API Calls - $0.02 per call"
       </Card>
 
       {/* File Upload Section */}
-      <Card className="shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]">
+      <Card className="shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 transform z-10 relative">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Upload className="h-5 w-5" />
@@ -422,7 +429,7 @@ Text: API Calls - $0.02 per call"
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
               disabled={isProcessing}
-              className="h-24 flex-col space-y-2 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 hover:-translate-y-1"
+              className="h-24 flex-col space-y-2 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-110 hover:-translate-y-2 transform z-10 relative"
             >
               <Image className="h-6 w-6" />
               <span className="text-sm">Upload Files</span>
@@ -432,13 +439,20 @@ Text: API Calls - $0.02 per call"
               variant="outline"
               onClick={() => cameraInputRef.current?.click()}
               disabled={isProcessing}
-              className="h-24 flex-col space-y-2 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 hover:-translate-y-1"
+              className="h-24 flex-col space-y-2 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-110 hover:-translate-y-2 transform z-10 relative"
             >
               <Camera className="h-6 w-6" />
               <span className="text-sm">Take Photo</span>
             </Button>
             
-            <div className="h-24 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg shadow-inner hover:shadow-md transition-all duration-200">
+            <div 
+              className="h-24 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg shadow-inner hover:shadow-lg transition-all duration-300 hover:scale-105 cursor-pointer"
+              onDrop={(e) => {
+                e.preventDefault();
+                handleFileUpload(e.dataTransfer.files);
+              }}
+              onDragOver={(e) => e.preventDefault()}
+            >
               <span className="text-sm text-gray-500">Drag & Drop Files</span>
             </div>
           </div>
@@ -465,7 +479,7 @@ Text: API Calls - $0.02 per call"
 
       {/* Processing Status */}
       {isProcessing && (
-        <Card className="border-blue-200 bg-blue-50 shadow-lg">
+        <Card className="border-blue-200 bg-blue-50 shadow-2xl transform scale-105 transition-all duration-300">
           <CardContent className="pt-6">
             <div className="flex items-center justify-center space-x-3">
               <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
@@ -477,7 +491,7 @@ Text: API Calls - $0.02 per call"
 
       {/* Results */}
       {processedResults.length > 0 && (
-        <Card className="shadow-lg">
+        <Card className="shadow-2xl">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
@@ -487,7 +501,7 @@ Text: API Calls - $0.02 per call"
           <CardContent>
             <div className="space-y-3">
               {processedResults.map((result, index) => (
-                <div key={index} className="p-3 border rounded-lg bg-gray-50 shadow-md hover:shadow-lg transition-all duration-200">
+                <div key={index} className="p-3 border rounded-lg bg-gray-50 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 transform">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-2">
                       <Badge variant="outline" className="shadow-sm">
