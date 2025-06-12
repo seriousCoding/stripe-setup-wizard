@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Upload, FileText, Camera, FileImage, Clipboard, CheckCircle, Brain } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { aiParsingService, ParsedData } from '@/services/aiParsingService';
 
 interface ServiceDefinitionProps {
@@ -61,22 +61,63 @@ const ServiceDefinition = ({
       let fileContent = '';
       let format: 'csv' | 'json' | 'xml' | 'text' = 'csv';
       
-      // Handle different file types
+      // Handle Excel files (.xlsx, .xls)
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.type.includes('spreadsheet')) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          
+          // Convert to proper format for parsing
+          if (jsonData.length > 0) {
+            const headers = jsonData[0] as string[];
+            const rows = jsonData.slice(1) as any[][];
+            const parsedData = rows.map(row => {
+              const obj: any = {};
+              headers.forEach((header, index) => {
+                obj[header] = row[index] || '';
+              });
+              return obj;
+            });
+            processWithAI(parsedData, 'csv');
+          }
+        } catch (error) {
+          toast({
+            title: "Excel Parse Error",
+            description: "Failed to parse Excel file. Please check the format.",
+            variant: "destructive",
+          });
+        }
+        setIsProcessing(false);
+        return;
+      }
+
+      // Handle PDF files
+      if (file.type === 'application/pdf') {
+        toast({
+          title: "PDF Processing", 
+          description: "PDF text extraction requires additional setup. For now, please convert to CSV or Excel format for best results.",
+          variant: "destructive",
+        });
+        setIsProcessing(false);
+        return;
+      }
+
+      // Handle images
       if (file.type.startsWith('image/')) {
         toast({
           title: "Image Processing",
-          description: "Image uploaded for OCR processing. This feature requires additional setup.",
+          description: "OCR image processing requires additional setup. Please convert to text format.",
+          variant: "destructive",
         });
         setIsProcessing(false);
         return;
-      } else if (file.type === 'application/pdf') {
-        toast({
-          title: "PDF Processing", 
-          description: "PDF parsing would require additional libraries. Please convert to CSV or text format.",
-        });
-        setIsProcessing(false);
-        return;
-      } else if (file.type === 'application/json') {
+      }
+
+      // Handle JSON files
+      if (file.type === 'application/json') {
         fileContent = await file.text();
         format = 'json';
         try {
@@ -92,7 +133,10 @@ const ServiceDefinition = ({
         }
         setIsProcessing(false);
         return;
-      } else if (file.type === 'application/xml' || file.type === 'text/xml') {
+      }
+
+      // Handle XML files
+      if (file.type === 'application/xml' || file.type === 'text/xml') {
         fileContent = await file.text();
         format = 'xml';
         const parsedData = parseXMLToArray(fileContent);

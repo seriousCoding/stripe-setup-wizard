@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -26,7 +25,7 @@ interface StripePricingTier {
 interface UseStripePricingOptions {
   autoRefresh?: boolean;
   refreshInterval?: number;
-  useAllProducts?: boolean; // New option to control which products to use
+  useAllProducts?: boolean;
 }
 
 export const useStripePricing = (options: UseStripePricingOptions = {}) => {
@@ -54,10 +53,8 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
       }
 
       if (data?.success) {
-        // Store all products for management purposes
         setAllProducts(data.all_products || []);
         
-        // Use app products for billing/pricing or all products based on option
         const productsToUse = useAllProducts ? data.all_products : data.app_products;
         
         if (productsToUse && productsToUse.length > 0) {
@@ -65,17 +62,17 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
           setPricingTiers(tiers);
           console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length);
         } else {
-          console.log(`No ${useAllProducts ? '' : 'app '}products found, using default pricing`);
-          setPricingTiers(getDefaultPricingTiers());
+          console.log(`No ${useAllProducts ? '' : 'app '}products found`);
+          setPricingTiers([]);
         }
       } else {
-        console.log('No products found, using default pricing');
-        setPricingTiers(getDefaultPricingTiers());
+        console.log('No products found');
+        setPricingTiers([]);
       }
     } catch (err: any) {
       console.error('Error fetching pricing data:', err);
       setError(err.message);
-      setPricingTiers(getDefaultPricingTiers());
+      setPricingTiers([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -102,7 +99,7 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
 
   return {
     pricingTiers,
-    allProducts, // Expose all products for management
+    allProducts,
     isLoading,
     error,
     isRefreshing,
@@ -123,7 +120,6 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     
     const tierId = metadata.tier_id || 'custom';
 
-    // Extract usage limits from metadata
     const usageLimits = [];
     
     if (metadata.usage_limit_transactions) {
@@ -142,10 +138,8 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       });
     }
 
-    // Generate features based on tier ID and the exact features from the image
     const features = getFeaturesFromTierId(tierId);
 
-    // Create tier from Stripe product data
     const tier: StripePricingTier = {
       id: tierId,
       name: product.name || 'Custom Plan',
@@ -170,7 +164,6 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     tiers.push(tier);
   });
 
-  // Sort tiers by price, but put trial first
   return tiers.sort((a, b) => {
     if (a.id === 'trial') return -1;
     if (b.id === 'trial') return 1;

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,21 +50,14 @@ const Products = () => {
         return;
       }
 
-      if (data?.success && data.products) {
-        setProducts(data.products);
-        console.log('Products loaded:', data.products.length);
+      if (data?.success && data.all_products) {
+        setProducts(data.all_products);
+        console.log('Products loaded:', data.all_products.length);
         
-        if (data.test_data_created) {
-          toast({
-            title: "Test Data Created",
-            description: `Created ${data.products.length} test products in your Stripe account.`,
-          });
-        } else {
-          toast({
-            title: "Products Loaded",
-            description: `Loaded ${data.products.length} products from Stripe.`,
-          });
-        }
+        toast({
+          title: "Products Loaded",
+          description: `Loaded ${data.all_products.length} products from Stripe.`,
+        });
       }
     } catch (error: any) {
       console.error('Error in loadProducts:', error);
