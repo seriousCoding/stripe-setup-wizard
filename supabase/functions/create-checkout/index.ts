@@ -139,21 +139,19 @@ serve(async (req) => {
 
       logStep("Found trial product", { productId: trialProduct.id, name: trialProduct.name });
 
-      // Get the recurring price for the trial product
+      // Get the price for the trial product (should be the graduated price)
       const prices = await stripe.prices.list({
         product: trialProduct.id,
         active: true,
       });
 
-      const recurringPrices = prices.data.filter(p => p.type === 'recurring');
-
-      if (recurringPrices.length === 0) {
-        logStep("ERROR: No recurring price found for trial product");
-        throw new Error('No recurring price found for trial product');
+      if (prices.data.length === 0) {
+        logStep("ERROR: No price found for trial product");
+        throw new Error('No price found for trial product');
       }
 
-      const trialPrice = recurringPrices[0];
-      logStep("Found trial recurring price", { priceId: trialPrice.id, amount: trialPrice.unit_amount });
+      const trialPrice = prices.data[0];
+      logStep("Found trial price", { priceId: trialPrice.id, billing_scheme: trialPrice.billing_scheme });
 
       // Create trial subscription
       const subscription = await stripe.subscriptions.create({
@@ -226,24 +224,27 @@ serve(async (req) => {
 
     logStep("Found target product", { productId: targetProduct.id, name: targetProduct.name });
 
-    // Get all prices for this product
+    // Get the price for this product (graduated pricing)
     const prices = await stripe.prices.list({
       product: targetProduct.id,
       active: true,
     });
 
-    const recurringPrices = prices.data.filter(p => p.type === 'recurring');
-
-    if (recurringPrices.length === 0) {
-      throw new Error('No recurring price found for this product');
+    if (prices.data.length === 0) {
+      throw new Error('No price found for this product');
     }
 
-    logStep("Found recurring prices", { count: recurringPrices.length });
+    const productPrice = prices.data[0];
+    logStep("Found product price", { 
+      priceId: productPrice.id, 
+      billing_scheme: productPrice.billing_scheme,
+      tiers_mode: productPrice.tiers_mode 
+    });
 
     // Create checkout session for subscription
     const lineItems = [
       {
-        price: recurringPrices[0].id,
+        price: productPrice.id,
         quantity: 1,
       }
     ];
