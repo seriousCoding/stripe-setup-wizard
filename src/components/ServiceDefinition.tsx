@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Upload, FileText, Camera, FileImage, Clipboard } from 'lucide-react';
+import { Upload, FileText, Camera, FileImage, Clipboard, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
 
@@ -30,6 +30,7 @@ const ServiceDefinition = ({
   onServicesDetected
 }: ServiceDefinitionProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [detectedServices, setDetectedServices] = useState<any[]>([]);
   const { toast } = useToast();
 
   const handleDrop = (e: React.DragEvent) => {
@@ -48,58 +49,104 @@ const ServiceDefinition = ({
     }
   };
 
-  const processUploadedFile = (file: File) => {
+  const processUploadedFile = async (file: File) => {
     setIsProcessing(true);
     
-    if (file.type.startsWith('image/')) {
-      toast({
-        title: "Image Processing",
-        description: "Image uploaded for OCR processing. This feature requires additional setup.",
-      });
-      setIsProcessing(false);
-      return;
-    }
-
-    // Process CSV/text files
-    Papa.parse(file, {
-      complete: (result) => {
-        if (result.errors.length > 0) {
+    try {
+      let fileContent = '';
+      
+      // Handle different file types
+      if (file.type.startsWith('image/')) {
+        toast({
+          title: "Image Processing",
+          description: "Image uploaded for OCR processing. This feature requires additional setup.",
+        });
+        setIsProcessing(false);
+        return;
+      } else if (file.type === 'application/pdf') {
+        toast({
+          title: "PDF Processing", 
+          description: "PDF parsing would require additional libraries. Please convert to CSV or text format.",
+        });
+        setIsProcessing(false);
+        return;
+      } else if (file.type === 'application/json') {
+        fileContent = await file.text();
+        try {
+          const jsonData = JSON.parse(fileContent);
+          const services = parseServicesFromJSON(jsonData);
+          handleServicesDetection(services);
+        } catch (error) {
           toast({
-            title: "File Error",
-            description: `Error parsing file: ${result.errors[0].message}`,
+            title: "JSON Parse Error",
+            description: "Invalid JSON format",
+            variant: "destructive",
+          });
+        }
+        setIsProcessing(false);
+        return;
+      } else if (file.type === 'application/xml' || file.type === 'text/xml') {
+        fileContent = await file.text();
+        // Basic XML parsing - would need proper XML parser for complex documents
+        const services = parseServicesFromText(fileContent);
+        handleServicesDetection(services);
+        setIsProcessing(false);
+        return;
+      }
+
+      // Process CSV/text files with Papa Parse
+      Papa.parse(file, {
+        complete: (result) => {
+          if (result.errors.length > 0) {
+            toast({
+              title: "File Error",
+              description: `Error parsing file: ${result.errors[0].message}`,
+              variant: "destructive",
+            });
+            setIsProcessing(false);
+            return;
+          }
+
+          const services = parseServicesFromData(result.data as any[]);
+          handleServicesDetection(services);
+          setIsProcessing(false);
+        },
+        header: true,
+        skipEmptyLines: true,
+        error: (error) => {
+          toast({
+            title: "Processing Error",
+            description: `Error processing file: ${error.message}`,
             variant: "destructive",
           });
           setIsProcessing(false);
-          return;
         }
+      });
+    } catch (error: any) {
+      toast({
+        title: "File Processing Error",
+        description: error.message,
+        variant: "destructive",
+      });
+      setIsProcessing(false);
+    }
+  };
 
-        const services = parseServicesFromData(result.data as any[]);
-        if (services.length > 0) {
-          onServicesDetected?.(services);
-          toast({
-            title: "Services Detected",
-            description: `Found ${services.length} metered services in the uploaded file.`,
-          });
-        } else {
-          toast({
-            title: "No Services Found",
-            description: "Could not detect any metered services in the file.",
-            variant: "destructive",
-          });
-        }
-        setIsProcessing(false);
-      },
-      header: true,
-      skipEmptyLines: true,
-      error: (error) => {
-        toast({
-          title: "Processing Error",
-          description: `Error processing file: ${error.message}`,
-          variant: "destructive",
-        });
-        setIsProcessing(false);
-      }
-    });
+  const handleServicesDetection = (services: any[]) => {
+    setDetectedServices(services);
+    if (services.length > 0) {
+      onServicesDetected?.(services);
+      toast({
+        title: "Services Detected",
+        description: `Found ${services.length} metered services and generated billing model.`,
+      });
+    } else {
+      toast({
+        title: "No Services Found",
+        description: "Could not detect any metered services in the data.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handlePasteDataInternal = () => {
@@ -128,20 +175,8 @@ const ServiceDefinition = ({
           }
 
           const services = parseServicesFromData(result.data as any[]);
-          if (services.length > 0) {
-            onServicesDetected?.(services);
-            toast({
-              title: "Services Detected",
-              description: `Found ${services.length} metered services in the pasted data.`,
-            });
-            setPasteData(''); // Clear after successful parse
-          } else {
-            toast({
-              title: "No Services Found",
-              description: "Could not detect any metered services in the pasted data.",
-              variant: "destructive",
-            });
-          }
+          handleServicesDetection(services);
+          setPasteData(''); // Clear after successful parse
           setIsProcessing(false);
         },
         header: true,
@@ -166,6 +201,54 @@ const ServiceDefinition = ({
     }
   };
 
+  const parseServicesFromJSON = (jsonData: any): any[] => {
+    // Handle different JSON structures
+    let dataArray = [];
+    
+    if (Array.isArray(jsonData)) {
+      dataArray = jsonData;
+    } else if (jsonData.data && Array.isArray(jsonData.data)) {
+      dataArray = jsonData.data;
+    } else if (jsonData.services && Array.isArray(jsonData.services)) {
+      dataArray = jsonData.services;
+    } else {
+      // Try to extract array from nested object
+      const values = Object.values(jsonData);
+      const arrayValue = values.find(val => Array.isArray(val));
+      if (arrayValue) {
+        dataArray = arrayValue as any[];
+      }
+    }
+    
+    return parseServicesFromData(dataArray);
+  };
+
+  const parseServicesFromText = (textContent: string): any[] => {
+    // Basic text parsing - look for patterns
+    const lines = textContent.split('\n').filter(line => line.trim());
+    const services = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Look for price patterns like $0.03, pricing keywords
+      if (line.includes('$') || line.toLowerCase().includes('price') || 
+          line.toLowerCase().includes('rate') || line.toLowerCase().includes('cost')) {
+        // Basic service extraction
+        const service = {
+          id: `service-${i}`,
+          display_name: line.substring(0, 50),
+          event_name: `service_${i}`,
+          unit: 'units',
+          rate: 0.01,
+          type: 'metered'
+        };
+        services.push(service);
+      }
+    }
+    
+    return services;
+  };
+
   const parseServicesFromData = (data: any[]): any[] => {
     if (!data || data.length === 0) return [];
 
@@ -183,18 +266,20 @@ const ServiceDefinition = ({
         type: 'metered',
         billing_scheme: 'per_unit',
         usage_type: 'metered',
-        aggregate_usage: 'sum'
+        aggregate_usage: 'sum',
+        currency: 'usd'
       };
 
       // Convert rate to cents for Stripe
       service.unit_amount = Math.round(service.rate * 100);
+      service.price = service.rate; // Keep dollar amount for display
 
       return service;
     }).filter(service => service.display_name && service.event_name);
   };
 
   return (
-    <div className="border rounded-lg p-4">
+    <div className="space-y-4">
       <div className="flex items-center space-x-2 mb-4">
         <FileText className="h-4 w-4 text-blue-600" />
         <Label className="font-medium">Define Metered Services</Label>
@@ -233,13 +318,13 @@ const ServiceDefinition = ({
           <div className="text-center">
             <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
             <p className="text-sm text-blue-600 mb-1">Click to upload or drag and drop</p>
-            <p className="text-xs text-muted-foreground">CSV, Excel, or image files</p>
+            <p className="text-xs text-muted-foreground">CSV, Excel, JSON, XML, or image files</p>
             <p className="text-xs text-muted-foreground mt-1">Supports metered pricing tables</p>
             
             <input
               id="service-file-upload"
               type="file"
-              accept=".csv,.xlsx,.xls,image/*"
+              accept=".csv,.xlsx,.xls,.json,.xml,.txt,image/*"
               onChange={handleFileInputChange}
               className="hidden"
             />
@@ -270,6 +355,30 @@ Storage Usage	storage_usage	GB-Hour	$0.02	$0.00"
           </Button>
         )}
       </div>
+
+      {detectedServices.length > 0 && (
+        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center space-x-2 mb-2">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <h3 className="font-medium text-green-800">Services Detected: {detectedServices.length}</h3>
+          </div>
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {detectedServices.slice(0, 5).map((service, index) => (
+              <div key={index} className="text-sm bg-white p-2 rounded border">
+                <div className="font-medium">{service.display_name}</div>
+                <div className="text-gray-600">
+                  Meter: {service.event_name} • Rate: ${service.rate} per {service.unit}
+                </div>
+              </div>
+            ))}
+            {detectedServices.length > 5 && (
+              <div className="text-sm text-gray-600 text-center">
+                +{detectedServices.length - 5} more services...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

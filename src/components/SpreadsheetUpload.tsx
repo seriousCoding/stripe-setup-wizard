@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +37,8 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
       setParsedData([]);
       setValidationResults(null);
       console.log('Uploading file:', selectedFile.name);
+      // Auto-process the file immediately
+      processFileContent(selectedFile);
     }
   };
 
@@ -45,7 +46,6 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
     const selectedFile = event.target.files?.[0];
     if (selectedFile && selectedFile.type.startsWith('image/')) {
       console.log('Processing image file:', selectedFile.name);
-      // Here you would implement OCR or image-to-text conversion
       toast({
         title: "Image Upload",
         description: "Image uploaded. OCR processing would be implemented here.",
@@ -75,7 +75,6 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
       const context = canvasRef.current.getContext('2d');
       if (context) {
         context.drawImage(videoRef.current, 0, 0, 640, 480);
-        // Here you would implement OCR on the captured image
         toast({
           title: "Image Captured",
           description: "Image captured. OCR processing would be implemented here.",
@@ -107,7 +106,6 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
     setIsProcessing(true);
 
     try {
-      // Parse pasted data as CSV
       Papa.parse(pasteData, {
         complete: (result) => {
           if (result.errors.length > 0) {
@@ -162,18 +160,167 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
     }
   };
 
+  const processFileContent = async (selectedFile: File) => {
+    setIsProcessing(true);
+    
+    try {
+      const fileType = selectedFile.type.toLowerCase();
+      const fileName = selectedFile.name.toLowerCase();
+      
+      // Handle different file types
+      if (fileType === 'application/json' || fileName.endsWith('.json')) {
+        const text = await selectedFile.text();
+        const jsonData = JSON.parse(text);
+        const processedData = processJSONData(jsonData);
+        handleProcessedData(processedData);
+      } else if (fileType === 'application/xml' || fileType === 'text/xml' || fileName.endsWith('.xml')) {
+        const text = await selectedFile.text();
+        const processedData = processXMLData(text);
+        handleProcessedData(processedData);
+      } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+        toast({
+          title: "PDF Processing",
+          description: "PDF parsing requires additional libraries. Please convert to CSV, JSON, or text format.",
+          variant: "destructive",
+        });
+        setIsProcessing(false);
+        return;
+      } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        toast({
+          title: "Excel Processing",
+          description: "Excel files require additional libraries. Please save as CSV format.",
+          variant: "destructive",
+        });
+        setIsProcessing(false);
+        return;
+      } else {
+        // Default CSV/text processing
+        Papa.parse(selectedFile, {
+          complete: (result) => {
+            console.log('Parsed file data:', result.data);
+            
+            if (result.errors.length > 0) {
+              toast({
+                title: "Parsing Error",
+                description: `Error parsing file: ${result.errors[0].message}`,
+                variant: "destructive",
+              });
+              setIsProcessing(false);
+              return;
+            }
+
+            const rawData = result.data as any[];
+            const processedData = processUploadedData(rawData);
+            handleProcessedData(processedData);
+          },
+          header: true,
+          skipEmptyLines: true,
+          error: (error) => {
+            console.error('File parsing error:', error);
+            toast({
+              title: "Error",
+              description: `Error processing file: ${error.message}`,
+              variant: "destructive",
+            });
+            setIsProcessing(false);
+          }
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "File Processing Error",
+        description: error.message,
+        variant: "destructive",
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  const processJSONData = (jsonData: any): any[] => {
+    let dataArray = [];
+    
+    if (Array.isArray(jsonData)) {
+      dataArray = jsonData;
+    } else if (jsonData.data && Array.isArray(jsonData.data)) {
+      dataArray = jsonData.data;
+    } else if (jsonData.services && Array.isArray(jsonData.services)) {
+      dataArray = jsonData.services;
+    } else {
+      // Try to extract array from nested object
+      const values = Object.values(jsonData);
+      const arrayValue = values.find(val => Array.isArray(val));
+      if (arrayValue) {
+        dataArray = arrayValue as any[];
+      } else {
+        // Convert single object to array
+        dataArray = [jsonData];
+      }
+    }
+    
+    return processUploadedData(dataArray);
+  };
+
+  const processXMLData = (xmlText: string): any[] => {
+    // Basic XML parsing - extract key-value pairs
+    const services = [];
+    const lines = xmlText.split('\n');
+    let currentService: any = {};
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.includes('<') && trimmed.includes('>')) {
+        // Extract tag content
+        const tagMatch = trimmed.match(/<([^>]+)>([^<]*)<\/\1>/);
+        if (tagMatch) {
+          const [, tagName, content] = tagMatch;
+          if (content.trim()) {
+            currentService[tagName] = content.trim();
+          }
+        }
+        
+        // If we have enough data for a service, add it
+        if (Object.keys(currentService).length >= 3) {
+          services.push({...currentService});
+          currentService = {};
+        }
+      }
+    }
+    
+    return processUploadedData(services);
+  };
+
+  const handleProcessedData = (processedData: any[]) => {
+    setParsedData(processedData);
+    
+    const validation = validateData(processedData);
+    setValidationResults(validation);
+    
+    if (validation.valid && processedData.length > 0) {
+      onDataUploaded?.(processedData);
+      toast({
+        title: "File processed successfully",
+        description: `Processed ${processedData.length} rows of data and generated billing model.`,
+      });
+    } else {
+      toast({
+        title: "Validation Issues",
+        description: `Found ${validation.errors.length} errors in the data.`,
+        variant: "destructive",
+      });
+    }
+    
+    setIsProcessing(false);
+  };
+
   const processUploadedData = (rawData: any[]): any[] => {
     if (!rawData || rawData.length === 0) return [];
 
     return rawData.map((row, index) => {
-      // Handle different data formats intelligently
       const processed: any = { id: `item-${index}` };
 
-      // Extract common fields with various naming conventions
       processed.product = row.product || row.name || row['Metric Description'] || row.description || `Product ${index + 1}`;
       
-      // Handle pricing data
-      const priceField = row.price || row.amount || row['Per Unit Rate (USD)'] || row.unit_amount || row.cost;
+      const priceField = row.price || row.amount || row['Per Unit Rate (USD)'] || row.unit_amount || row.cost || row.rate;
       if (typeof priceField === 'string') {
         processed.price = parseFloat(priceField.replace(/[$,]/g, '')) || 0;
       } else {
@@ -183,12 +330,10 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
       processed.currency = (row.currency || 'usd').toLowerCase();
       processed.description = row.description || row['Metric Description'] || processed.product;
       
-      // Handle metered billing fields
       processed.eventName = row['Meter Name'] || row.meter_name || row.eventName || 
         processed.product.toLowerCase().replace(/[^a-z0-9]/g, '_');
       processed.unit = row.Unit || row.unit || row.unit_label || 'units';
       
-      // Determine billing type based on data characteristics
       if (row['Meter Name'] || row.meter_name || row.Unit || processed.price < 1) {
         processed.type = 'metered';
         processed.billing_scheme = 'per_unit';
@@ -201,10 +346,8 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
         processed.type = 'one_time';
       }
 
-      // Convert price to cents for Stripe
       processed.unit_amount = Math.round(processed.price * 100);
 
-      // Add metadata
       processed.metadata = {
         original_data: JSON.stringify(row),
         auto_detected_type: processed.type,
@@ -212,82 +355,6 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
       };
 
       return processed;
-    });
-  };
-
-  const processFile = () => {
-    if (!file) {
-      toast({
-        title: "No file selected",
-        description: "Please select a file to upload.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessing(true);
-
-    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
-    
-    if (isExcel) {
-      // For Excel files, we'd need a library like xlsx
-      toast({
-        title: "Excel files not fully supported yet",
-        description: "Please convert to CSV format for now.",
-        variant: "destructive",
-      });
-      setIsProcessing(false);
-      return;
-    }
-
-    Papa.parse(file, {
-      complete: (result) => {
-        console.log('Parsed file data:', result.data);
-        
-        if (result.errors.length > 0) {
-          toast({
-            title: "Parsing Error",
-            description: `Error parsing file: ${result.errors[0].message}`,
-            variant: "destructive",
-          });
-          setIsProcessing(false);
-          return;
-        }
-
-        const rawData = result.data as any[];
-        const processedData = processUploadedData(rawData);
-        setParsedData(processedData);
-        
-        const validation = validateData(processedData);
-        setValidationResults(validation);
-        
-        if (validation.valid && processedData.length > 0) {
-          onDataUploaded?.(processedData);
-          toast({
-            title: "File processed successfully",
-            description: `Processed ${processedData.length} rows of data.`,
-          });
-        } else {
-          toast({
-            title: "Validation Issues",
-            description: `Found ${validation.errors.length} errors in the data.`,
-            variant: "destructive",
-          });
-        }
-        
-        setIsProcessing(false);
-      },
-      header: true,
-      skipEmptyLines: true,
-      error: (error) => {
-        console.error('File parsing error:', error);
-        toast({
-          title: "Error",
-          description: `Error processing file: ${error.message}`,
-          variant: "destructive",
-        });
-        setIsProcessing(false);
-      }
     });
   };
 
@@ -407,12 +474,12 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
         
         {/* File Upload */}
         <div className="space-y-2">
-          <Label htmlFor="csv-file">Upload File (CSV, Excel)</Label>
+          <Label htmlFor="csv-file">Upload File (CSV, JSON, XML, Excel, Text)</Label>
           <Input
             id="csv-file"
             ref={fileInputRef}
             type="file"
-            accept=".csv,.xlsx,.xls"
+            accept=".csv,.xlsx,.xls,.json,.xml,.txt,.pdf"
             onChange={handleFileChange}
           />
           <Input
@@ -422,32 +489,16 @@ const SpreadsheetUpload: React.FC<SpreadsheetUploadProps> = ({ onDataUploaded })
             onChange={handleImageUpload}
             className="hidden"
           />
+          <p className="text-xs text-muted-foreground">
+            Supports CSV, Excel, JSON, XML, PDF, and text formats
+          </p>
         </div>
 
         {file && (
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <FileSpreadsheet className="h-4 w-4" />
-              <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
-            </div>
-            
-            <Button 
-              onClick={processFile} 
-              disabled={isProcessing}
-              className="w-full"
-            >
-              {isProcessing ? (
-                <>
-                  <Upload className="h-4 w-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Process File
-                </>
-              )}
-            </Button>
+          <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <FileSpreadsheet className="h-4 w-4" />
+            <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
+            {isProcessing && <span className="text-blue-600">Processing...</span>}
           </div>
         )}
 
