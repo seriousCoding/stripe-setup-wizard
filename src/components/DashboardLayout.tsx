@@ -1,8 +1,19 @@
+
 import React from 'react';
-import { Card } from '@/components/ui/card';
-import { Upload, DollarSign, FileSpreadsheet, Settings, CreditCard } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import UserMenu from './UserMenu';
+import { Link, useLocation } from 'react-router-dom';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import UserMenu from '@/components/UserMenu';
+import { 
+  LayoutDashboard, 
+  CreditCard, 
+  Package, 
+  DollarSign, 
+  Settings, 
+  FileText, 
+  Database,
+  Zap
+} from 'lucide-react';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -11,62 +22,70 @@ interface DashboardLayoutProps {
 }
 
 const DashboardLayout = ({ children, title, description }: DashboardLayoutProps) => {
-  const navItems = [
-    { href: '/', icon: Upload, label: 'Data Upload', description: 'Upload and configure from spreadsheet' },
-    { href: '/billing-models', icon: DollarSign, label: 'Billing Models', description: 'Set up common billing patterns' },
-    { href: '/products', icon: FileSpreadsheet, label: 'Products', description: 'Manage existing products' },
-    { href: '/pricing', icon: CreditCard, label: 'Pricing', description: 'View and select pricing plans' },
-    { href: '/settings', icon: Settings, label: 'Settings', description: 'API keys and preferences' },
+  const location = useLocation();
+
+  const navigation = [
+    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { name: 'Billing Models', href: '/billing-models', icon: FileText },
+    { name: 'Saved Models', href: '/saved-models', icon: Database },
+    { name: 'Products', href: '/products', icon: Package },
+    { name: 'Pricing', href: '/pricing', icon: DollarSign },
+    { name: 'Stripe Pricing', href: '/stripe-pricing', icon: Zap },
+    { name: 'Billing', href: '/billing', icon: CreditCard },
+    { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-blue-purple">
-      <div className="border-b border-white/20 bg-black/20 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-black">
-                Stripe Setup Pilot
-              </h1>
-              <p className="text-sm text-white/80">Automate your Stripe product and billing configuration</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <UserMenu />
-            </div>
-          </div>
+    <div className="min-h-screen bg-background">
+      {/* Sidebar */}
+      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-card border-r">
+        <div className="flex h-16 items-center px-6 border-b">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+            Stripe Setup Pilot
+          </h1>
         </div>
+        
+        <nav className="mt-8 px-4 space-y-1">
+          {navigation.map((item) => {
+            const isActive = location.pathname === item.href;
+            const Icon = item.icon;
+            
+            return (
+              <Link
+                key={item.name}
+                to={item.href}
+                className={cn(
+                  'flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                )}
+              >
+                <Icon className="mr-3 h-4 w-4" />
+                {item.name}
+              </Link>
+            );
+          })}
+        </nav>
       </div>
 
-      <div className="container mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          <div className="lg:col-span-1">
-            <nav className="space-y-2">
-              {navItems.map((item) => (
-                <Link key={item.href} to={item.href}>
-                  <Card className="card-on-gradient p-4 hover:shadow-md transition-all duration-200 hover:border-white/30 cursor-pointer group">
-                    <div className="flex items-start space-x-3">
-                      <item.icon className="h-5 w-5 text-blue-400 mt-0.5 group-hover:scale-110 transition-transform" />
-                      <div>
-                        <h3 className="font-medium text-sm text-white">{item.label}</h3>
-                        <p className="text-xs text-white/70 mt-1">{item.description}</p>
-                      </div>
-                    </div>
-                  </Card>
-                </Link>
-              ))}
-            </nav>
+      {/* Main content */}
+      <div className="pl-64">
+        {/* Top bar */}
+        <div className="h-16 bg-card border-b flex items-center justify-between px-6">
+          <div>
+            <h2 className="text-lg font-semibold">{title}</h2>
+            {description && (
+              <p className="text-sm text-muted-foreground">{description}</p>
+            )}
           </div>
-
-          <div className="lg:col-span-3">
-            <div className="mb-6">
-              <h2 className="text-3xl font-bold text-black">{title}</h2>
-              {description && (
-                <p className="text-white/90 mt-2">{description}</p>
-              )}
-            </div>
-            {children}
-          </div>
+          <UserMenu />
         </div>
+
+        {/* Page content */}
+        <main className="p-6">
+          {children}
+        </main>
       </div>
     </div>
   );
