@@ -85,60 +85,15 @@ const Pricing = () => {
         return;
       }
 
-      // Handle Professional plan (Credit Burndown)
-      if (tierId === 'professional') {
-        console.log('Processing Professional plan as credit burndown...');
-        
-        // First get or create customer
-        const customers = await supabase.functions.invoke('check-subscription');
-        let customerId = customers.data?.customer_id;
-        
-        if (!customerId) {
-          // Create customer through checkout which will handle customer creation
-          const { data, error } = await supabase.functions.invoke('create-checkout', {
-            body: {
-              priceId: tierId,
-              planName: selectedTier.name,
-              amount: selectedTier.price,
-              currency: selectedTier.currency.toLowerCase(),
-              mode: 'payment' // One-time payment for credits
-            }
-          });
-
-          if (error) throw new Error(error.message);
-          if (data?.url) {
-            window.location.href = data.url;
-            return;
-          }
-        } else {
-          // Create credit invoice for existing customer
-          const { data, error } = await supabase.functions.invoke('create-credit-invoice', {
-            body: {
-              customerId: customerId,
-              amount: selectedTier.price,
-              currency: selectedTier.currency.toLowerCase(),
-              description: `${selectedTier.name} Credits`,
-              creditMultiplier: 1.2 // 20% bonus
-            }
-          });
-
-          if (error) throw new Error(error.message);
-          if (data?.invoice_url) {
-            window.open(data.invoice_url, '_blank');
-            return;
-          }
-        }
-      }
-
-      // Handle all other plans (Starter, Business, Enterprise)
-      console.log('Creating checkout session for standard plan...');
+      // Create checkout session for subscription-based billing
+      console.log('Creating subscription checkout session...');
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: {
           priceId: tierId,
           planName: selectedTier.name,
           amount: selectedTier.price,
           currency: selectedTier.currency.toLowerCase(),
-          mode: selectedTier.isMonthly ? 'subscription' : 'payment'
+          mode: 'subscription' // All plans are now subscription-based
         }
       });
 
@@ -171,8 +126,8 @@ const Pricing = () => {
 
   const formatPrice = (tier: any) => {
     if (tier.price === 0 || tier.id === 'trial') return '$0';
-    if (tier.id === 'starter') return '$0.99';
-    if (tier.id === 'professional') return '$49';
+    if (tier.id === 'starter') return '$19';
+    if (tier.id === 'professional') return '$49'; 
     if (tier.id === 'business') return '$99';
     if (tier.id === 'enterprise') return '$25';
     
@@ -186,8 +141,8 @@ const Pricing = () => {
   const getPriceSubtext = (tier: any) => {
     switch (tier.id) {
       case 'trial': return '14 days free';
-      case 'starter': return 'per transaction';
-      case 'professional': return 'for $120 in credits';
+      case 'starter': return 'per month + usage';
+      case 'professional': return 'per month + usage';
       case 'business': return 'per month';
       case 'enterprise': return 'per user/month';
       default: return '';
@@ -198,29 +153,31 @@ const Pricing = () => {
     switch (tierId) {
       case 'trial':
         return [
-          { name: 'Transactions', value: '500' },
-          { name: 'AI Processing', value: '50' },
+          { name: 'Transactions', value: '500 included' },
+          { name: 'AI Processing', value: '50 included' },
           { name: 'After limit', value: '$0.05/transaction' }
         ];
       case 'starter':
         return [
-          { name: 'Transactions', value: 'Pay per use' },
-          { name: 'Rate', value: '$0.99/transaction' },
-          { name: 'Setup Fee', value: 'None' }
+          { name: 'Base Fee', value: '$19/month' },
+          { name: 'Included Usage', value: '1,000 transactions' },
+          { name: 'Overage', value: '$0.02/transaction' }
         ];
       case 'professional':
         return [
-          { name: 'Prepaid Amount', value: '$49' },
-          { name: 'Credit Value', value: '$120 (20% bonus)' },
-          { name: 'Rate', value: '$0.04/transaction' }
+          { name: 'Base Fee', value: '$49/month' },
+          { name: 'Included Usage', value: '5,000 transactions' },
+          { name: 'Overage', value: '$0.015/transaction' }
         ];
       case 'business':
         return [
           { name: 'Transactions', value: 'Unlimited' },
-          { name: 'AI Processing', value: 'Unlimited' }
+          { name: 'AI Processing', value: 'Unlimited' },
+          { name: 'Monthly Fee', value: '$99 flat rate' }
         ];
       case 'enterprise':
         return [
+          { name: 'Per User', value: '$25/month' },
           { name: 'Transactions', value: 'Unlimited' },
           { name: 'AI Processing', value: 'Unlimited' }
         ];
@@ -298,7 +255,7 @@ const Pricing = () => {
           )}
 
           <p className="text-white/90 max-w-2xl mx-auto text-lg">
-            Select the perfect plan for your business needs. Professional plan includes 20% bonus credits!
+            Select the perfect subscription plan for your business needs. All plans include flexible usage-based billing!
           </p>
           {isRefreshing && (
             <div className="mt-2 flex items-center justify-center space-x-2 text-blue-300">
@@ -320,16 +277,23 @@ const Pricing = () => {
             return (
               <Card 
                 key={tier.id} 
-                className={`relative bg-slate-800/90 backdrop-blur-sm border-slate-700 text-white h-full flex flex-col ${
+                className={`relative bg-slate-800/90 backdrop-blur-sm border-slate-700 text-white h-full flex flex-col transform transition-all duration-300 hover:scale-105 hover:z-10 ${
                   isActive
-                    ? 'border-2 border-green-500 shadow-lg shadow-green-500/20'
+                    ? 'border-2 border-green-500 shadow-2xl shadow-green-500/30 z-20'
                     : tier.popular 
-                      ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' 
-                      : 'border border-slate-700/50'
+                      ? 'border-2 border-blue-500 shadow-2xl shadow-blue-500/30 z-10' 
+                      : 'border border-slate-700/50 shadow-xl shadow-black/30 hover:shadow-2xl hover:shadow-blue-500/20'
                 }`}
+                style={{
+                  boxShadow: isActive 
+                    ? '0 25px 50px -12px rgba(34, 197, 94, 0.4), 0 0 0 1px rgba(34, 197, 94, 0.3)'
+                    : tier.popular
+                      ? '0 25px 50px -12px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.3)'
+                      : '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2)'
+                }}
               >
                 {isActive && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-30">
                     <Badge className="bg-green-600 text-white border-green-600">
                       Current Plan
                     </Badge>
@@ -337,7 +301,7 @@ const Pricing = () => {
                 )}
 
                 {!isActive && tier.popular && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-30">
                     <Badge className="bg-blue-600 text-white border-blue-600">
                       Most Popular
                     </Badge>
@@ -345,18 +309,9 @@ const Pricing = () => {
                 )}
 
                 {!isActive && tier.id === 'trial' && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-30">
                     <Badge className="bg-green-600 text-white border-green-600">
                       Free Trial
-                    </Badge>
-                  </div>
-                )}
-
-                {tier.id === 'professional' && (
-                  <div className="absolute top-2 right-2">
-                    <Badge className="bg-orange-600 text-white text-xs">
-                      <CreditCard className="h-3 w-3 mr-1" />
-                      20% Bonus
                     </Badge>
                   </div>
                 )}
@@ -406,7 +361,7 @@ const Pricing = () => {
                   
                   <div className="bg-slate-700/40 rounded-lg p-4 mt-4">
                     <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
-                      {tier.id === 'professional' ? 'Credit Details' : 'Usage Limits'}
+                      Pricing Details
                     </h4>
                     <div className="space-y-2">
                       {getUsageLimitsFromImage(tier.id).map((limit, index) => (
@@ -419,12 +374,10 @@ const Pricing = () => {
                   </div>
                   
                   <Button 
-                    className={`w-full mt-6 font-medium py-3 rounded-lg transition-colors ${
+                    className={`w-full mt-6 font-medium py-3 rounded-lg transition-all duration-300 transform hover:scale-105 ${
                       isActive
-                        ? 'bg-green-600 hover:bg-green-700 text-white'
-                        : tier.id === 'professional'
-                          ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl'
                     }`}
                     onClick={() => handleSelectPlan(tier.id)}
                     disabled={isLoading && selectedPlan === tier.id || isActive}
@@ -433,9 +386,7 @@ const Pricing = () => {
                       ? 'Current Plan' 
                       : isLoading && selectedPlan === tier.id 
                         ? 'Processing...' 
-                        : tier.id === 'professional'
-                          ? 'Buy Credits'
-                          : 'Select Plan'
+                        : 'Subscribe Now'
                     }
                   </Button>
                 </CardContent>
@@ -446,10 +397,12 @@ const Pricing = () => {
 
         <div className="mt-12 text-center">
           <p className="text-slate-300 text-sm max-w-4xl mx-auto leading-relaxed">
-            <strong>Starter:</strong> True pay-as-you-go with no limits or commitments. 
-            <strong> Professional:</strong> Credit burndown model - pay $49, get $120 in credits (20% bonus). 
-            <strong> Business & Enterprise:</strong> Unlimited usage with monthly subscriptions. 
-            All plans include automatic credit application and real-time usage tracking.
+            <strong>New Subscription Model:</strong> All plans now include a monthly base fee with included usage and overage billing. 
+            <strong> Trial:</strong> Free with 500 included transactions. 
+            <strong> Starter:</strong> $19/month with 1,000 included transactions. 
+            <strong> Professional:</strong> $49/month with 5,000 included transactions. 
+            <strong> Business:</strong> $99/month unlimited. 
+            <strong> Enterprise:</strong> $25/user/month unlimited.
           </p>
         </div>
       </div>

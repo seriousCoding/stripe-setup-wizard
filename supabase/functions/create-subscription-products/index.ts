@@ -20,6 +20,12 @@ serve(async (req) => {
 
   try {
     logStep("Function started");
+    
+    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeSecretKey) {
+      throw new Error('Stripe secret key not configured in Supabase secrets');
+    }
+    logStep("Stripe secret key found");
 
     // Authenticate user
     const supabaseClient = createClient(
@@ -27,135 +33,241 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data } = await supabaseClient.auth.getUser(token);
-    const user = data.user;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Authorization header missing');
+    }
 
-    if (!user) {
+    const token = authHeader.replace('Bearer ', '');
+    const { data, error: authError } = await supabaseClient.auth.getUser(token);
+    
+    if (authError || !data.user) {
+      logStep("Auth error", { error: authError });
       throw new Error('User not authenticated');
     }
 
-    logStep("User authenticated", { userId: user.id, email: user.email });
+    logStep("User authenticated", { email: data.user.email });
 
-    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!stripeKey) {
-      throw new Error('Stripe secret key not configured');
-    }
-
-    const stripe = new Stripe(stripeKey, {
+    const stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
     });
 
-    logStep("Stripe client initialized");
-
-    const { products } = await req.json();
-
-    const results = {
-      products: [],
-      prices: [],
-      errors: []
-    };
-
-    // Create products and prices for each tier
-    for (const tier of products) {
-      try {
-        logStep("Processing tier", { name: tier.name, id: tier.id });
-
-        // Check if product already exists
-        const existingProducts = await stripe.products.search({
-          query: `metadata['tier_id']:'${tier.id}'`,
-        });
-
-        let product;
-        if (existingProducts.data.length > 0) {
-          product = existingProducts.data[0];
-          logStep("Product already exists", { productId: product.id, name: product.name });
-        } else {
-          // Create product
-          product = await stripe.products.create({
-            name: tier.name,
-            description: tier.description,
-            type: 'service',
-            metadata: {
-              user_id: user.id,
-              tier_id: tier.id,
-              tier_badge: tier.badge || '',
-              created_by: 'subscription-products-generator'
-            }
-          });
-
-          results.products.push(product);
-          logStep("Product created", { productId: product.id, name: product.name });
+    // First, create meters for usage tracking
+    logStep("Creating usage meters");
+    
+    let transactionMeter;
+    try {
+      transactionMeter = await stripe.billing.meters.create({
+        display_name: 'Transaction Usage',
+        event_name: 'transaction_processed',
+        customer_mapping: {
+          event_payload_key: 'customer_id',
+          type: 'by_id'
+        },
+        default_aggregation: {
+          formula: 'sum'
+        },
+        value_settings: {
+          event_payload_key: 'quantity'
         }
-
-        // Create price based on tier type
-        const priceData: any = {
-          product: product.id,
-          currency: tier.currency.toLowerCase(),
-          metadata: {
-            tier_id: tier.id,
-            user_id: user.id
-          }
-        };
-
-        if (tier.id === 'starter') {
-          // Pay-as-you-go pricing
-          priceData.unit_amount = Math.round(tier.price * 100); // $0.05 in cents
-          priceData.billing_scheme = 'per_unit';
-        } else if (tier.id === 'professional') {
-          // One-time payment for credits
-          priceData.unit_amount = Math.round(tier.price * 100); // $49 in cents
-        } else if (tier.id === 'business' || tier.id === 'enterprise') {
-          // Recurring subscription
-          priceData.unit_amount = Math.round(tier.price * 100);
-          priceData.recurring = {
-            interval: 'month'
-          };
-        } else if (tier.id === 'trial') {
-          // Free trial - create a $0 price
-          priceData.unit_amount = 0;
-        }
-
-        // Check if price already exists
-        const existingPrices = await stripe.prices.list({
-          product: product.id,
-          limit: 1
-        });
-
-        if (existingPrices.data.length === 0) {
-          const price = await stripe.prices.create(priceData);
-          results.prices.push(price);
-          logStep("Price created", { priceId: price.id, amount: price.unit_amount });
-
-          // Update product to set default price
-          await stripe.products.update(product.id, {
-            default_price: price.id
-          });
-        } else {
-          logStep("Price already exists for product", { productId: product.id });
-        }
-
-      } catch (tierError: any) {
-        logStep("Error processing tier", { tier: tier.name, error: tierError.message });
-        results.errors.push(`${tier.name}: ${tierError.message}`);
+      });
+      logStep("Transaction meter created", { meterId: transactionMeter.id });
+    } catch (error: any) {
+      if (error.message.includes('already exists')) {
+        // Meter already exists, find it
+        const meters = await stripe.billing.meters.list({ limit: 100 });
+        transactionMeter = meters.data.find(m => m.event_name === 'transaction_processed');
+        logStep("Using existing transaction meter", { meterId: transactionMeter?.id });
+      } else {
+        throw error;
       }
     }
 
-    logStep("Products creation completed", {
-      products: results.products.length,
-      prices: results.prices.length,
-      errors: results.errors.length
-    });
+    // Define the subscription-based products
+    const productDefinitions = [
+      {
+        id: 'trial',
+        name: 'Free Trial',
+        description: 'Free trial with 500 included transactions, then overage billing.',
+        baseFee: 0, // Free trial
+        includedUsage: 500,
+        overageRate: 0.05, // $0.05 per transaction after 500
+        metadata: {
+          tier_id: 'trial',
+          plan_type: 'fixed_overage',
+          billing_model_type: 'fixed_fee_overage'
+        }
+      },
+      {
+        id: 'starter',
+        name: 'Starter',
+        description: 'Perfect for small teams with 1,000 included transactions monthly.',
+        baseFee: 1900, // $19.00
+        includedUsage: 1000,
+        overageRate: 0.02, // $0.02 per transaction after 1,000
+        metadata: {
+          tier_id: 'starter',
+          plan_type: 'fixed_overage',
+          billing_model_type: 'fixed_fee_overage'
+        }
+      },
+      {
+        id: 'professional',
+        name: 'Professional',
+        description: 'Great for growing businesses with 5,000 included transactions monthly.',
+        baseFee: 4900, // $49.00
+        includedUsage: 5000,
+        overageRate: 0.015, // $0.015 per transaction after 5,000
+        metadata: {
+          tier_id: 'professional',
+          plan_type: 'fixed_overage',
+          billing_model_type: 'fixed_fee_overage'
+        }
+      },
+      {
+        id: 'business',
+        name: 'Business',
+        description: 'Unlimited transactions with predictable monthly costs.',
+        baseFee: 9900, // $99.00
+        unlimited: true,
+        metadata: {
+          tier_id: 'business',
+          plan_type: 'flat_rate',
+          billing_model_type: 'flat_recurring'
+        }
+      },
+      {
+        id: 'enterprise',
+        name: 'Enterprise',
+        description: 'Per-seat pricing with unlimited features for large teams.',
+        baseFee: 2500, // $25.00 per user
+        unlimited: true,
+        perSeat: true,
+        metadata: {
+          tier_id: 'enterprise',
+          plan_type: 'per_seat',
+          billing_model_type: 'per_seat'
+        }
+      }
+    ];
+
+    const results = [];
+
+    for (const productDef of productDefinitions) {
+      logStep(`Creating subscription product: ${productDef.name}`);
+      
+      try {
+        // Create the product
+        const product = await stripe.products.create({
+          name: productDef.name,
+          description: productDef.description,
+          metadata: {
+            ...productDef.metadata,
+            created_via: 'subscription_billing_v2',
+            included_usage: productDef.includedUsage?.toString() || '0',
+            overage_rate: productDef.overageRate?.toString() || '0',
+            unlimited: productDef.unlimited ? 'true' : 'false'
+          }
+        });
+
+        logStep(`Product created: ${product.id}`);
+        const priceIds = [];
+
+        // Create base monthly fee price (flat rate)
+        const basePriceData: any = {
+          currency: 'usd',
+          unit_amount: productDef.baseFee,
+          product: product.id,
+          recurring: {
+            interval: 'month',
+            usage_type: 'licensed'
+          },
+          metadata: {
+            ...productDef.metadata,
+            price_type: 'base_fee',
+            included_usage: productDef.includedUsage?.toString() || '0'
+          }
+        };
+
+        const basePrice = await stripe.prices.create(basePriceData);
+        priceIds.push(basePrice.id);
+        logStep(`Base price created: ${basePrice.id}`);
+
+        // Create overage price for fixed fee + overage plans
+        if (!productDef.unlimited && productDef.overageRate && transactionMeter) {
+          const overagePriceData: any = {
+            currency: 'usd',
+            billing_scheme: 'tiered',
+            recurring: {
+              interval: 'month',
+              usage_type: 'metered',
+              meter: transactionMeter.id
+            },
+            product: product.id,
+            tiers_mode: 'volume',
+            tiers: [
+              {
+                up_to: productDef.includedUsage,
+                unit_amount_decimal: '0' // Free up to included usage
+              },
+              {
+                up_to: 'inf',
+                unit_amount_decimal: (productDef.overageRate * 100).toString() // Overage rate in cents
+              }
+            ],
+            metadata: {
+              ...productDef.metadata,
+              price_type: 'overage',
+              overage_rate: productDef.overageRate.toString()
+            }
+          };
+
+          const overagePrice = await stripe.prices.create(overagePriceData);
+          priceIds.push(overagePrice.id);
+          logStep(`Overage price created: ${overagePrice.id}`);
+        }
+
+        // Set the base price as default
+        await stripe.products.update(product.id, {
+          default_price: priceIds[0]
+        });
+
+        results.push({
+          product_id: product.id,
+          price_ids: priceIds,
+          tier_id: productDef.id,
+          name: productDef.name,
+          base_fee: productDef.baseFee,
+          included_usage: productDef.includedUsage || 0,
+          overage_rate: productDef.overageRate || 0,
+          unlimited: productDef.unlimited || false,
+          status: 'success'
+        });
+
+        logStep(`Subscription product setup complete for ${productDef.name}`);
+
+      } catch (error: any) {
+        logStep(`Error creating product ${productDef.name}`, { error: error.message });
+        results.push({
+          tier_id: productDef.id,
+          name: productDef.name,
+          error: error.message,
+          status: 'error'
+        });
+      }
+    }
+
+    logStep("Subscription product creation complete", { results });
 
     return new Response(
       JSON.stringify({ 
         success: true,
+        message: 'Subscription-based products created successfully',
         results,
+        transaction_meter_id: transactionMeter?.id,
         summary: {
-          products_created: results.products.length,
-          prices_created: results.prices.length,
-          errors: results.errors.length
+          products_created: results.filter(r => r.status === 'success').length,
+          errors: results.filter(r => r.status === 'error').length
         }
       }),
       {
@@ -163,6 +275,7 @@ serve(async (req) => {
         status: 200,
       }
     );
+
   } catch (error: any) {
     logStep("ERROR in create-subscription-products", { message: error.message });
     

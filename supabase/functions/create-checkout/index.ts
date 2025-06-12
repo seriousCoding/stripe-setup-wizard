@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -81,154 +82,130 @@ serve(async (req) => {
       logStep('New customer created', { customerId });
     }
 
-    // Handle free trial - no checkout needed
+    // Handle free trial - no checkout needed, just activate trial
     if (priceId === 'trial') {
-      logStep("Free trial selected - no checkout needed");
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Free trial activated',
-          redirect: `${req.headers.get('origin')}/pricing?success=true&plan=trial`
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        }
+      logStep("Free trial selected - activating trial subscription");
+      
+      // Find the trial product
+      const products = await stripe.products.list({
+        active: true,
+        limit: 100,
+      });
+
+      const trialProduct = products.data.find(p => 
+        p.metadata?.tier_id === 'trial' && p.metadata?.created_via === 'subscription_billing_v2'
       );
+
+      if (trialProduct) {
+        const prices = await stripe.prices.list({
+          product: trialProduct.id,
+          active: true,
+        });
+
+        const basePrices = prices.data.filter(p => p.metadata?.price_type === 'base_fee');
+        const overagePrices = prices.data.filter(p => p.metadata?.price_type === 'overage');
+
+        // Create trial subscription with both base and overage pricing
+        const subscriptionData: any = {
+          customer: customerId,
+          items: [
+            {
+              price: basePrices[0].id,
+              quantity: 1,
+            }
+          ],
+          metadata: {
+            user_id: data.user.id,
+            plan_id: priceId,
+            plan_name: planName,
+            product_id: trialProduct.id,
+            billing_model: 'fixed_fee_overage'
+          },
+          trial_period_days: 14, // 14-day free trial
+        };
+
+        // Add overage pricing if it exists
+        if (overagePrices.length > 0) {
+          subscriptionData.items.push({
+            price: overagePrices[0].id,
+          });
+        }
+
+        const subscription = await stripe.subscriptions.create(subscriptionData);
+        
+        logStep("Trial subscription created", { subscriptionId: subscription.id });
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Free trial activated',
+            subscription_id: subscription.id,
+            redirect: `${req.headers.get('origin')}/pricing?success=true&plan=trial`
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      }
     }
 
-    // Find or create the appropriate product and price
-    let targetPrice = null;
-    let targetProduct = null;
-
-    // Enhanced product finding logic
+    // Find the appropriate subscription product
     const products = await stripe.products.list({
       active: true,
       limit: 100,
-      expand: ['data.default_price']
     });
 
     logStep("Found products", { count: products.data.length });
 
-    // Look for existing properly configured products
-    for (const product of products.data) {
-      if (product.metadata?.tier_id === priceId || 
-          product.name.toLowerCase().includes(planName.toLowerCase())) {
-        
-        const prices = await stripe.prices.list({
-          product: product.id,
-          active: true,
-        });
-        
-        logStep("Checking product prices", { 
-          productId: product.id, 
-          productName: product.name, 
-          priceCount: prices.data.length 
-        });
+    const targetProduct = products.data.find(p => 
+      p.metadata?.tier_id === priceId && p.metadata?.created_via === 'subscription_billing_v2'
+    );
 
-        // Select appropriate price based on plan type
-        if (priceId === 'business' || priceId === 'enterprise') {
-          // These need recurring prices
-          const recurringPrice = prices.data.find(p => p.recurring?.interval === 'month');
-          if (recurringPrice) {
-            targetPrice = recurringPrice;
-            targetProduct = product;
-            logStep("Found recurring price for subscription plan", { 
-              priceId: targetPrice.id, 
-              amount: targetPrice.unit_amount,
-              interval: targetPrice.recurring?.interval
-            });
-            break;
-          }
-        } else {
-          // Starter and Professional use one-time prices
-          const oneTimePrice = prices.data.find(p => !p.recurring);
-          if (oneTimePrice) {
-            targetPrice = oneTimePrice;
-            targetProduct = product;
-            logStep("Found one-time price", { 
-              priceId: targetPrice.id, 
-              amount: targetPrice.unit_amount
-            });
-            break;
-          }
-        }
-      }
+    if (!targetProduct) {
+      throw new Error(`No subscription product found for plan: ${priceId}`);
     }
 
-    // If no existing product found, create one
-    if (!targetPrice || !targetProduct) {
-      logStep("No existing product found, creating new one");
-      
-      const billingModelType = {
-        'starter': 'pay_as_you_go',
-        'professional': 'credit_burndown', 
-        'business': 'flat_recurring',
-        'enterprise': 'per_seat'
-      }[priceId] || 'pay_as_you_go';
+    logStep("Found target product", { productId: targetProduct.id, name: targetProduct.name });
 
-      const productData = {
-        name: `${planName} Plan`,
-        description: getProductDescription(priceId),
-        metadata: {
-          tier_id: priceId,
-          created_via: 'billing_app_v1',
-          billing_model_type: billingModelType
-        }
-      };
+    // Get all prices for this product
+    const prices = await stripe.prices.list({
+      product: targetProduct.id,
+      active: true,
+    });
 
-      targetProduct = await stripe.products.create(productData);
-      logStep("Created new product", { productId: targetProduct.id, name: targetProduct.name });
+    const basePrices = prices.data.filter(p => p.metadata?.price_type === 'base_fee' || !p.metadata?.price_type);
+    const overagePrices = prices.data.filter(p => p.metadata?.price_type === 'overage');
 
-      // Create appropriate price based on plan type
-      const priceAmount = {
-        'starter': 99, // $0.99 per transaction
-        'professional': 4900, // $49 for credits
-        'business': 9900, // $99/month
-        'enterprise': 2500 // $25/month per user
-      }[priceId] || 99;
+    if (basePrices.length === 0) {
+      throw new Error('No base price found for this product');
+    }
 
-      const priceData: any = {
-        currency: 'usd',
-        unit_amount: priceAmount,
-        product: targetProduct.id,
-        metadata: {
-          tier_id: priceId,
-          plan_name: planName
-        }
-      };
+    logStep("Found pricing structure", { 
+      basePriceCount: basePrices.length, 
+      overagePriceCount: overagePrices.length 
+    });
 
-      // Add recurring billing for subscription plans
-      if (priceId === 'business' || priceId === 'enterprise') {
-        priceData.recurring = { interval: 'month' };
-        logStep("Creating recurring price for subscription plan");
-      } else {
-        logStep("Creating one-time price");
+    // Create checkout session for subscription
+    const lineItems = [
+      {
+        price: basePrices[0].id,
+        quantity: priceId === 'enterprise' ? 1 : 1, // For enterprise, user can adjust quantity in portal
       }
+    ];
 
-      targetPrice = await stripe.prices.create(priceData);
-      logStep("Created new price", { 
-        priceId: targetPrice.id, 
-        amount: priceAmount,
-        recurring: !!priceData.recurring
+    // Add overage pricing for fixed fee + overage plans
+    if (overagePrices.length > 0) {
+      lineItems.push({
+        price: overagePrices[0].id,
       });
     }
 
-    // Determine checkout mode and session data
-    const checkoutMode = targetPrice.recurring ? 'subscription' : 'payment';
-    logStep("Determined checkout mode", { mode: checkoutMode, priceId: targetPrice.id });
-    
-    // Create checkout session with enhanced metadata
     const sessionData: any = {
       customer: customerId,
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price: targetPrice.id,
-          quantity: 1,
-        },
-      ],
-      mode: checkoutMode,
+      line_items: lineItems,
+      mode: 'subscription',
       success_url: `${req.headers.get('origin')}/pricing?success=true&plan=${priceId}`,
       cancel_url: `${req.headers.get('origin')}/pricing?canceled=true`,
       metadata: {
@@ -236,35 +213,34 @@ serve(async (req) => {
         plan_id: priceId,
         plan_name: planName,
         product_id: targetProduct.id,
-        billing_model: targetProduct.metadata?.billing_model_type || 'standard'
+        billing_model: targetProduct.metadata?.billing_model_type || 'subscription'
       },
-    };
-
-    // Add subscription-specific metadata
-    if (checkoutMode === 'subscription') {
-      sessionData.subscription_data = {
+      subscription_data: {
         metadata: {
           plan_id: priceId,
           plan_name: planName,
           user_id: data.user.id,
-          product_id: targetProduct.id
+          product_id: targetProduct.id,
+          billing_model: targetProduct.metadata?.billing_model_type || 'subscription'
         }
+      }
+    };
+
+    // For enterprise plans, allow quantity adjustment
+    if (priceId === 'enterprise') {
+      sessionData.line_items[0].adjustable_quantity = {
+        enabled: true,
+        minimum: 1,
+        maximum: 100
       };
-      logStep("Added subscription metadata");
-    } else if (priceId === 'professional') {
-      // Add credit-specific metadata for professional plan
-      sessionData.metadata.credit_amount = '12000'; // $120 in cents
-      sessionData.metadata.purchase_amount = '4900'; // $49 in cents
-      sessionData.metadata.credit_multiplier = '1.2'; // 20% bonus
-      logStep("Added credit purchase metadata");
     }
 
     const session = await stripe.checkout.sessions.create(sessionData);
 
-    logStep('Checkout session created successfully', { 
+    logStep('Subscription checkout session created successfully', { 
       sessionId: session.id, 
-      mode: checkoutMode,
-      priceId: targetPrice.id,
+      mode: 'subscription',
+      lineItemCount: lineItems.length,
       productId: targetProduct.id,
       url: session.url
     });
@@ -289,14 +265,3 @@ serve(async (req) => {
     );
   }
 });
-
-// Helper function to get product descriptions
-function getProductDescription(priceId: string): string {
-  const descriptions = {
-    'starter': 'True pay-as-you-go pricing with no commitments or limits.',
-    'professional': 'Prepaid credit system with 20% bonus credits included.',
-    'business': 'Unlimited usage with predictable monthly costs.',
-    'enterprise': 'Per-user pricing with enterprise-grade features.'
-  };
-  return descriptions[priceId] || 'Custom pricing plan';
-}

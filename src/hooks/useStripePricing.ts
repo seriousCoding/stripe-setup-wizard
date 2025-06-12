@@ -314,78 +314,82 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
       id: 'trial',
       name: 'Free Trial',
       subtitle: 'Trial',
-      description: 'Try all features risk-free before committing to a paid plan.',
+      description: 'Try all features risk-free with 500 included transactions monthly.',
       price: 0,
       currency: 'USD',
       icon: '🎁',
       features: [
         'Full access to all features',
-        '500 transaction limit',
+        '500 transactions included monthly',
         'Basic AI processing',
-        'Email support'
+        'Email support',
+        '14-day free trial'
       ],
       usageLimits: [
-        { name: 'Transactions', value: '500' },
-        { name: 'AI Processing', value: '50' },
-        { name: 'After limit', value: '$0.05/transaction' }
+        { name: 'Base Fee', value: 'Free' },
+        { name: 'Included Usage', value: '500 transactions' },
+        { name: 'Overage Rate', value: '$0.05/transaction' }
       ],
       buttonText: 'Start Free Trial',
-      badge: 'Free Trial'
+      badge: 'Free Trial',
+      isMonthly: true
     },
     {
       id: 'starter',
       name: 'Starter',
-      subtitle: 'Pay As-You-Go',
-      description: 'Perfect for occasional use with true pay-as-you-go pricing.',
-      price: 99, // $0.99
+      subtitle: 'Fixed Fee + Overage',
+      description: 'Perfect for small teams with 1,000 included transactions monthly.',
+      price: 1900, // $19.00
       currency: 'USD',
       icon: '📄',
       features: [
-        'True pay-as-you-go pricing',
-        'No monthly commitment',
-        'No setup fees or minimums',
+        'Monthly subscription billing',
+        '1,000 transactions included',
+        'Overage billing at $0.02/transaction',
         'Basic AI data extraction',
         'Standard support'
       ],
       usageLimits: [
-        { name: 'Transactions', value: 'Pay per use' },
-        { name: 'Rate', value: '$0.99/transaction' },
-        { name: 'Setup Fee', value: 'None' }
+        { name: 'Base Fee', value: '$19/month' },
+        { name: 'Included Usage', value: '1,000 transactions' },
+        { name: 'Overage Rate', value: '$0.02/transaction' }
       ],
-      buttonText: 'Start Using'
+      buttonText: 'Subscribe Now',
+      isMonthly: true
     },
     {
       id: 'professional',
       name: 'Professional',
-      subtitle: 'Credit Burndown',
-      description: 'Get 20% bonus credits with our prepaid credit system.',
-      price: 4900, // $49
+      subtitle: 'Fixed Fee + Overage',
+      description: 'Great for growing businesses with 5,000 included transactions monthly.',
+      price: 4900, // $49.00
       currency: 'USD',
       icon: '💼',
       features: [
-        'Prepaid credit system',
-        '20% bonus credits included',
-        '1,500 transaction credits',
+        'Monthly subscription billing',
+        '5,000 transactions included',
+        'Overage billing at $0.015/transaction',
         'Advanced AI processing',
         'Priority support',
         'Usage analytics',
-        'Credit expiration: 1 year'
+        'Advanced features'
       ],
       usageLimits: [
-        { name: 'Prepaid Amount', value: '$49' },
-        { name: 'Credit Value', value: '$120 (20% bonus)' },
-        { name: 'Rate', value: '$0.04/transaction' }
+        { name: 'Base Fee', value: '$49/month' },
+        { name: 'Included Usage', value: '5,000 transactions' },
+        { name: 'Overage Rate', value: '$0.015/transaction' }
       ],
-      buttonText: 'Buy Credits',
+      buttonText: 'Subscribe Now',
       popular: true,
-      badge: 'Most Popular'
+      badge: 'Most Popular',
+      isMonthly: true
     },
     {
       id: 'business',
       name: 'Business',
-      subtitle: 'Flat Fee',
+      subtitle: 'Flat Rate',
       description: 'Unlimited usage with predictable monthly costs for growing teams.',
-      price: 9900, // $99
+      price: 9900, // $99.00
       currency: 'USD',
       icon: '⚡',
       features: [
@@ -397,6 +401,7 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
         'Priority processing'
       ],
       usageLimits: [
+        { name: 'Monthly Fee', value: '$99 flat rate' },
         { name: 'Transactions', value: 'Unlimited' },
         { name: 'AI Processing', value: 'Unlimited' }
       ],
@@ -408,11 +413,11 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Enterprise',
       subtitle: 'Per Seat',
       description: 'Scale with your organization with per-user pricing and enterprise features.',
-      price: 2500, // $25
+      price: 2500, // $25.00
       currency: 'USD',
       icon: '👥',
       features: [
-        'Unlimited everything',
+        'Unlimited everything per user',
         'Multi-user management',
         'Advanced security features',
         'SLA guarantee',
@@ -420,10 +425,11 @@ const getEnhancedDefaultPricingTiers = (): StripePricingTier[] => {
         'White-label options'
       ],
       usageLimits: [
+        { name: 'Per User', value: '$25/month' },
         { name: 'Transactions', value: 'Unlimited' },
         { name: 'AI Processing', value: 'Unlimited' }
       ],
-      buttonText: 'Contact Sales',
+      buttonText: 'Subscribe Now',
       isMonthly: true
     }
   ];
