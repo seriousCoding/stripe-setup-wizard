@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import BillingModelTypeTabs from '@/components/BillingModelTypeTabs';
 import ServiceDefinition from '@/components/ServiceDefinition';
-import SpreadsheetUpload from '@/components/SpreadsheetUpload';
 import PayAsYouGoForm from '@/components/PayAsYouGoForm';
 import FlatRecurringForm from '@/components/FlatRecurringForm';
 import FixedOverageForm from '@/components/FixedOverageForm';
@@ -17,20 +16,12 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const BillingModels = () => {
   const [activeTab, setActiveTab] = useState('pay-as-you-go');
-  const [uploadedData, setUploadedData] = useState<any[]>([]);
   const [detectedServices, setDetectedServices] = useState<any[]>([]);
   const [minimizedCards, setMinimizedCards] = useState<Record<string, boolean>>({});
-
-  const handleDataUploaded = (data: any[]) => {
-    console.log('Data uploaded in BillingModels:', data);
-    setUploadedData(data);
-    setDetectedServices(data);
-  };
 
   const handleServicesDetected = (services: any[]) => {
     console.log('Services detected in BillingModels:', services);
     setDetectedServices(services);
-    setUploadedData(services);
   };
 
   const toggleCardMinimized = (cardId: string) => {
@@ -115,14 +106,10 @@ const BillingModels = () => {
           />
         </MinimizableCard>
 
-        <MinimizableCard id="data-upload" title="Import Billing Data">
-          <SpreadsheetUpload onDataUploaded={handleDataUploaded} />
-        </MinimizableCard>
-
-        {(uploadedData.length > 0 || detectedServices.length > 0) && (
+        {detectedServices.length > 0 && (
           <MinimizableCard id="billing-generator" title="Generated Billing Model">
             <BillingModelGenerator 
-              uploadedData={uploadedData.length > 0 ? uploadedData : detectedServices}
+              uploadedData={detectedServices}
               onModelGenerated={(model) => console.log('Model generated:', model)}
             />
           </MinimizableCard>
