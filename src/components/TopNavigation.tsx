@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
@@ -27,10 +26,7 @@ const TopNavigation = () => {
               <Upload className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 
-                className="text-xl font-bold bg-white px-3 py-1 rounded-md shadow-sm relative z-50"
-                style={{ color: '#000000 !important' }}
-              >
+              <h1 className="text-xl font-bold text-white">
                 Stripe Setup Pilot
               </h1>
               <p className="text-sm text-purple-200">Automate your Stripe configuration</p>
