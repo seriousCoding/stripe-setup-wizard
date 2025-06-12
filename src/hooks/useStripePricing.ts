@@ -26,11 +26,13 @@ interface StripePricingTier {
 interface UseStripePricingOptions {
   autoRefresh?: boolean;
   refreshInterval?: number;
+  useAllProducts?: boolean; // New option to control which products to use
 }
 
 export const useStripePricing = (options: UseStripePricingOptions = {}) => {
-  const { autoRefresh = false, refreshInterval = 30000 } = options;
+  const { autoRefresh = false, refreshInterval = 30000, useAllProducts = false } = options;
   const [pricingTiers, setPricingTiers] = useState<StripePricingTier[]>([]);
+  const [allProducts, setAllProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -51,12 +53,23 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
         throw new Error(error.message);
       }
 
-      if (data?.success && data.products && data.products.length > 0) {
-        const tiers = mapStripeProductsToTiers(data.products);
-        setPricingTiers(tiers);
-        console.log('Loaded billing app products:', data.products.length);
+      if (data?.success) {
+        // Store all products for management purposes
+        setAllProducts(data.all_products || []);
+        
+        // Use app products for billing/pricing or all products based on option
+        const productsToUse = useAllProducts ? data.all_products : data.app_products;
+        
+        if (productsToUse && productsToUse.length > 0) {
+          const tiers = mapStripeProductsToTiers(productsToUse);
+          setPricingTiers(tiers);
+          console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length);
+        } else {
+          console.log(`No ${useAllProducts ? '' : 'app '}products found, using default pricing`);
+          setPricingTiers(getDefaultPricingTiers());
+        }
       } else {
-        console.log('No billing app products found, using default pricing');
+        console.log('No products found, using default pricing');
         setPricingTiers(getDefaultPricingTiers());
       }
     } catch (err: any) {
@@ -83,12 +96,13 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [autoRefresh, refreshInterval]);
+  }, [autoRefresh, refreshInterval, useAllProducts]);
 
   const refetch = () => fetchPricingData();
 
   return {
     pricingTiers,
+    allProducts, // Expose all products for management
     isLoading,
     error,
     isRefreshing,
