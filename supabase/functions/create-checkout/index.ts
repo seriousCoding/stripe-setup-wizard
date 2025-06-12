@@ -118,9 +118,9 @@ serve(async (req) => {
       logStep('New customer created', { customerId });
     }
 
-    // Handle free trial - no checkout needed, just activate trial
+    // Handle free trial - create trial subscription directly
     if (priceId === 'trial') {
-      logStep("Free trial selected - activating trial subscription");
+      logStep("Free trial selected - creating trial subscription directly");
       
       // Find the trial product
       const products = await stripe.products.list({
@@ -129,7 +129,7 @@ serve(async (req) => {
       });
 
       const trialProduct = products.data.find(p => 
-        p.metadata?.tier_id === 'trial' && p.metadata?.created_via === 'subscription_billing_v2'
+        p.metadata?.tier_id === 'trial' && p.metadata?.created_via === 'subscription_billing_v4'
       );
 
       if (!trialProduct) {
@@ -137,20 +137,30 @@ serve(async (req) => {
         throw new Error('Trial product not found. Please run create-subscription-products first.');
       }
 
+      logStep("Found trial product", { productId: trialProduct.id, name: trialProduct.name });
+
+      // Get the recurring price for the trial product
       const prices = await stripe.prices.list({
         product: trialProduct.id,
         active: true,
       });
 
-      const basePrices = prices.data.filter(p => p.metadata?.price_type === 'base_fee');
-      const overagePrices = prices.data.filter(p => p.metadata?.price_type === 'overage');
+      const recurringPrices = prices.data.filter(p => p.type === 'recurring');
 
-      // Create trial subscription with both base and overage pricing
-      const subscriptionData: any = {
+      if (recurringPrices.length === 0) {
+        logStep("ERROR: No recurring price found for trial product");
+        throw new Error('No recurring price found for trial product');
+      }
+
+      const trialPrice = recurringPrices[0];
+      logStep("Found trial recurring price", { priceId: trialPrice.id, amount: trialPrice.unit_amount });
+
+      // Create trial subscription
+      const subscription = await stripe.subscriptions.create({
         customer: customerId,
         items: [
           {
-            price: basePrices[0].id,
+            price: trialPrice.id,
             quantity: 1,
           }
         ],
@@ -159,19 +169,10 @@ serve(async (req) => {
           plan_id: priceId,
           plan_name: planName,
           product_id: trialProduct.id,
-          billing_model: 'fixed_fee_overage'
+          billing_model: 'free_trial'
         },
         trial_period_days: 14, // 14-day free trial
-      };
-
-      // Add overage pricing if it exists
-      if (overagePrices.length > 0) {
-        subscriptionData.items.push({
-          price: overagePrices[0].id,
-        });
-      }
-
-      const subscription = await stripe.subscriptions.create(subscriptionData);
+      });
       
       logStep("Trial subscription created", { subscriptionId: subscription.id });
 
@@ -189,7 +190,7 @@ serve(async (req) => {
       );
     }
 
-    // Find the appropriate subscription product
+    // Find the appropriate subscription product for paid plans
     const products = await stripe.products.list({
       active: true,
       limit: 100,
@@ -199,7 +200,7 @@ serve(async (req) => {
 
     // More detailed product search and logging
     const subscriptionProducts = products.data.filter(p => 
-      p.metadata?.created_via === 'subscription_billing_v2'
+      p.metadata?.created_via === 'subscription_billing_v4'
     );
 
     logStep("Subscription products found", { 
@@ -231,32 +232,21 @@ serve(async (req) => {
       active: true,
     });
 
-    const basePrices = prices.data.filter(p => p.metadata?.price_type === 'base_fee' || !p.metadata?.price_type);
-    const overagePrices = prices.data.filter(p => p.metadata?.price_type === 'overage');
+    const recurringPrices = prices.data.filter(p => p.type === 'recurring');
 
-    if (basePrices.length === 0) {
-      throw new Error('No base price found for this product');
+    if (recurringPrices.length === 0) {
+      throw new Error('No recurring price found for this product');
     }
 
-    logStep("Found pricing structure", { 
-      basePriceCount: basePrices.length, 
-      overagePriceCount: overagePrices.length 
-    });
+    logStep("Found recurring prices", { count: recurringPrices.length });
 
     // Create checkout session for subscription
     const lineItems = [
       {
-        price: basePrices[0].id,
+        price: recurringPrices[0].id,
         quantity: 1,
       }
     ];
-
-    // Add overage pricing for fixed fee + overage plans
-    if (overagePrices.length > 0) {
-      lineItems.push({
-        price: overagePrices[0].id,
-      });
-    }
 
     const sessionData: any = {
       customer: customerId,
