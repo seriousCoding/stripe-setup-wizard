@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,10 +6,12 @@ import { Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 
 const Pricing = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const pricingPlans = [
     {
@@ -112,11 +113,22 @@ const Pricing = () => {
         description: "Please sign in to subscribe to a plan.",
         variant: "destructive",
       });
+      navigate('/auth');
       return;
     }
 
     try {
-      // For starter and professional plans, use one-time payment mode
+      // For trial plan, handle locally
+      if (planId === 'trial') {
+        toast({
+          title: "Free Trial Activated",
+          description: "Your 14-day free trial has been activated!",
+        });
+        navigate('/');
+        return;
+      }
+
+      // For starter and professional plans, use payment mode instead of subscription
       const isOneTimePayment = planId === 'starter' || planId === 'professional';
       
       const { data, error } = await supabase.functions.invoke('create-checkout', {
@@ -132,10 +144,11 @@ const Pricing = () => {
       }
 
       if (data?.url) {
-        // Navigate in the same tab instead of opening a new one
+        // Use window.location.href for external Stripe checkout
         window.location.href = data.url;
       }
     } catch (error: any) {
+      console.error('Checkout error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to create checkout session",

@@ -47,8 +47,8 @@ serve(async (req) => {
     const user = data.user;
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    const { tier_id, price_id, user_email } = await req.json();
-    logStep("Request body", { tier_id, price_id, user_email });
+    const { tier_id, price_id, user_email, mode = 'subscription' } = await req.json();
+    logStep("Request body", { tier_id, price_id, user_email, mode });
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
@@ -116,17 +116,13 @@ serve(async (req) => {
       let productName = '';
       
       switch (tier_id) {
-        case 'trial':
-          unitAmount = 0;
-          productName = 'Free Trial';
-          break;
         case 'starter':
-          unitAmount = 1900; // $19.00
-          productName = 'Starter Plan';
+          unitAmount = 99; // $0.99
+          productName = 'Starter Plan - Pay As You Go';
           break;
         case 'professional':
           unitAmount = 4900; // $49.00
-          productName = 'Professional Plan';
+          productName = 'Professional Plan - Credit Bundle';
           break;
         case 'business':
           unitAmount = 9900; // $99.00
@@ -149,57 +145,46 @@ serve(async (req) => {
         }
       });
 
-      // Create price
-      const price = await stripe.prices.create({
+      // Create price - use payment mode for starter/professional, subscription for others
+      const priceConfig: any = {
         product: product.id,
         unit_amount: unitAmount,
         currency: 'usd',
-        recurring: tier_id !== 'trial' ? { interval: 'month' } : undefined,
         metadata: {
           tier_id: tier_id
         }
-      });
+      };
+
+      // Only add recurring for subscription plans
+      if (mode === 'subscription') {
+        priceConfig.recurring = { interval: 'month' };
+      }
+
+      const price = await stripe.prices.create(priceConfig);
 
       priceToUse = price.id;
-      logStep("Created new product and price", { productId: product.id, priceId: priceToUse, unitAmount });
-    }
-
-    // Handle free trial separately
-    if (tier_id === 'trial') {
-      logStep("Handling free trial signup");
-      
-      // For free trial, we might want to create a subscription with a $0 price
-      // or just redirect to a success page
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          url: `${req.headers.get('origin')}/payment-success?tier=trial`,
-          message: 'Free trial activated'
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        }
-      );
+      logStep("Created new product and price", { productId: product.id, priceId: priceToUse, unitAmount, mode });
     }
 
     // Create checkout session
-    const session = await stripe.checkout.sessions.create({
+    const sessionConfig: any = {
       customer: customerId,
       line_items: [{
         price: priceToUse,
         quantity: 1,
       }],
-      mode: 'subscription',
+      mode: mode,
       success_url: `${req.headers.get('origin')}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.headers.get('origin')}/payment-cancel`,
       metadata: {
         user_id: user.id,
         tier_id: tier_id
       }
-    });
+    };
 
-    logStep("Checkout session created", { sessionId: session.id, url: session.url });
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+
+    logStep("Checkout session created", { sessionId: session.id, url: session.url, mode });
 
     return new Response(
       JSON.stringify({ 
