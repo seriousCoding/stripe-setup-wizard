@@ -47,7 +47,19 @@ export const useSubscription = () => {
       }
 
       console.log('Subscription check result:', data);
-      setSubscriptionStatus(data);
+      
+      // Ensure we have a valid response structure
+      const validatedData = {
+        subscribed: Boolean(data?.subscribed),
+        subscription_tier: data?.subscription_tier || null,
+        subscription_status: data?.subscription_status || 'unknown',
+        subscription_id: data?.subscription_id || undefined,
+        customer_id: data?.customer_id || undefined,
+        current_period_end: data?.current_period_end || undefined,
+        price_amount: data?.price_amount || undefined
+      };
+
+      setSubscriptionStatus(validatedData);
 
     } catch (err: any) {
       console.error('Error checking subscription:', err);
@@ -62,8 +74,21 @@ export const useSubscription = () => {
     }
   };
 
+  // Check subscription when user changes
   useEffect(() => {
     checkSubscription();
+  }, [user]);
+
+  // Auto-refresh subscription status every 30 seconds when on pricing page
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      console.log('Auto-refreshing subscription status...');
+      checkSubscription();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
   }, [user]);
 
   return {

@@ -77,15 +77,16 @@ serve(async (req) => {
     const customer = customers.data[0];
     logStep("Customer found", { customerId: customer.id });
 
-    // Get active subscriptions
+    // Get all subscriptions (not just active ones) to see current status
     const subscriptions = await stripe.subscriptions.list({
       customer: customer.id,
-      status: 'active',
       limit: 10
     });
 
+    logStep("All subscriptions found", { count: subscriptions.data.length });
+
     if (subscriptions.data.length === 0) {
-      logStep("No active subscriptions found");
+      logStep("No subscriptions found");
       return new Response(
         JSON.stringify({ 
           subscribed: false,
@@ -100,35 +101,68 @@ serve(async (req) => {
       );
     }
 
+    // Find the most recent subscription
     const subscription = subscriptions.data[0];
     const price = subscription.items.data[0].price;
     
-    // Determine tier based on price amount
+    logStep("Subscription found", { 
+      subscriptionId: subscription.id,
+      status: subscription.status,
+      currentPeriodEnd: subscription.current_period_end
+    });
+    
+    // Determine tier based on product metadata or price amount
     let subscriptionTier = 'unknown';
     const amount = price.unit_amount || 0;
     
-    if (amount === 0) {
-      subscriptionTier = 'trial';
-    } else if (amount === 99) {
-      subscriptionTier = 'starter';
-    } else if (amount === 4900) {
-      subscriptionTier = 'professional';
-    } else if (amount === 9900) {
-      subscriptionTier = 'business';
-    } else if (amount === 2500) {
-      subscriptionTier = 'enterprise';
+    // Get the product to check for tier metadata
+    let product = null;
+    if (price.product && typeof price.product === 'string') {
+      try {
+        product = await stripe.products.retrieve(price.product);
+        logStep("Product retrieved", { productId: product.id, metadata: product.metadata });
+        
+        // Check for tier_id in product metadata first
+        if (product.metadata?.tier_id) {
+          subscriptionTier = product.metadata.tier_id;
+          logStep("Tier from metadata", { tier: subscriptionTier });
+        }
+      } catch (error) {
+        logStep("Error retrieving product", { error: error.message });
+      }
+    }
+    
+    // Fallback to price-based tier determination if no metadata
+    if (subscriptionTier === 'unknown') {
+      if (amount === 0) {
+        subscriptionTier = 'trial';
+      } else if (amount === 99) {
+        subscriptionTier = 'starter';
+      } else if (amount === 4900) {
+        subscriptionTier = 'professional';
+      } else if (amount === 9900) {
+        subscriptionTier = 'business';
+      } else if (amount === 2500) {
+        subscriptionTier = 'enterprise';
+      }
+      logStep("Tier from price", { amount, tier: subscriptionTier });
     }
 
-    logStep("Active subscription found", { 
-      subscriptionId: subscription.id,
+    // Check if subscription is currently active
+    const isActive = subscription.status === 'active';
+    const isTrialing = subscription.status === 'trialing';
+    const subscribed = isActive || isTrialing;
+
+    logStep("Final subscription status", { 
+      subscribed,
       tier: subscriptionTier,
-      amount: amount,
-      status: subscription.status
+      status: subscription.status,
+      amount: amount
     });
 
     return new Response(
       JSON.stringify({ 
-        subscribed: true,
+        subscribed: subscribed,
         subscription_tier: subscriptionTier,
         subscription_status: subscription.status,
         subscription_id: subscription.id,

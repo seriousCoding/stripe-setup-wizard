@@ -21,7 +21,7 @@ const Pricing = () => {
     refreshInterval: 600000 // 10 minutes
   });
 
-  // Get subscription status
+  // Get subscription status with auto-refresh
   const { subscriptionStatus, isLoading: isSubscriptionLoading, error: subscriptionError, refetch: refetchSubscription } = useSubscription();
 
   // Define usage limits for different plans from the image
@@ -33,9 +33,10 @@ const Pricing = () => {
   };
 
   // Manual refresh function for immediate updates
-  const handleRefreshPricing = () => {
+  const handleRefreshPricing = async () => {
+    console.log('Manual refresh triggered');
     refetch();
-    refetchSubscription();
+    await refetchSubscription();
     toast({
       title: "Refreshing Data",
       description: "Fetching latest pricing and subscription information...",
@@ -71,6 +72,8 @@ const Pricing = () => {
           title: "Free Trial Activated!",
           description: `You now have ${selectedTier.packageCredits} transaction credits. After the limit, meter rate of $${selectedTier.meterRate} per transaction applies.`,
         });
+        // Refresh subscription status after trial activation
+        setTimeout(() => refetchSubscription(), 1000);
         return;
       }
 
@@ -229,7 +232,7 @@ const Pricing = () => {
             </Button>
           </div>
 
-          {/* Current Subscription Status */}
+          {/* Enhanced Current Subscription Status */}
           {subscriptionStatus.subscribed && (
             <div className="mb-6 p-4 bg-green-600/20 border border-green-500/30 rounded-lg max-w-md mx-auto">
               <div className="flex items-center justify-center space-x-2">
@@ -238,8 +241,21 @@ const Pricing = () => {
                   Currently subscribed to: {subscriptionStatus.subscription_tier?.charAt(0).toUpperCase() + subscriptionStatus.subscription_tier?.slice(1)}
                 </span>
               </div>
+              <div className="text-xs text-green-400 mt-1">
+                Status: {subscriptionStatus.subscription_status} | ID: {subscriptionStatus.subscription_id?.substring(0, 8)}...
+              </div>
             </div>
           )}
+
+          {/* Debug Info */}
+          <div className="mb-4 p-3 bg-slate-800/50 rounded-lg max-w-lg mx-auto text-xs text-slate-300">
+            <div>Subscription Check: {subscriptionStatus.subscription_status}</div>
+            <div>Subscribed: {subscriptionStatus.subscribed ? 'Yes' : 'No'}</div>
+            <div>Tier: {subscriptionStatus.subscription_tier || 'None'}</div>
+            {subscriptionStatus.current_period_end && (
+              <div>Expires: {new Date(subscriptionStatus.current_period_end * 1000).toLocaleDateString()}</div>
+            )}
+          </div>
 
           <p className="text-white/90 max-w-2xl mx-auto text-lg">
             Select the perfect plan for your business needs
