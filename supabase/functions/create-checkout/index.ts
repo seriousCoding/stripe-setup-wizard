@@ -48,13 +48,13 @@ serve(async (req) => {
 
     logStep("User authenticated", { email: data.user.email });
 
-    const { priceId, planName, mode } = await req.json();
+    const { priceId, planName } = await req.json();
 
     if (!priceId || !planName) {
       throw new Error('Missing required parameters: priceId and planName');
     }
 
-    logStep("Request params", { priceId, planName, mode });
+    logStep("Request params", { priceId, planName });
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
