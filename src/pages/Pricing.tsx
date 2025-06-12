@@ -13,7 +13,7 @@ import { useStripePricing } from '@/hooks/useStripePricing';
 const Pricing = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { pricingData, isLoading, error, refetch } = useStripePricing();
+  const { pricingTiers, isLoading, error, refetch } = useStripePricing();
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
   const [fixingPricing, setFixingPricing] = useState(false);
 
@@ -135,7 +135,7 @@ const Pricing = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {pricingData.map((plan) => (
+          {pricingTiers.map((plan) => (
             <Card key={plan.id} className={`relative ${plan.popular ? 'border-primary shadow-lg' : ''}`}>
               {plan.popular && (
                 <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
@@ -158,7 +158,7 @@ const Pricing = () => {
                 <div className="mt-4">
                   <div className="text-3xl font-bold">
                     {plan.price === 0 ? 'Free' : `$${plan.price}`}
-                    {plan.price > 0 && <span className="text-sm font-normal text-muted-foreground">/{plan.interval}</span>}
+                    {plan.price > 0 && <span className="text-sm font-normal text-muted-foreground">/{plan.isMonthly ? 'month' : 'year'}</span>}
                   </div>
                 </div>
               </CardHeader>
@@ -174,7 +174,7 @@ const Pricing = () => {
                 </ul>
                 
                 <Button 
-                  onClick={() => handleSubscribe(plan.id, plan.stripeProductId)}
+                  onClick={() => handleSubscribe(plan.id, plan.id)}
                   disabled={checkingOut === plan.id}
                   className="w-full"
                   variant={plan.popular ? "default" : "outline"}
