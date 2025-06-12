@@ -27,7 +27,7 @@ serve(async (req) => {
     }
     logStep("Stripe secret key found");
 
-    // Authenticate user
+    // Authenticate user with enhanced verification
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -35,18 +35,54 @@ serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      throw new Error('Authorization header missing');
+      logStep("ERROR: No authorization header provided");
+      throw new Error('Authorization header missing - user must be logged in');
+    }
+
+    if (!authHeader.startsWith('Bearer ')) {
+      logStep("ERROR: Invalid authorization header format");
+      throw new Error('Invalid authorization header format');
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data, error: authError } = await supabaseClient.auth.getUser(token);
-    
-    if (authError || !data.user) {
-      logStep("Auth error", { error: authError });
-      throw new Error('User not authenticated');
+    if (!token || token.trim() === '') {
+      logStep("ERROR: Empty or invalid token");
+      throw new Error('Invalid or empty authentication token');
     }
 
-    logStep("User authenticated", { email: data.user.email });
+    logStep("Attempting to authenticate user with token", { tokenLength: token.length });
+    
+    const { data, error: authError } = await supabaseClient.auth.getUser(token);
+    
+    if (authError) {
+      logStep("AUTH ERROR", { error: authError, code: authError.code, message: authError.message });
+      throw new Error(`Authentication failed: ${authError.message}`);
+    }
+
+    if (!data || !data.user) {
+      logStep("ERROR: No user data returned from auth");
+      throw new Error('User not authenticated - no user data returned');
+    }
+
+    if (!data.user.email) {
+      logStep("ERROR: User has no email", { userId: data.user.id });
+      throw new Error('User account has no email address');
+    }
+
+    if (!data.user.email_confirmed_at && !data.user.phone_confirmed_at) {
+      logStep("WARNING: User email/phone not confirmed", { 
+        email: data.user.email, 
+        emailConfirmed: !!data.user.email_confirmed_at,
+        phoneConfirmed: !!data.user.phone_confirmed_at 
+      });
+      // Continue anyway but log the warning
+    }
+
+    logStep("User successfully authenticated", { 
+      email: data.user.email, 
+      userId: data.user.id,
+      emailConfirmed: !!data.user.email_confirmed_at
+    });
 
     const { priceId, planName } = await req.json();
 
