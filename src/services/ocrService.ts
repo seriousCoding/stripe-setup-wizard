@@ -48,8 +48,7 @@ class OCRService {
 
       const confidence = result.data.confidence || 0;
       const text = result.data.text || '';
-      // Fix: Extract words from the proper Tesseract result structure
-      const words = this.extractWordsFromResult(result.data);
+      const words = this.extractWordsFromTesseractResult(result.data);
 
       console.log('OCR completed. Confidence:', confidence, 'Text length:', text.length);
 
@@ -85,11 +84,12 @@ class OCRService {
     }
   }
 
-  private extractWordsFromResult(data: any): any[] {
+  private extractWordsFromTesseractResult(data: any): any[] {
     try {
-      // Try to extract words from the Tesseract result structure
+      const allWords: any[] = [];
+      
+      // Tesseract.js v4+ structure: data.paragraphs -> lines -> words
       if (data.paragraphs && Array.isArray(data.paragraphs)) {
-        const allWords: any[] = [];
         data.paragraphs.forEach((paragraph: any) => {
           if (paragraph.lines && Array.isArray(paragraph.lines)) {
             paragraph.lines.forEach((line: any) => {
@@ -99,20 +99,62 @@ class OCRService {
             });
           }
         });
-        return allWords;
       }
       
-      // Fallback: if words exist directly (though unlikely with current Tesseract.js)
-      if (data.words && Array.isArray(data.words)) {
-        return data.words;
+      // Fallback: check if words exist directly in the data
+      if (allWords.length === 0 && data.words && Array.isArray(data.words)) {
+        allWords.push(...data.words);
       }
       
-      // Return empty array if no words structure found
-      return [];
+      // Another fallback: check if symbols exist and extract words from them
+      if (allWords.length === 0 && data.symbols && Array.isArray(data.symbols)) {
+        const wordsFromSymbols = this.extractWordsFromSymbols(data.symbols);
+        allWords.push(...wordsFromSymbols);
+      }
+      
+      return allWords;
     } catch (error) {
       console.warn('Error extracting words from OCR result:', error);
       return [];
     }
+  }
+
+  private extractWordsFromSymbols(symbols: any[]): any[] {
+    const words: any[] = [];
+    let currentWord = '';
+    let currentBbox = null;
+    
+    symbols.forEach((symbol: any) => {
+      if (symbol.text && symbol.text.trim()) {
+        if (symbol.text === ' ' || symbol.text === '\n') {
+          if (currentWord.trim()) {
+            words.push({
+              text: currentWord.trim(),
+              bbox: currentBbox,
+              confidence: symbol.confidence || 0
+            });
+            currentWord = '';
+            currentBbox = null;
+          }
+        } else {
+          currentWord += symbol.text;
+          if (!currentBbox && symbol.bbox) {
+            currentBbox = symbol.bbox;
+          }
+        }
+      }
+    });
+    
+    // Add the last word if exists
+    if (currentWord.trim()) {
+      words.push({
+        text: currentWord.trim(),
+        bbox: currentBbox,
+        confidence: 0
+      });
+    }
+    
+    return words;
   }
 
   private async validateImageFile(imageFile: File): Promise<void> {
