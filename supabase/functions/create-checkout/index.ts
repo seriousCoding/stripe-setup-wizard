@@ -122,27 +122,50 @@ serve(async (req) => {
     if (priceId === 'trial') {
       logStep("Free trial selected - creating trial subscription directly");
       
-      // Find the trial product
+      // Find the trial product - be more flexible in search
       const products = await stripe.products.list({
         active: true,
         limit: 100,
       });
 
+      logStep("All products found", { count: products.data.length });
+
+      // Look for trial product with multiple possible identifiers
       const trialProduct = products.data.find(p => 
-        p.metadata?.tier_id === 'trial' && p.metadata?.created_via === 'subscription_billing_v4'
+        (p.metadata?.tier_id === 'trial') ||
+        (p.name?.toLowerCase().includes('trial')) ||
+        (p.metadata?.plan_type === 'trial')
       );
 
       if (!trialProduct) {
-        logStep("ERROR: Trial product not found");
+        logStep("ERROR: Trial product not found", { 
+          availableProducts: products.data.map(p => ({
+            id: p.id,
+            name: p.name,
+            metadata: p.metadata
+          }))
+        });
         throw new Error('Trial product not found. Please run create-subscription-products first.');
       }
 
       logStep("Found trial product", { productId: trialProduct.id, name: trialProduct.name });
 
-      // Get any active price for the trial product - be flexible about structure
+      // Get any active price for the trial product - be very flexible
       const prices = await stripe.prices.list({
         product: trialProduct.id,
         active: true,
+        limit: 10, // Get more prices to have options
+      });
+
+      logStep("Found prices for trial product", { 
+        count: prices.data.length,
+        prices: prices.data.map(p => ({
+          id: p.id,
+          type: p.type,
+          billing_scheme: p.billing_scheme,
+          unit_amount: p.unit_amount,
+          recurring: p.recurring
+        }))
       });
 
       if (prices.data.length === 0) {
@@ -150,17 +173,17 @@ serve(async (req) => {
         throw new Error('No price found for trial product');
       }
 
-      // Use the first active price, regardless of its structure
+      // Use the first available price, regardless of structure
       const trialPrice = prices.data[0];
-      logStep("Found trial price", { 
+      logStep("Using trial price", { 
         priceId: trialPrice.id, 
         billing_scheme: trialPrice.billing_scheme,
         type: trialPrice.type,
         recurring: trialPrice.recurring 
       });
 
-      // Create trial subscription
-      const subscription = await stripe.subscriptions.create({
+      // Create trial subscription with flexible pricing
+      const subscriptionData: any = {
         customer: customerId,
         items: [
           {
@@ -174,9 +197,15 @@ serve(async (req) => {
           plan_name: planName,
           product_id: trialProduct.id,
           billing_model: 'free_trial'
-        },
-        trial_period_days: 14, // 14-day free trial
-      });
+        }
+      };
+
+      // Add trial period if it's a recurring price
+      if (trialPrice.type === 'recurring') {
+        subscriptionData.trial_period_days = 14;
+      }
+
+      const subscription = await stripe.subscriptions.create(subscriptionData);
       
       logStep("Trial subscription created", { subscriptionId: subscription.id });
 
@@ -202,27 +231,20 @@ serve(async (req) => {
 
     logStep("Found products", { count: products.data.length });
 
-    // More detailed product search and logging
-    const subscriptionProducts = products.data.filter(p => 
-      p.metadata?.created_via === 'subscription_billing_v4'
-    );
-
-    logStep("Subscription products found", { 
-      count: subscriptionProducts.length,
-      tierIds: subscriptionProducts.map(p => p.metadata?.tier_id)
-    });
-
-    const targetProduct = subscriptionProducts.find(p => 
-      p.metadata?.tier_id === priceId
+    // More flexible product search
+    const targetProduct = products.data.find(p => 
+      (p.metadata?.tier_id === priceId) ||
+      (p.name?.toLowerCase().includes(priceId.toLowerCase())) ||
+      (p.metadata?.plan_type === priceId)
     );
 
     if (!targetProduct) {
       logStep("ERROR: Product not found", { 
         searchingFor: priceId,
-        availableProducts: subscriptionProducts.map(p => ({
+        availableProducts: products.data.map(p => ({
           id: p.id,
           name: p.name,
-          tierId: p.metadata?.tier_id
+          metadata: p.metadata
         }))
       });
       throw new Error(`No subscription product found for plan: ${priceId}. Please run create-subscription-products first.`);
@@ -230,19 +252,31 @@ serve(async (req) => {
 
     logStep("Found target product", { productId: targetProduct.id, name: targetProduct.name });
 
-    // Get any active price for this product - be flexible about structure
+    // Get any active price for this product - be very flexible
     const prices = await stripe.prices.list({
       product: targetProduct.id,
       active: true,
+      limit: 10, // Get more prices to have options
+    });
+
+    logStep("Found prices for product", { 
+      count: prices.data.length,
+      prices: prices.data.map(p => ({
+        id: p.id,
+        type: p.type,
+        billing_scheme: p.billing_scheme,
+        unit_amount: p.unit_amount,
+        recurring: p.recurring
+      }))
     });
 
     if (prices.data.length === 0) {
       throw new Error('No price found for this product');
     }
 
-    // Use the first active price, regardless of its structure
+    // Use the first available price, regardless of structure
     const productPrice = prices.data[0];
-    logStep("Found product price", { 
+    logStep("Using product price", { 
       priceId: productPrice.id, 
       billing_scheme: productPrice.billing_scheme,
       tiers_mode: productPrice.tiers_mode,
