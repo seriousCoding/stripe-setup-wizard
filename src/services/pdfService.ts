@@ -8,6 +8,7 @@ export interface PDFParseResult {
   text: string;
   numPages: number;
   metadata?: any;
+  data?: any[];
 }
 
 class PDFService {
@@ -35,11 +36,13 @@ class PDFService {
       }
       
       const metadata = await pdf.getMetadata();
+      const extractedData = this.extractStructuredData(fullText);
       
       return {
         text: fullText.trim(),
         numPages: pdf.numPages,
-        metadata: metadata.info
+        metadata: metadata.info,
+        data: extractedData
       };
     } catch (error) {
       console.error('PDF parsing failed:', error);
@@ -48,29 +51,81 @@ class PDFService {
   }
 
   extractTabularData(text: string): any[] {
-    // Simple heuristic to extract tabular data from PDF text
+    return this.extractStructuredData(text);
+  }
+
+  private extractStructuredData(text: string): any[] {
     const lines = text.split('\n').filter(line => line.trim());
     const data: any[] = [];
-    
-    // Look for patterns that might be pricing tables
-    const pricePattern = /\$\d+\.?\d*/;
-    const quantityPattern = /\d+/;
+    const pricePattern = /\$\d+\.?\d*/g;
     
     lines.forEach((line, index) => {
-      if (pricePattern.test(line)) {
-        const parts = line.split(/\s+/);
-        if (parts.length >= 2) {
-          const item = {
-            description: parts.slice(0, -2).join(' '),
-            quantity: quantityPattern.exec(line)?.[0] || '1',
-            price: pricePattern.exec(line)?.[0] || '$0.00',
-            lineNumber: index + 1
-          };
-          data.push(item);
+      const trimmedLine = line.trim();
+      if (!trimmedLine) return;
+
+      // Enhanced pattern matching for pricing data
+      let parts = trimmedLine.split('\t');
+      if (parts.length === 1) {
+        parts = trimmedLine.split(/\s{2,}/);
+      }
+      if (parts.length === 1) {
+        parts = trimmedLine.split(/\s+/);
+      }
+
+      parts = parts.filter(part => part.trim());
+
+      if (parts.length >= 2 && pricePattern.test(trimmedLine)) {
+        const prices = trimmedLine.match(pricePattern) || [];
+        
+        const item: any = {
+          id: `pdf-${index}`,
+          product: parts[0] || `Service ${index + 1}`,
+          description: parts[0] || `Service ${index + 1}`,
+          source: 'pdf',
+          lineNumber: index + 1,
+          originalLine: trimmedLine
+        };
+
+        // Detect meter name
+        if (parts.length > 1 && parts[1] !== '0' && !parts[1].match(/^\$/)) {
+          item.eventName = parts[1];
+          item.meter_name = parts[1];
         }
+
+        // Detect unit
+        if (parts.length > 2 && parts[2] !== '0' && !parts[2].match(/^\$/)) {
+          item.unit = parts[2];
+          item.unit_label = parts[2];
+        }
+
+        // Extract pricing
+        if (prices.length > 0) {
+          const mainPrice = prices[prices.length - 1] || prices[0];
+          item.price = parseFloat(mainPrice.replace('$', '')) || 0;
+          item.unit_amount = Math.round(item.price * 100);
+        }
+
+        // Set billing type
+        if (item.eventName && item.unit) {
+          item.type = 'metered';
+          item.billing_scheme = 'per_unit';
+          item.usage_type = 'metered';
+          item.aggregate_usage = 'sum';
+        } else {
+          item.type = 'one_time';
+        }
+
+        item.currency = 'usd';
+        item.metadata = {
+          auto_detected_type: item.type,
+          source: 'pdf_parser',
+          confidence: 80
+        };
+
+        data.push(item);
       }
     });
-    
+
     return data;
   }
 }

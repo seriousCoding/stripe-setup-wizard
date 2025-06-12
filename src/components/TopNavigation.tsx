@@ -27,7 +27,7 @@ const TopNavigation = () => {
               <Upload className="h-6 w-6 text-white" />
             </div>
             <div className="z-50 relative">
-              <h1 className="text-xl font-bold text-black relative z-50">
+              <h1 className="text-xl font-bold text-black relative z-50 bg-white/90 px-3 py-1 rounded-md shadow-sm">
                 Stripe Setup Pilot
               </h1>
               <p className="text-sm text-purple-200">Automate your Stripe configuration</p>
