@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/hooks/useAuth';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import App from './App.tsx';
 import Auth from './pages/Auth';
 import Index from './pages/Index';
 import Billing from './pages/Billing';
@@ -31,92 +32,98 @@ const queryClient = new QueryClient({
 
 const router = createBrowserRouter([
   {
-    path: '/auth',
-    element: <Auth />,
-  },
-  {
     path: '/',
-    element: (
-      <ProtectedRoute>
-        <Index />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/billing',
-    element: (
-      <ProtectedRoute>
-        <Billing />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/billing-models',
-    element: (
-      <ProtectedRoute>
-        <BillingModels />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/saved-models',
-    element: (
-      <ProtectedRoute>
-        <SavedModels />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/products',
-    element: (
-      <ProtectedRoute>
-        <Products />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/pricing',
-    element: (
-      <ProtectedRoute>
-        <Pricing />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/stripe-pricing',
-    element: (
-      <ProtectedRoute>
-        <StripePricing />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/settings',
-    element: (
-      <ProtectedRoute>
-        <Settings />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/payment-success',
-    element: (
-      <ProtectedRoute>
-        <PaymentSuccess />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/payment-cancel',
-    element: (
-      <ProtectedRoute>
-        <PaymentCancel />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '*',
-    element: <NotFound />,
+    element: <App />,
+    children: [
+      {
+        path: '/',
+        element: (
+          <ProtectedRoute>
+            <Index />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/auth',
+        element: <Auth />,
+      },
+      {
+        path: '/billing',
+        element: (
+          <ProtectedRoute>
+            <Billing />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/billing-models',
+        element: (
+          <ProtectedRoute>
+            <BillingModels />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/saved-models',
+        element: (
+          <ProtectedRoute>
+            <SavedModels />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/products',
+        element: (
+          <ProtectedRoute>
+            <Products />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/pricing',
+        element: (
+          <ProtectedRoute>
+            <Pricing />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/stripe-pricing',
+        element: (
+          <ProtectedRoute>
+            <StripePricing />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/settings',
+        element: (
+          <ProtectedRoute>
+            <Settings />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/payment-success',
+        element: (
+          <ProtectedRoute>
+            <PaymentSuccess />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/payment-cancel',
+        element: (
+          <ProtectedRoute>
+            <PaymentCancel />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '*',
+        element: <NotFound />,
+      },
+    ],
   },
 ]);
 
