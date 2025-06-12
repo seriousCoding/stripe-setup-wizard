@@ -22,12 +22,15 @@ const TopNavigation = () => {
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Logo and Brand */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 relative z-50">
             <div className="bg-gradient-to-r from-teal-500 to-emerald-500 p-2 rounded-lg shadow-lg">
               <Upload className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-black bg-white px-3 py-1 rounded-md shadow-sm">
+              <h1 
+                className="text-xl font-bold bg-white px-3 py-1 rounded-md shadow-sm relative z-50"
+                style={{ color: '#000000 !important' }}
+              >
                 Stripe Setup Pilot
               </h1>
               <p className="text-sm text-purple-200">Automate your Stripe configuration</p>
