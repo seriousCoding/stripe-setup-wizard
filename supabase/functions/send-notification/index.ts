@@ -41,15 +41,10 @@ const handler = async (req: Request): Promise<Response> => {
       secure: smtpConfig.secure
     });
 
-    // Validate required SMTP credentials
-    if (!smtpConfig.pass) {
-      throw new Error("SMTP password not configured");
-    }
-
     // Create email content based on type
     const emailContent = createEmailContent(notification);
 
-    // Send email using improved SMTP implementation
+    // Send email using native SMTP
     const emailResponse = await sendSMTPEmail(smtpConfig, {
       from: `"Stripe Setup Pilot" <${smtpConfig.user}>`,
       to: notification.to,
@@ -142,76 +137,38 @@ function createEmailContent(notification: EmailNotification): string {
 }
 
 async function sendSMTPEmail(config: any, emailData: any): Promise<any> {
-  let conn: Deno.TcpConn | null = null;
-  
+  const conn = await Deno.connect({
+    hostname: config.host,
+    port: config.port,
+  });
+
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  // Helper function to send command and read response
+  async function sendCommand(command: string): Promise<string> {
+    await conn.write(encoder.encode(command + "\r\n"));
+    const buffer = new Uint8Array(1024);
+    const bytesRead = await conn.read(buffer);
+    return decoder.decode(buffer.subarray(0, bytesRead || 0));
+  }
+
   try {
-    console.log(`Connecting to SMTP server: ${config.host}:${config.port}`);
-    
-    conn = await Deno.connect({
-      hostname: config.host,
-      port: config.port,
-    });
-
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-
-    // Helper function to send command and read response
-    async function sendCommand(command: string): Promise<string> {
-      if (!conn) throw new Error("Connection lost");
-      
-      console.log(`SMTP Command: ${command}`);
-      await conn.write(encoder.encode(command + "\r\n"));
-      
-      const buffer = new Uint8Array(4096);
-      const bytesRead = await conn.read(buffer);
-      const response = decoder.decode(buffer.subarray(0, bytesRead || 0));
-      console.log(`SMTP Response: ${response.trim()}`);
-      
-      return response;
-    }
-
-    // Wait for initial server response
-    const initialResponse = await sendCommand("");
-    if (!initialResponse.startsWith("220")) {
-      throw new Error(`SMTP server not ready: ${initialResponse}`);
-    }
-
     // SMTP conversation
-    const ehloResponse = await sendCommand(`EHLO ${config.host}`);
-    if (!ehloResponse.startsWith("250")) {
-      throw new Error(`EHLO failed: ${ehloResponse}`);
-    }
+    await sendCommand(`EHLO ${config.host}`);
     
-    // Start TLS if port 587
     if (config.port === 587) {
-      const tlsResponse = await sendCommand("STARTTLS");
-      if (!tlsResponse.startsWith("220")) {
-        throw new Error(`STARTTLS failed: ${tlsResponse}`);
-      }
+      await sendCommand("STARTTLS");
     }
     
-    // Authentication
+    // Auth
     const authString = btoa(`\0${config.user}\0${config.pass}`);
-    const authResponse = await sendCommand("AUTH PLAIN " + authString);
-    if (!authResponse.startsWith("235")) {
-      throw new Error(`Authentication failed: ${authResponse}`);
-    }
+    await sendCommand("AUTH PLAIN " + authString);
     
     // Email commands
-    const mailFromResponse = await sendCommand(`MAIL FROM:<${config.user}>`);
-    if (!mailFromResponse.startsWith("250")) {
-      throw new Error(`MAIL FROM failed: ${mailFromResponse}`);
-    }
-    
-    const rcptToResponse = await sendCommand(`RCPT TO:<${emailData.to}>`);
-    if (!rcptToResponse.startsWith("250")) {
-      throw new Error(`RCPT TO failed: ${rcptToResponse}`);
-    }
-    
-    const dataResponse = await sendCommand("DATA");
-    if (!dataResponse.startsWith("354")) {
-      throw new Error(`DATA command failed: ${dataResponse}`);
-    }
+    await sendCommand(`MAIL FROM:<${config.user}>`);
+    await sendCommand(`RCPT TO:<${emailData.to}>`);
+    await sendCommand("DATA");
     
     // Email content
     const emailContent = [
@@ -219,17 +176,12 @@ async function sendSMTPEmail(config: any, emailData: any): Promise<any> {
       `To: ${emailData.to}`,
       `Subject: ${emailData.subject}`,
       `Content-Type: text/html; charset=UTF-8`,
-      `MIME-Version: 1.0`,
       "",
       emailData.html,
       "."
     ].join("\r\n");
     
-    const sendResponse = await sendCommand(emailContent);
-    if (!sendResponse.startsWith("250")) {
-      throw new Error(`Email send failed: ${sendResponse}`);
-    }
-    
+    await sendCommand(emailContent);
     await sendCommand("QUIT");
     
     return {
@@ -238,21 +190,8 @@ async function sendSMTPEmail(config: any, emailData: any): Promise<any> {
       accepted: [emailData.to],
       rejected: []
     };
-  } catch (error: any) {
-    console.error("SMTP Error details:", {
-      message: error.message,
-      name: error.name,
-      stack: error.stack
-    });
-    throw new Error(`SMTP send failed: ${error.message}`);
   } finally {
-    if (conn) {
-      try {
-        conn.close();
-      } catch (e) {
-        console.warn("Error closing connection:", e);
-      }
-    }
+    conn.close();
   }
 }
 

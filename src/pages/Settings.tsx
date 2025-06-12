@@ -7,15 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Save, Key, Bell, Shield, Trash2, Mail, Send } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import StripeConnectionStatus from '@/components/StripeConnectionStatus';
 import StripeManagement from '@/components/StripeManagement';
 import { emailService } from '@/services/emailService';
-import { useCustomToast } from '@/hooks/useCustomToast';
 
 const Settings = () => {
   const { user, profile } = useAuth();
-  const { toast } = useCustomToast();
+  const { toast } = useToast();
   
   const [settings, setSettings] = useState({
     companyName: profile?.company_name || '',
@@ -42,7 +42,6 @@ const Settings = () => {
       toast({
         title: "Settings Saved",
         description: "Your preferences have been updated successfully.",
-        variant: "success",
       });
     } catch (error) {
       toast({
@@ -76,7 +75,6 @@ const Settings = () => {
         toast({
           title: "Test Email Sent",
           description: "Check your inbox for the test notification email.",
-          variant: "success",
         });
       } else {
         toast({
