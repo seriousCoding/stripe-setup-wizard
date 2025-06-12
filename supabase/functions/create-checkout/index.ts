@@ -132,58 +132,61 @@ serve(async (req) => {
         p.metadata?.tier_id === 'trial' && p.metadata?.created_via === 'subscription_billing_v2'
       );
 
-      if (trialProduct) {
-        const prices = await stripe.prices.list({
-          product: trialProduct.id,
-          active: true,
-        });
-
-        const basePrices = prices.data.filter(p => p.metadata?.price_type === 'base_fee');
-        const overagePrices = prices.data.filter(p => p.metadata?.price_type === 'overage');
-
-        // Create trial subscription with both base and overage pricing
-        const subscriptionData: any = {
-          customer: customerId,
-          items: [
-            {
-              price: basePrices[0].id,
-              quantity: 1,
-            }
-          ],
-          metadata: {
-            user_id: data.user.id,
-            plan_id: priceId,
-            plan_name: planName,
-            product_id: trialProduct.id,
-            billing_model: 'fixed_fee_overage'
-          },
-          trial_period_days: 14, // 14-day free trial
-        };
-
-        // Add overage pricing if it exists
-        if (overagePrices.length > 0) {
-          subscriptionData.items.push({
-            price: overagePrices[0].id,
-          });
-        }
-
-        const subscription = await stripe.subscriptions.create(subscriptionData);
-        
-        logStep("Trial subscription created", { subscriptionId: subscription.id });
-
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: 'Free trial activated',
-            subscription_id: subscription.id,
-            redirect: `${req.headers.get('origin')}/pricing?success=true&plan=trial`
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-          }
-        );
+      if (!trialProduct) {
+        logStep("ERROR: Trial product not found");
+        throw new Error('Trial product not found. Please run create-subscription-products first.');
       }
+
+      const prices = await stripe.prices.list({
+        product: trialProduct.id,
+        active: true,
+      });
+
+      const basePrices = prices.data.filter(p => p.metadata?.price_type === 'base_fee');
+      const overagePrices = prices.data.filter(p => p.metadata?.price_type === 'overage');
+
+      // Create trial subscription with both base and overage pricing
+      const subscriptionData: any = {
+        customer: customerId,
+        items: [
+          {
+            price: basePrices[0].id,
+            quantity: 1,
+          }
+        ],
+        metadata: {
+          user_id: data.user.id,
+          plan_id: priceId,
+          plan_name: planName,
+          product_id: trialProduct.id,
+          billing_model: 'fixed_fee_overage'
+        },
+        trial_period_days: 14, // 14-day free trial
+      };
+
+      // Add overage pricing if it exists
+      if (overagePrices.length > 0) {
+        subscriptionData.items.push({
+          price: overagePrices[0].id,
+        });
+      }
+
+      const subscription = await stripe.subscriptions.create(subscriptionData);
+      
+      logStep("Trial subscription created", { subscriptionId: subscription.id });
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Free trial activated',
+          subscription_id: subscription.id,
+          redirect: `${req.headers.get('origin')}/pricing?success=true&plan=trial`
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
     }
 
     // Find the appropriate subscription product
@@ -194,12 +197,30 @@ serve(async (req) => {
 
     logStep("Found products", { count: products.data.length });
 
-    const targetProduct = products.data.find(p => 
-      p.metadata?.tier_id === priceId && p.metadata?.created_via === 'subscription_billing_v2'
+    // More detailed product search and logging
+    const subscriptionProducts = products.data.filter(p => 
+      p.metadata?.created_via === 'subscription_billing_v2'
+    );
+
+    logStep("Subscription products found", { 
+      count: subscriptionProducts.length,
+      tierIds: subscriptionProducts.map(p => p.metadata?.tier_id)
+    });
+
+    const targetProduct = subscriptionProducts.find(p => 
+      p.metadata?.tier_id === priceId
     );
 
     if (!targetProduct) {
-      throw new Error(`No subscription product found for plan: ${priceId}`);
+      logStep("ERROR: Product not found", { 
+        searchingFor: priceId,
+        availableProducts: subscriptionProducts.map(p => ({
+          id: p.id,
+          name: p.name,
+          tierId: p.metadata?.tier_id
+        }))
+      });
+      throw new Error(`No subscription product found for plan: ${priceId}. Please run create-subscription-products first.`);
     }
 
     logStep("Found target product", { productId: targetProduct.id, name: targetProduct.name });
@@ -226,7 +247,7 @@ serve(async (req) => {
     const lineItems = [
       {
         price: basePrices[0].id,
-        quantity: priceId === 'enterprise' ? 1 : 1, // For enterprise, user can adjust quantity in portal
+        quantity: 1,
       }
     ];
 
