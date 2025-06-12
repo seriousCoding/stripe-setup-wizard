@@ -11,6 +11,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { Link } from 'react-router-dom';
 import UsageDashboard from '@/components/UsageDashboard';
 import ProductDetailModal from '@/components/ProductDetailModal';
+import FileUploadProcessor from '@/components/FileUploadProcessor';
 
 const Pricing = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -18,6 +19,7 @@ const Pricing = () => {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [showProductModal, setShowProductModal] = useState(false);
   const [isCreatingProducts, setIsCreatingProducts] = useState(false);
+  const [showFileProcessor, setShowFileProcessor] = useState(false);
   const { toast } = useToast();
   
   // Remove automated refresh - only manual refresh
@@ -251,6 +253,15 @@ const Pricing = () => {
     return subscriptionStatus.subscribed && subscriptionStatus.subscription_tier === tierId;
   };
 
+  const handleDataProcessed = (data: any[], metadata: any) => {
+    console.log('Processed data:', data);
+    console.log('Metadata:', metadata);
+    toast({
+      title: "File Processed Successfully",
+      description: `Extracted ${data.length} items from ${metadata.fileName}`,
+    });
+  };
+
   if (isPricingLoading || isSubscriptionLoading) {
     return (
       <div className="min-h-screen bg-gradient-blue-purple py-12 px-4">
@@ -313,6 +324,14 @@ const Pricing = () => {
                 )}
                 Create Subscription Products
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFileProcessor(!showFileProcessor)}
+                className="bg-blue-600/20 border-blue-500/30 text-blue-300 hover:bg-blue-600/30"
+              >
+                {showFileProcessor ? 'Hide' : 'Show'} File Processor
+              </Button>
             </div>
           </div>
 
@@ -336,6 +355,13 @@ const Pricing = () => {
           </p>
         </div>
 
+        {/* File Processor Section */}
+        {showFileProcessor && (
+          <div className="mb-8">
+            <FileUploadProcessor onDataProcessed={handleDataProcessed} />
+          </div>
+        )}
+
         {/* Usage Dashboard */}
         <div className="mb-8">
           <UsageDashboard period="current_month" limits={usageLimits} />
@@ -352,6 +378,7 @@ const Pricing = () => {
           </div>
         )}
 
+        {/* Pricing Tiers Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {pricingTiers.map((tier) => {
             const isActive = isCurrentPlan(tier.id);

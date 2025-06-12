@@ -69,15 +69,6 @@ serve(async (req) => {
       throw new Error('User account has no email address');
     }
 
-    if (!data.user.email_confirmed_at && !data.user.phone_confirmed_at) {
-      logStep("WARNING: User email/phone not confirmed", { 
-        email: data.user.email, 
-        emailConfirmed: !!data.user.email_confirmed_at,
-        phoneConfirmed: !!data.user.phone_confirmed_at 
-      });
-      // Continue anyway but log the warning
-    }
-
     logStep("User successfully authenticated", { 
       email: data.user.email, 
       userId: data.user.id,
@@ -122,7 +113,7 @@ serve(async (req) => {
     if (priceId === 'trial') {
       logStep("Free trial selected - creating trial subscription directly");
       
-      // Find the trial product - be more flexible in search
+      // Get all products and find trial product
       const products = await stripe.products.list({
         active: true,
         limit: 100,
@@ -150,11 +141,11 @@ serve(async (req) => {
 
       logStep("Found trial product", { productId: trialProduct.id, name: trialProduct.name });
 
-      // Get any active price for the trial product - be very flexible
+      // Get ALL prices for the trial product
       const prices = await stripe.prices.list({
         product: trialProduct.id,
         active: true,
-        limit: 10, // Get more prices to have options
+        limit: 100,
       });
 
       logStep("Found prices for trial product", { 
@@ -173,7 +164,7 @@ serve(async (req) => {
         throw new Error('No price found for trial product');
       }
 
-      // Use the first available price, regardless of structure
+      // Use the first available price
       const trialPrice = prices.data[0];
       logStep("Using trial price", { 
         priceId: trialPrice.id, 
@@ -182,7 +173,7 @@ serve(async (req) => {
         recurring: trialPrice.recurring 
       });
 
-      // Create trial subscription with flexible pricing
+      // Create trial subscription
       const subscriptionData: any = {
         customer: customerId,
         items: [
@@ -231,12 +222,22 @@ serve(async (req) => {
 
     logStep("Found products", { count: products.data.length });
 
-    // More flexible product search
-    const targetProduct = products.data.find(p => 
-      (p.metadata?.tier_id === priceId) ||
-      (p.name?.toLowerCase().includes(priceId.toLowerCase())) ||
-      (p.metadata?.plan_type === priceId)
+    // Enhanced product search - try multiple criteria
+    let targetProduct = products.data.find(p => 
+      p.metadata?.tier_id === priceId
     );
+
+    if (!targetProduct) {
+      targetProduct = products.data.find(p => 
+        p.name?.toLowerCase().includes(priceId.toLowerCase())
+      );
+    }
+
+    if (!targetProduct) {
+      targetProduct = products.data.find(p => 
+        p.metadata?.plan_type === priceId
+      );
+    }
 
     if (!targetProduct) {
       logStep("ERROR: Product not found", { 
@@ -252,30 +253,31 @@ serve(async (req) => {
 
     logStep("Found target product", { productId: targetProduct.id, name: targetProduct.name });
 
-    // Get any active price for this product - be very flexible
-    const prices = await stripe.prices.list({
+    // Get ALL prices for this product and find the best match
+    const allPrices = await stripe.prices.list({
       product: targetProduct.id,
       active: true,
-      limit: 10, // Get more prices to have options
+      limit: 100,
     });
 
     logStep("Found prices for product", { 
-      count: prices.data.length,
-      prices: prices.data.map(p => ({
+      count: allPrices.data.length,
+      prices: allPrices.data.map(p => ({
         id: p.id,
         type: p.type,
         billing_scheme: p.billing_scheme,
         unit_amount: p.unit_amount,
-        recurring: p.recurring
+        recurring: p.recurring,
+        tiers_mode: p.tiers_mode
       }))
     });
 
-    if (prices.data.length === 0) {
+    if (allPrices.data.length === 0) {
       throw new Error('No price found for this product');
     }
 
-    // Use the first available price, regardless of structure
-    const productPrice = prices.data[0];
+    // Use the first available price - the system should handle any pricing structure
+    const productPrice = allPrices.data[0];
     logStep("Using product price", { 
       priceId: productPrice.id, 
       billing_scheme: productPrice.billing_scheme,
