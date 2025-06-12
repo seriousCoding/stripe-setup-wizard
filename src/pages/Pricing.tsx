@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
+import DashboardLayout from '@/components/DashboardLayout';
 
 const Pricing = () => {
   const { user } = useAuth();
@@ -144,7 +146,7 @@ const Pricing = () => {
       }
 
       if (data?.url) {
-        // Use window.location.href for external Stripe checkout
+        // Navigate within the app instead of external redirect
         window.location.href = data.url;
       }
     } catch (error: any) {
@@ -158,91 +160,87 @@ const Pricing = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
-      <div className="container mx-auto px-6 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-white mb-4">Choose Your Plan</h1>
-          <p className="text-purple-200 text-lg">Select the perfect pricing model for your business needs</p>
-        </div>
+    <DashboardLayout 
+      title="Choose Your Plan" 
+      description="Select the perfect pricing model for your business needs"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
+        {pricingPlans.map((plan) => (
+          <Card 
+            key={plan.id} 
+            className={`relative bg-gray-800 border-gray-700 transition-all duration-300 hover:shadow-xl hover:scale-105 hover:-translate-y-2 shadow-lg ${
+              plan.popular ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' : ''
+            }`}
+          >
+            {plan.badge && (
+              <div className="absolute -top-3 right-4">
+                <Badge className={`shadow-lg ${
+                  plan.badge === 'Free Trial' ? 'bg-green-600' : 'bg-blue-600'
+                } text-white`}>
+                  {plan.badge}
+                </Badge>
+              </div>
+            )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
-          {pricingPlans.map((plan) => (
-            <Card 
-              key={plan.id} 
-              className={`relative bg-gray-800 border-gray-700 ${
-                plan.popular ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' : ''
-              }`}
-            >
-              {plan.badge && (
-                <div className="absolute -top-3 right-4">
-                  <Badge className={`${
-                    plan.badge === 'Free Trial' ? 'bg-green-600' : 'bg-blue-600'
-                  } text-white`}>
-                    {plan.badge}
-                  </Badge>
-                </div>
-              )}
+            {plan.popular && (
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                <Badge className="bg-blue-600 text-white shadow-lg">Most Popular</Badge>
+              </div>
+            )}
 
-              {plan.popular && (
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <Badge className="bg-blue-600 text-white">Most Popular</Badge>
-                </div>
-              )}
+            <CardHeader className="text-center pb-4">
+              <div className="mb-3">
+                <CardTitle className="text-xl font-semibold text-white mb-1">
+                  {plan.name}
+                </CardTitle>
+                <div className="text-sm text-purple-300">{plan.subtitle}</div>
+              </div>
+              
+              <p className="text-gray-400 text-sm mb-6">{plan.description}</p>
+              
+              <div className="mb-4">
+                <div className="text-3xl font-bold text-white mb-1">{plan.price}</div>
+                <div className="text-gray-400 text-sm">{plan.priceSubtext}</div>
+              </div>
+            </CardHeader>
 
-              <CardHeader className="text-center pb-4">
-                <div className="mb-3">
-                  <CardTitle className="text-xl font-semibold text-white mb-1">
-                    {plan.name}
-                  </CardTitle>
-                  <div className="text-sm text-purple-300">{plan.subtitle}</div>
-                </div>
-                
-                <p className="text-gray-400 text-sm mb-6">{plan.description}</p>
-                
-                <div className="mb-4">
-                  <div className="text-3xl font-bold text-white mb-1">{plan.price}</div>
-                  <div className="text-gray-400 text-sm">{plan.priceSubtext}</div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-6">
-                <div className="space-y-3">
-                  {plan.features.map((feature, index) => (
-                    <div key={index} className="flex items-center space-x-3">
-                      <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
-                      <span className="text-sm text-gray-300">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {plan.usageLimits && (
-                  <div className="bg-gray-700/50 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-gray-300 mb-3 uppercase tracking-wide">
-                      Usage Limits
-                    </h4>
-                    <div className="space-y-2">
-                      {plan.usageLimits.map((limit, index) => (
-                        <div key={index} className="flex justify-between text-sm">
-                          <span className="text-gray-400">{limit.label}</span>
-                          <span className="text-white font-medium">{limit.value}</span>
-                        </div>
-                      ))}
-                    </div>
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                {plan.features.map((feature, index) => (
+                  <div key={index} className="flex items-center space-x-3">
+                    <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <span className="text-sm text-gray-300">{feature}</span>
                   </div>
-                )}
+                ))}
+              </div>
 
-                <Button 
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={() => handleSelectPlan(plan.id)}
-                >
-                  Select Plan
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              {plan.usageLimits && (
+                <div className="bg-gray-700/50 rounded-lg p-4 shadow-inner">
+                  <h4 className="text-sm font-medium text-gray-300 mb-3 uppercase tracking-wide">
+                    Usage Limits
+                  </h4>
+                  <div className="space-y-2">
+                    {plan.usageLimits.map((limit, index) => (
+                      <div key={index} className="flex justify-between text-sm">
+                        <span className="text-gray-400">{limit.label}</span>
+                        <span className="text-white font-medium">{limit.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Button 
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200 hover:shadow-lg hover:scale-105 shadow-md"
+                onClick={() => handleSelectPlan(plan.id)}
+              >
+                Select Plan
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
       </div>
-    </div>
+    </DashboardLayout>
   );
 };
 

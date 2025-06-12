@@ -6,7 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Upload, FileText, Image, Camera, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import Tesseract from 'tesseract.js';
+import { ocrService } from '@/services/ocrService';
+import { pdfService } from '@/services/pdfService';
 import * as XLSX from 'xlsx';
 
 interface BillingDataImporterProps {
@@ -102,35 +103,76 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
         description: "Extracting text using OCR...",
       });
 
-      const { data: { text } } = await Tesseract.recognize(file, 'eng', {
-        logger: m => console.log('OCR Progress:', m)
-      });
-
-      console.log('OCR extracted text:', text);
+      console.log('Starting OCR processing for:', file.name);
+      const result = await ocrService.processImage(file);
       
-      const extractedData = parseTextFormats(text);
+      console.log('OCR result:', result);
       
-      const result: ProcessedData = {
+      const extractedData = parseTextFormats(result.text);
+      
+      const processedResult: ProcessedData = {
         type: 'image',
-        content: text,
+        content: result.text,
         fileName: file.name,
         extractedData
       };
       
-      setProcessedResults(prev => [...prev, result]);
+      setProcessedResults(prev => [...prev, processedResult]);
       onDataImported(extractedData);
       setIsProcessing(false);
       
       toast({
         title: "Image Processed",
-        description: `OCR extracted ${extractedData.length} billing items from ${file.name}`,
+        description: `OCR extracted ${extractedData.length} billing items from ${file.name} (${Math.round(result.confidence)}% confidence)`,
       });
     } catch (error: any) {
       setIsProcessing(false);
       console.error('OCR Error:', error);
       toast({
         title: "OCR Processing Error",
-        description: "Failed to extract text from image. Please try a clearer image.",
+        description: error.message || "Failed to extract text from image. Please try a clearer image.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const processPdfFile = async (file: File) => {
+    setIsProcessing(true);
+    
+    try {
+      toast({
+        title: "Processing PDF",
+        description: "Extracting text from PDF...",
+      });
+
+      console.log('Starting PDF processing for:', file.name);
+      const result = await pdfService.parsePDF(file);
+      
+      console.log('PDF result:', result);
+      
+      const extractedData = parseTextFormats(result.text);
+      
+      const processedResult: ProcessedData = {
+        type: 'pdf',
+        content: result.text,
+        fileName: file.name,
+        extractedData
+      };
+      
+      setProcessedResults(prev => [...prev, processedResult]);
+      onDataImported(extractedData);
+      setIsProcessing(false);
+      
+      toast({
+        title: "PDF Processed",
+        description: `Extracted ${extractedData.length} billing items from ${file.name} (${result.numPages} pages)`,
+      });
+    } catch (error: any) {
+      setIsProcessing(false);
+      console.error('PDF processing error:', error);
+      toast({
+        title: "PDF Processing Error",
+        description: error.message || "Failed to process PDF file",
         variant: "destructive",
       });
     }
@@ -209,51 +251,6 @@ const BillingDataImporter: React.FC<BillingDataImporterProps> = ({ onDataImporte
     }
   };
 
-  const processPdfFile = async (file: File) => {
-    setIsProcessing(true);
-    
-    try {
-      // For now, we'll simulate PDF processing since pdf-parse requires Node.js
-      // In a real implementation, you'd use a PDF processing service
-      toast({
-        title: "PDF Processing",
-        description: "PDF processing is currently simulated. In production, this would extract text from PDF.",
-      });
-      
-      const simulatedText = `Service Name, Price, Description
-API Gateway, $0.02, Per request billing
-Database Storage, $0.15, Per GB monthly
-Email Service, $0.10, Per email sent
-SMS Service, $0.25, Per SMS sent
-File Storage, $0.05, Per GB stored`;
-      
-      const extractedData = parseTextFormats(simulatedText);
-      
-      const result: ProcessedData = {
-        type: 'pdf',
-        content: simulatedText,
-        fileName: file.name,
-        extractedData
-      };
-      
-      setProcessedResults(prev => [...prev, result]);
-      onDataImported(extractedData);
-      setIsProcessing(false);
-      
-      toast({
-        title: "PDF Processed",
-        description: `Simulated extraction of ${extractedData.length} billing items from ${file.name}`,
-      });
-    } catch (error: any) {
-      setIsProcessing(false);
-      toast({
-        title: "PDF Processing Error",
-        description: "Failed to process PDF file",
-        variant: "destructive",
-      });
-    }
-  };
-
   const processSpreadsheetData = (data: any[][]): any[] => {
     const items: any[] = [];
     
@@ -293,17 +290,20 @@ File Storage, $0.05, Per GB stored`;
     
     if (lines.length === 0) return items;
 
-    // Try to parse as CSV first
+    // Enhanced parsing for different formats
     lines.forEach((line, index) => {
-      if (index === 0 && line.toLowerCase().includes('service')) return; // Skip header
+      if (index === 0 && (line.toLowerCase().includes('service') || line.toLowerCase().includes('product') || line.toLowerCase().includes('item'))) {
+        return; // Skip header
+      }
       
+      // Parse CSV format (comma, tab, or pipe separated)
       const parts = line.split(/[,\t|]/).map(part => part.trim());
       
       if (parts.length >= 2) {
         const serviceName = parts[0];
         const priceStr = parts[1];
         
-        // Extract price
+        // Extract price with various formats ($X.XX, X.XX, $X, etc.)
         const priceMatch = priceStr.match(/\$?(\d+\.?\d*)/);
         if (serviceName && priceMatch) {
           const price = parseFloat(priceMatch[1]);
@@ -316,6 +316,24 @@ File Storage, $0.05, Per GB stored`;
             description: parts[2] || `${serviceName} service`,
             billing_type: 'one_time'
           });
+        }
+      } else {
+        // Try to parse single line with pattern "Name - $Price" or "Name $Price"
+        const singleLineMatch = line.match(/^(.+?)[\s\-]+\$?(\d+\.?\d*)$/);
+        if (singleLineMatch) {
+          const [, serviceName, priceStr] = singleLineMatch;
+          const price = parseFloat(priceStr);
+          
+          if (serviceName.trim() && !isNaN(price)) {
+            items.push({
+              name: serviceName.trim(),
+              price: price,
+              currency: 'USD',
+              type: 'service',
+              description: `${serviceName.trim()} service`,
+              billing_type: 'one_time'
+            });
+          }
         }
       }
     });
@@ -349,7 +367,7 @@ File Storage, $0.05, Per GB stored`;
   return (
     <div className="space-y-6">
       {/* Text Import Section */}
-      <Card>
+      <Card className="shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <FileText className="h-5 w-5" />
@@ -370,12 +388,12 @@ CSV: Service Name, Price, Description
 JSON: [{'name': 'API Calls', 'price': 0.02}]
 Text: API Calls - $0.02 per call"
             rows={6}
-            className="font-mono text-sm"
+            className="font-mono text-sm shadow-inner"
           />
           <Button
             onClick={handleTextPaste}
             disabled={isProcessing || !pastedText.trim()}
-            className="w-full"
+            className="w-full shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105"
           >
             {isProcessing ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -388,7 +406,7 @@ Text: API Calls - $0.02 per call"
       </Card>
 
       {/* File Upload Section */}
-      <Card>
+      <Card className="shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Upload className="h-5 w-5" />
@@ -404,7 +422,7 @@ Text: API Calls - $0.02 per call"
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
               disabled={isProcessing}
-              className="h-24 flex-col space-y-2"
+              className="h-24 flex-col space-y-2 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 hover:-translate-y-1"
             >
               <Image className="h-6 w-6" />
               <span className="text-sm">Upload Files</span>
@@ -414,13 +432,13 @@ Text: API Calls - $0.02 per call"
               variant="outline"
               onClick={() => cameraInputRef.current?.click()}
               disabled={isProcessing}
-              className="h-24 flex-col space-y-2"
+              className="h-24 flex-col space-y-2 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 hover:-translate-y-1"
             >
               <Camera className="h-6 w-6" />
               <span className="text-sm">Take Photo</span>
             </Button>
             
-            <div className="h-24 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
+            <div className="h-24 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg shadow-inner hover:shadow-md transition-all duration-200">
               <span className="text-sm text-gray-500">Drag & Drop Files</span>
             </div>
           </div>
@@ -447,7 +465,7 @@ Text: API Calls - $0.02 per call"
 
       {/* Processing Status */}
       {isProcessing && (
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-blue-200 bg-blue-50 shadow-lg">
           <CardContent className="pt-6">
             <div className="flex items-center justify-center space-x-3">
               <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
@@ -459,7 +477,7 @@ Text: API Calls - $0.02 per call"
 
       {/* Results */}
       {processedResults.length > 0 && (
-        <Card>
+        <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
@@ -469,10 +487,10 @@ Text: API Calls - $0.02 per call"
           <CardContent>
             <div className="space-y-3">
               {processedResults.map((result, index) => (
-                <div key={index} className="p-3 border rounded-lg bg-gray-50">
+                <div key={index} className="p-3 border rounded-lg bg-gray-50 shadow-md hover:shadow-lg transition-all duration-200">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-2">
-                      <Badge variant="outline">
+                      <Badge variant="outline" className="shadow-sm">
                         {result.type.toUpperCase()}
                       </Badge>
                       {result.fileName && (
