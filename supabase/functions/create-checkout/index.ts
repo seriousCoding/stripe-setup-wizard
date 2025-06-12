@@ -139,7 +139,7 @@ serve(async (req) => {
 
       logStep("Found trial product", { productId: trialProduct.id, name: trialProduct.name });
 
-      // Get the price for the trial product (should be the graduated price)
+      // Get any active price for the trial product - be flexible about structure
       const prices = await stripe.prices.list({
         product: trialProduct.id,
         active: true,
@@ -150,8 +150,14 @@ serve(async (req) => {
         throw new Error('No price found for trial product');
       }
 
+      // Use the first active price, regardless of its structure
       const trialPrice = prices.data[0];
-      logStep("Found trial price", { priceId: trialPrice.id, billing_scheme: trialPrice.billing_scheme });
+      logStep("Found trial price", { 
+        priceId: trialPrice.id, 
+        billing_scheme: trialPrice.billing_scheme,
+        type: trialPrice.type,
+        recurring: trialPrice.recurring 
+      });
 
       // Create trial subscription
       const subscription = await stripe.subscriptions.create({
@@ -224,7 +230,7 @@ serve(async (req) => {
 
     logStep("Found target product", { productId: targetProduct.id, name: targetProduct.name });
 
-    // Get the price for this product (graduated pricing)
+    // Get any active price for this product - be flexible about structure
     const prices = await stripe.prices.list({
       product: targetProduct.id,
       active: true,
@@ -234,11 +240,14 @@ serve(async (req) => {
       throw new Error('No price found for this product');
     }
 
+    // Use the first active price, regardless of its structure
     const productPrice = prices.data[0];
     logStep("Found product price", { 
       priceId: productPrice.id, 
       billing_scheme: productPrice.billing_scheme,
-      tiers_mode: productPrice.tiers_mode 
+      tiers_mode: productPrice.tiers_mode,
+      type: productPrice.type,
+      recurring: productPrice.recurring
     });
 
     // Create checkout session for subscription
