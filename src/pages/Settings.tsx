@@ -5,14 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { Save, Key, Bell, Shield, Trash2, RefreshCw, ExternalLink } from 'lucide-react';
+import { Save, Key, Bell, Shield, Trash2, Mail, Send } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import StripeConnectionStatus from '@/components/StripeConnectionStatus';
 import StripeManagement from '@/components/StripeManagement';
+import { emailService } from '@/services/emailService';
 
 const Settings = () => {
   const { user, profile } = useAuth();
@@ -21,8 +20,6 @@ const Settings = () => {
   const [settings, setSettings] = useState({
     companyName: profile?.company_name || '',
     defaultCurrency: 'USD',
-    stripeApiKey: '',
-    webhookEndpoint: '',
     notifications: {
       emailAlerts: true,
       billingUpdates: true,
@@ -35,11 +32,66 @@ const Settings = () => {
     }
   });
 
-  const handleSave = () => {
-    toast({
-      title: "Settings Saved",
-      description: "Your preferences have been updated successfully.",
-    });
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+
+  const handleSave = async () => {
+    try {
+      // Here you would save settings to your backend/database
+      // For now, we'll just show a success message
+      
+      toast({
+        title: "Settings Saved",
+        description: "Your preferences have been updated successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!user?.email) {
+      toast({
+        title: "Error",
+        description: "No email address found for testing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsTestingEmail(true);
+    
+    try {
+      const result = await emailService.sendGeneralAlert(
+        user.email,
+        "Test Email Notification",
+        "This is a test email to verify your notification settings are working correctly. If you receive this message, your email notifications are properly configured!"
+      );
+
+      if (result.success) {
+        toast({
+          title: "Test Email Sent",
+          description: "Check your inbox for the test notification email.",
+        });
+      } else {
+        toast({
+          title: "Email Test Failed",
+          description: result.error || "Failed to send test email.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Email Test Failed",
+        description: error.message || "Failed to send test email.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsTestingEmail(false);
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -128,10 +180,10 @@ const Settings = () => {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Bell className="h-5 w-5" />
-              <span>Notifications</span>
+              <span>Email Notifications</span>
             </CardTitle>
             <CardDescription>
-              Configure how you want to receive updates and alerts
+              Configure how you want to receive updates and alerts via email
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -166,12 +218,32 @@ const Settings = () => {
                 </div>
               ))}
             </div>
+            
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Test Email Notifications</Label>
+                  <p className="text-sm text-gray-600">
+                    Send a test email to verify your notification settings
+                  </p>
+                </div>
+                <Button 
+                  onClick={handleTestEmail}
+                  disabled={isTestingEmail}
+                  variant="outline"
+                  size="sm"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  {isTestingEmail ? 'Sending...' : 'Send Test Email'}
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Preferences</CardTitle>
+            <CardTitle>Application Preferences</CardTitle>
             <CardDescription>
               Customize your application experience
             </CardDescription>
