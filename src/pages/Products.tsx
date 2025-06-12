@@ -1,9 +1,14 @@
+
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Search, Plus, ExternalLink, Edit, Trash2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,12 +28,27 @@ interface StripeProduct {
       interval_count?: number;
     };
   };
+  metadata?: Record<string, string>;
+}
+
+interface ProductFormData {
+  name: string;
+  description: string;
+  active: boolean;
 }
 
 const Products = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [products, setProducts] = useState<StripeProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingProduct, setEditingProduct] = useState<StripeProduct | null>(null);
+  const [newProductForm, setNewProductForm] = useState<ProductFormData>({
+    name: '',
+    description: '',
+    active: true
+  });
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const loadProducts = async () => {
@@ -68,6 +88,81 @@ const Products = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateProduct = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('create-stripe-product', {
+        body: {
+          name: newProductForm.name,
+          description: newProductForm.description,
+          type: 'service',
+          metadata: {
+            active: newProductForm.active.toString(),
+            created_via: 'billing_app_v1'
+          }
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      toast({
+        title: "Product Created",
+        description: `Successfully created product: ${newProductForm.name}`,
+      });
+
+      setNewProductForm({ name: '', description: '', active: true });
+      setIsAddDialogOpen(false);
+      loadProducts();
+    } catch (error: any) {
+      toast({
+        title: "Error Creating Product",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUpdateProduct = async () => {
+    if (!editingProduct) return;
+
+    try {
+      // Note: Stripe doesn't allow updating product names directly
+      // This would require a custom edge function to update product metadata
+      toast({
+        title: "Update Feature",
+        description: "Product updates require additional Stripe API integration. Opening Stripe dashboard for manual editing.",
+      });
+      
+      window.open(`https://dashboard.stripe.com/products/${editingProduct.id}`, '_blank');
+      setIsEditDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Error Updating Product",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string, productName: string) => {
+    try {
+      // Note: This would require a custom edge function to archive/deactivate products
+      toast({
+        title: "Delete Feature",
+        description: "Product deletion requires additional setup. Opening Stripe dashboard for manual management.",
+      });
+      
+      window.open(`https://dashboard.stripe.com/products/${productId}`, '_blank');
+    } catch (error: any) {
+      toast({
+        title: "Error Deleting Product",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -131,13 +226,54 @@ const Products = () => {
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button 
-              className="bg-gradient-to-r from-indigo-600 to-purple-600"
-              onClick={() => window.open('https://dashboard.stripe.com/products', '_blank')}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Product
-            </Button>
+            
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-gradient-to-r from-indigo-600 to-purple-600">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Product
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Product</DialogTitle>
+                  <DialogDescription>
+                    Add a new product to your Stripe catalog.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="product-name">Product Name</Label>
+                    <Input
+                      id="product-name"
+                      value={newProductForm.name}
+                      onChange={(e) => setNewProductForm(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Enter product name"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="product-description">Description</Label>
+                    <Textarea
+                      id="product-description"
+                      value={newProductForm.description}
+                      onChange={(e) => setNewProductForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Enter product description"
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-2">
+                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={handleCreateProduct}
+                      disabled={!newProductForm.name.trim()}
+                    >
+                      Create Product
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -191,6 +327,74 @@ const Products = () => {
                       ID: {product.id.substring(0, 12)}...
                     </span>
                     <div className="flex space-x-2">
+                      <Dialog open={isEditDialogOpen && editingProduct?.id === product.id} onOpenChange={(open) => {
+                        setIsEditDialogOpen(open);
+                        if (!open) setEditingProduct(null);
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            title="Edit Product"
+                            onClick={() => setEditingProduct(product)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Edit Product</DialogTitle>
+                            <DialogDescription>
+                              Update product details. Note: Some changes require Stripe dashboard access.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <div>
+                              <Label>Product Name</Label>
+                              <Input value={editingProduct?.name || ''} disabled />
+                            </div>
+                            <div>
+                              <Label>Description</Label>
+                              <Textarea value={editingProduct?.description || ''} disabled />
+                            </div>
+                            <div className="flex justify-end space-x-2">
+                              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                                Cancel
+                              </Button>
+                              <Button onClick={handleUpdateProduct}>
+                                Open in Stripe
+                              </Button>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            title="Delete Product"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete "{product.name}"? This action will open the Stripe dashboard for safe product management.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteProduct(product.id, product.name)}>
+                              Open Stripe Dashboard
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -215,7 +419,7 @@ const Products = () => {
             {!searchTerm && (
               <Button 
                 className="bg-gradient-to-r from-indigo-600 to-purple-600"
-                onClick={() => window.open('https://dashboard.stripe.com/products', '_blank')}
+                onClick={() => setIsAddDialogOpen(true)}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Your First Product
