@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Search, Plus, ExternalLink, Edit, Trash2, RefreshCw, Zap, CreditCard, Users, Target } from 'lucide-react';
+import { Search, Plus, ExternalLink, Edit, Trash2, RefreshCw, Zap, CreditCard, Users, Target, BarChart3, Settings, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -20,9 +21,27 @@ interface StripePrice {
     interval: string;
     interval_count?: number;
     usage_type?: string;
+    aggregate_usage?: string;
   };
   billing_scheme?: string;
   usage_type?: string;
+  tiers?: any[];
+  transform_quantity?: any;
+  metadata?: Record<string, string>;
+}
+
+interface StripeMeter {
+  id: string;
+  display_name: string;
+  event_name: string;
+  status: string;
+  value_settings: {
+    event_payload_key: string;
+  };
+  default_aggregation: {
+    formula: string;
+  };
+  created: number;
 }
 
 interface StripeProduct {
@@ -34,6 +53,11 @@ interface StripeProduct {
   default_price?: StripePrice;
   prices?: StripePrice[];
   metadata?: Record<string, string>;
+  // Enhanced product data
+  meters?: StripeMeter[];
+  usage_records?: any[];
+  subscription_data?: any;
+  billing_thresholds?: any;
 }
 
 interface ProductFormData {
@@ -54,15 +78,20 @@ const Products = () => {
   });
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   const loadProducts = async () => {
     setLoading(true);
     try {
-      console.log('Fetching live Stripe products...');
+      console.log('Fetching comprehensive Stripe product data...');
       
       const { data, error } = await supabase.functions.invoke('fetch-stripe-data', {
-        body: {}
+        body: { 
+          include_meters: true,
+          include_usage: true,
+          include_detailed_pricing: true 
+        }
       });
 
       if (error) {
@@ -75,13 +104,52 @@ const Products = () => {
         return;
       }
 
-      if (data?.success && data.all_products) {
-        setProducts(data.all_products);
-        console.log('Products loaded:', data.all_products.length);
+      if (data?.success) {
+        // Enhanced product data processing
+        const enhancedProducts = await Promise.all(
+          (data.all_products || []).map(async (product: any) => {
+            try {
+              // Fetch additional product details
+              const enhancedProduct = { ...product };
+              
+              // Get all prices for this product
+              if (data.all_prices) {
+                enhancedProduct.prices = data.all_prices.filter(
+                  (price: any) => price.product === product.id
+                );
+              }
+
+              // Get related meters
+              if (data.meters) {
+                enhancedProduct.meters = data.meters.filter((meter: any) => 
+                  meter.display_name?.toLowerCase().includes(product.name.toLowerCase()) ||
+                  product.metadata?.meter_ids?.split(',').includes(meter.id)
+                );
+              }
+
+              // Calculate aggregated metrics
+              enhancedProduct.totalPriceOptions = enhancedProduct.prices?.length || 0;
+              enhancedProduct.hasMeteredPricing = enhancedProduct.prices?.some(
+                (price: any) => price.recurring?.usage_type === 'metered'
+              ) || false;
+              enhancedProduct.isRecurring = enhancedProduct.prices?.some(
+                (price: any) => price.recurring
+              ) || false;
+
+              return enhancedProduct;
+            } catch (error) {
+              console.error(`Error enhancing product ${product.id}:`, error);
+              return product;
+            }
+          })
+        );
+
+        setProducts(enhancedProducts);
+        console.log('Enhanced products loaded:', enhancedProducts.length);
         
         toast({
           title: "Products Loaded",
-          description: `Loaded ${data.all_products.length} products from Stripe.`,
+          description: `Loaded ${enhancedProducts.length} products with complete data from Stripe.`,
         });
       }
     } catch (error: any) {
@@ -99,6 +167,8 @@ const Products = () => {
   const getBillingTierInfo = (product: StripeProduct) => {
     const metadata = product.metadata || {};
     const defaultPrice = product.default_price;
+    const hasMetered = product.hasMeteredPricing;
+    const isRecurring = product.isRecurring;
     
     // Check metadata for tier information
     if (metadata.tier_id) {
@@ -109,22 +179,17 @@ const Products = () => {
       };
     }
     
-    // Determine tier based on pricing structure
+    // Determine tier based on enhanced data
+    if (hasMetered) {
+      return {
+        tier: 'usage-based',
+        type: 'metered',
+        icon: <Zap className="h-4 w-4" />
+      };
+    }
+    
     if (defaultPrice) {
-      const isMetered = defaultPrice.recurring?.usage_type === 'metered' || 
-                       defaultPrice.billing_scheme === 'tiered' || 
-                       defaultPrice.usage_type === 'metered';
-      
-      const isRecurring = !!defaultPrice.recurring;
       const amount = defaultPrice.unit_amount || 0;
-      
-      if (isMetered) {
-        return {
-          tier: 'usage-based',
-          type: 'metered',
-          icon: <Zap className="h-4 w-4" />
-        };
-      }
       
       if (isRecurring) {
         if (amount === 0) {
@@ -187,6 +252,18 @@ const Products = () => {
     return colorMap[tier] || 'bg-gray-100 text-gray-600';
   };
 
+  const toggleProductExpansion = (productId: string) => {
+    setExpandedProducts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(productId)) {
+        newSet.delete(productId);
+      } else {
+        newSet.add(productId);
+      }
+      return newSet;
+    });
+  };
+
   const handleCreateProduct = async () => {
     try {
       const { data, error } = await supabase.functions.invoke('create-stripe-product', {
@@ -196,7 +273,8 @@ const Products = () => {
           type: 'service',
           metadata: {
             active: newProductForm.active.toString(),
-            created_via: 'billing_app_v1'
+            created_via: 'billing_app_v1',
+            enhanced_tracking: 'true'
           }
         }
       });
@@ -287,7 +365,7 @@ const Products = () => {
         <div className="flex items-center justify-center h-64">
           <div className="flex items-center space-x-3">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            <span>Loading live Stripe data...</span>
+            <span>Loading comprehensive Stripe data...</span>
           </div>
         </div>
       </DashboardLayout>
@@ -384,6 +462,8 @@ const Products = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProducts.map((product) => {
             const tierInfo = getBillingTierInfo(product);
+            const isExpanded = expandedProducts.has(product.id);
+            
             return (
               <Card key={product.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-3">
@@ -407,9 +487,13 @@ const Products = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
+                    {/* Enhanced Pricing Section */}
                     {product.default_price && (
                       <div>
-                        <h4 className="text-sm font-medium mb-2">Pricing</h4>
+                        <h4 className="text-sm font-medium mb-2 flex items-center">
+                          <DollarSign className="h-4 w-4 mr-1" />
+                          Default Pricing
+                        </h4>
                         <div className="text-sm text-muted-foreground">
                           {formatPrice(
                             product.default_price.unit_amount,
@@ -430,12 +514,80 @@ const Products = () => {
                       </div>
                     )}
                     
-                    {product.prices && product.prices.length > 1 && (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Additional Prices</h4>
-                        <div className="text-xs text-muted-foreground">
-                          {product.prices.length} pricing options available
-                        </div>
+                    {/* Enhanced Product Stats */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex items-center space-x-1">
+                        <BarChart3 className="h-3 w-3 text-gray-500" />
+                        <span>{product.totalPriceOptions || 0} price options</span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Zap className="h-3 w-3 text-gray-500" />
+                        <span>{product.meters?.length || 0} meters</span>
+                      </div>
+                    </div>
+
+                    {/* Expansion Toggle */}
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => toggleProductExpansion(product.id)}
+                      className="w-full"
+                    >
+                      {isExpanded ? 'Show Less' : 'Show Details'}
+                    </Button>
+
+                    {/* Expanded Details */}
+                    {isExpanded && (
+                      <div className="space-y-3 border-t pt-3">
+                        {/* All Prices */}
+                        {product.prices && product.prices.length > 0 && (
+                          <div>
+                            <h5 className="text-xs font-medium mb-1">All Pricing Options</h5>
+                            <div className="space-y-1">
+                              {product.prices.slice(0, 3).map((price, index) => (
+                                <div key={index} className="text-xs text-muted-foreground">
+                                  {formatPrice(price.unit_amount, price.currency, price.recurring?.interval)}
+                                  {price.billing_scheme === 'tiered' && (
+                                    <Badge variant="outline" className="ml-1 text-xs">Tiered</Badge>
+                                  )}
+                                </div>
+                              ))}
+                              {product.prices.length > 3 && (
+                                <div className="text-xs text-gray-500">
+                                  +{product.prices.length - 3} more...
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Meters */}
+                        {product.meters && product.meters.length > 0 && (
+                          <div>
+                            <h5 className="text-xs font-medium mb-1">Associated Meters</h5>
+                            <div className="space-y-1">
+                              {product.meters.map((meter, index) => (
+                                <div key={index} className="text-xs text-muted-foreground">
+                                  {meter.display_name} ({meter.event_name})
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Metadata */}
+                        {product.metadata && Object.keys(product.metadata).length > 0 && (
+                          <div>
+                            <h5 className="text-xs font-medium mb-1">Metadata</h5>
+                            <div className="space-y-1">
+                              {Object.entries(product.metadata).slice(0, 3).map(([key, value]) => (
+                                <div key={key} className="text-xs text-muted-foreground">
+                                  <span className="font-mono">{key}:</span> {value}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     

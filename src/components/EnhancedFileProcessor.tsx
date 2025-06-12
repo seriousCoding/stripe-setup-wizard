@@ -1,5 +1,4 @@
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,14 +31,130 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
+
+  // Detect if device is mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent;
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+      const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isSmallScreen = window.innerWidth <= 768;
+      
+      setIsMobile(isMobileDevice || (hasTouch && isSmallScreen));
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const updateFileProgress = (fileName: string, progress: number) => {
     setProcessedFiles(prev => prev.map(f => 
       f.name === fileName ? { ...f, processingProgress: progress } : f
     ));
+  };
+
+  const cleanAndNormalizeData = (rawText: string): string => {
+    // Remove non-printable characters and normalize whitespace
+    return rawText
+      .replace(/[^\x20-\x7E\t\n\r]/g, '') // Remove non-ASCII except tabs, newlines
+      .replace(/∞/g, 'unlimited') // Replace infinity symbol
+      .replace(/\s+/g, ' ') // Normalize multiple spaces
+      .trim();
+  };
+
+  const parseTabularData = (text: string): any[] => {
+    try {
+      const cleanText = cleanAndNormalizeData(text);
+      const lines = cleanText.split(/\r?\n/).filter(line => line.trim());
+      
+      if (lines.length === 0) return [];
+
+      const data: any[] = [];
+      
+      // Enhanced pattern matching for pricing data
+      const pricePattern = /\$\d+\.?\d*/g;
+      const numericPattern = /\d+\.?\d*/g;
+      
+      lines.forEach((line, index) => {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) return;
+
+        // Split by tabs first, then by multiple spaces
+        let parts = trimmedLine.split('\t');
+        if (parts.length === 1) {
+          parts = trimmedLine.split(/\s{2,}/); // Split on 2+ spaces
+        }
+        if (parts.length === 1) {
+          parts = trimmedLine.split(/\s+/); // Fall back to single spaces
+        }
+
+        // Filter out empty parts
+        parts = parts.filter(part => part.trim());
+
+        if (parts.length >= 3) {
+          const prices = trimmedLine.match(pricePattern) || [];
+          const numbers = trimmedLine.match(numericPattern) || [];
+          
+          // Try to identify the structure
+          const item: any = {
+            id: `parsed-${index}`,
+            product: parts[0] || `Service ${index + 1}`,
+            description: parts[0] || `Service ${index + 1}`,
+            source: 'parsed_data',
+            lineNumber: index + 1,
+            originalLine: trimmedLine
+          };
+
+          // Look for meter/event name (usually second column)
+          if (parts.length > 1) {
+            item.eventName = parts[1];
+            item.meter_name = parts[1];
+          }
+
+          // Look for unit (usually third column)
+          if (parts.length > 2) {
+            item.unit = parts[2];
+            item.unit_label = parts[2];
+          }
+
+          // Extract pricing information
+          if (prices.length > 0) {
+            const mainPrice = prices[prices.length - 2] || prices[0];
+            item.price = parseFloat(mainPrice.replace('$', '')) || 0;
+            item.unit_amount = Math.round(item.price * 100);
+          }
+
+          // Set billing type based on data structure
+          if (item.eventName && item.unit) {
+            item.type = 'metered';
+            item.billing_scheme = 'per_unit';
+            item.usage_type = 'metered';
+            item.aggregate_usage = 'sum';
+          } else {
+            item.type = 'one_time';
+          }
+
+          item.currency = 'usd';
+          item.metadata = {
+            auto_detected_type: item.type,
+            source: 'enhanced_parser',
+            confidence: 85
+          };
+
+          data.push(item);
+        }
+      });
+
+      return data;
+    } catch (error) {
+      console.error('Error parsing tabular data:', error);
+      return [];
+    }
   };
 
   const handleFileUpload = async (files: FileList) => {
@@ -75,6 +190,7 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
           });
         }
       } catch (error: any) {
+        console.error(`Error processing ${file.name}:`, error);
         setProcessedFiles(prev => prev.map(f => 
           f.name === file.name && f.size === file.size
             ? { ...f, status: 'error', error: error.message, processingProgress: 0 }
@@ -95,74 +211,108 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
   const processFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
     const fileName = file.name.toLowerCase();
 
-    // Handle XLSX/XLS files
-    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-      updateFileProgress(file.name, 30);
-      return await processExcelFile(file);
-    }
+    try {
+      // Handle XLSX/XLS files
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        updateFileProgress(file.name, 30);
+        return await processExcelFile(file);
+      }
 
-    // Handle PDF files
-    if (file.type === 'application/pdf') {
-      updateFileProgress(file.name, 20);
-      return await processPDFFile(file);
-    }
+      // Handle PDF files
+      if (file.type === 'application/pdf') {
+        updateFileProgress(file.name, 20);
+        return await processPDFFile(file);
+      }
 
-    // Handle image files (OCR)
-    if (file.type.startsWith('image/')) {
-      updateFileProgress(file.name, 25);
-      return await processImageFile(file);
-    }
+      // Handle image files (OCR)
+      if (file.type.startsWith('image/')) {
+        updateFileProgress(file.name, 25);
+        return await processImageFile(file);
+      }
 
-    // Handle CSV/text files
-    if (fileName.endsWith('.csv') || file.type === 'text/csv') {
-      updateFileProgress(file.name, 40);
-      return await processCSVFile(file);
-    }
+      // Handle CSV/text files
+      if (fileName.endsWith('.csv') || file.type === 'text/csv' || file.type === 'text/plain') {
+        updateFileProgress(file.name, 40);
+        return await processCSVFile(file);
+      }
 
-    // Handle JSON files
-    if (file.type === 'application/json') {
-      updateFileProgress(file.name, 50);
-      return await processJSONFile(file);
-    }
+      // Handle JSON files
+      if (file.type === 'application/json') {
+        updateFileProgress(file.name, 50);
+        return await processJSONFile(file);
+      }
 
-    throw new Error(`Unsupported file type: ${file.type}`);
+      throw new Error(`Unsupported file type: ${file.type}`);
+    } catch (error: any) {
+      console.error(`File processing error for ${file.name}:`, error);
+      throw error;
+    }
   };
 
   const processExcelFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
-    updateFileProgress(file.name, 50);
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    
-    updateFileProgress(file.name, 70);
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-    
-    if (jsonData.length === 0) {
-      throw new Error('Excel file appears to be empty');
-    }
-
-    const headers = jsonData[0] as string[];
-    const rows = jsonData.slice(1) as any[][];
-    
-    updateFileProgress(file.name, 90);
-    const data = rows
-      .filter(row => row.length > 0 && row.some(cell => cell !== null && cell !== undefined && cell !== ''))
-      .map(row => {
-        const obj: any = {};
-        headers.forEach((header, index) => {
-          if (header && header.trim()) {
-            obj[header.trim()] = row[index] || '';
-          }
-        });
-        return obj;
+    try {
+      updateFileProgress(file.name, 50);
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      
+      if (!firstSheetName) {
+        throw new Error('Excel file has no sheets');
+      }
+      
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      updateFileProgress(file.name, 70);
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+        header: 1,
+        defval: '',
+        blankrows: false
       });
+      
+      if (jsonData.length === 0) {
+        throw new Error('Excel file appears to be empty');
+      }
 
-    return {
-      data,
-      confidence: 95,
-      method: 'excel_parser'
-    };
+      const headers = jsonData[0] as string[];
+      const rows = jsonData.slice(1) as any[][];
+      
+      updateFileProgress(file.name, 90);
+      const data = rows
+        .filter(row => row && row.length > 0 && row.some(cell => cell !== null && cell !== undefined && cell !== ''))
+        .map((row, index) => {
+          const obj: any = { id: `excel-${index}` };
+          headers.forEach((header, cellIndex) => {
+            if (header && header.trim()) {
+              obj[header.trim()] = row[cellIndex] || '';
+            }
+          });
+          
+          // Auto-detect structure
+          obj.product = obj.product || obj.name || obj['Metric Description'] || obj.description || `Product ${index + 1}`;
+          obj.eventName = obj.eventName || obj['Meter Name'] || obj.meter_name;
+          obj.unit = obj.unit || obj.Unit || obj.unit_label;
+          
+          const priceField = obj.price || obj['Per Unit Rate (USD)'] || obj.amount;
+          if (priceField) {
+            obj.price = typeof priceField === 'string' ? 
+              parseFloat(priceField.replace(/[$,]/g, '')) : parseFloat(priceField);
+          }
+          
+          obj.type = obj.eventName && obj.unit ? 'metered' : 'one_time';
+          obj.currency = 'usd';
+          
+          return obj;
+        });
+
+      return {
+        data,
+        confidence: 95,
+        method: 'excel_parser'
+      };
+    } catch (error: any) {
+      console.error('Excel processing error:', error);
+      throw new Error(`Excel processing failed: ${error.message}`);
+    }
   };
 
   const processPDFFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
@@ -171,34 +321,39 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
       const pdfResult = await pdfService.parsePDF(file);
       
       updateFileProgress(file.name, 60);
-      const tabularData = pdfService.extractTabularData(pdfResult.text);
+      
+      // Enhanced tabular data extraction
+      const parsedData = parseTabularData(pdfResult.text);
       
       updateFileProgress(file.name, 90);
       
-      if (tabularData.length === 0) {
-        // If no tabular data found, create a basic structure from text
+      if (parsedData.length === 0) {
+        // Fallback: create basic structure from text
         const data = [{
+          id: 'pdf-content',
           product: `PDF Content from ${file.name}`,
           description: pdfResult.text.substring(0, 200) + (pdfResult.text.length > 200 ? '...' : ''),
           pages: pdfResult.numPages,
-          extractedText: pdfResult.text
+          extractedText: pdfResult.text,
+          type: 'one_time',
+          source: 'pdf_fallback'
         }];
         
         return {
           data,
-          confidence: 60,
+          confidence: 40,
           method: 'pdf_text_extraction'
         };
       }
 
       return {
-        data: tabularData,
+        data: parsedData,
         confidence: 80,
         method: 'pdf_tabular_extraction'
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('PDF processing error:', error);
-      throw new Error(`PDF processing failed: ${error}`);
+      throw new Error(`PDF processing failed: ${error.message}`);
     }
   };
 
@@ -215,97 +370,166 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
       
       updateFileProgress(file.name, 80);
       
-      // Try to extract structured data from OCR text
-      const lines = ocrResult.text.split('\n').filter(line => line.trim());
-      const data: any[] = [];
+      // Enhanced OCR text parsing
+      const parsedData = parseTabularData(ocrResult.text);
       
-      // Simple pattern matching for pricing data
-      const pricePattern = /\$\d+\.?\d*/;
-      const servicePattern = /^[A-Za-z\s]+/;
-      
-      lines.forEach((line, index) => {
-        if (pricePattern.test(line) && servicePattern.test(line)) {
-          const priceMatch = line.match(pricePattern);
-          const serviceMatch = line.match(servicePattern);
-          
-          if (priceMatch && serviceMatch) {
+      if (parsedData.length === 0) {
+        // Fallback: simple line parsing
+        const lines = ocrResult.text.split('\n').filter(line => line.trim());
+        const pricePattern = /\$\d+\.?\d*/;
+        
+        const data: any[] = [];
+        lines.forEach((line, index) => {
+          if (pricePattern.test(line)) {
             data.push({
-              product: serviceMatch[0].trim(),
-              price: priceMatch[0],
+              id: `ocr-${index}`,
+              product: line.replace(pricePattern, '').trim() || `OCR Item ${index + 1}`,
+              price: parseFloat((line.match(pricePattern)?.[0] || '$0').replace('$', '')),
               source: 'OCR',
               confidence: ocrResult.confidence,
               originalLine: line,
-              lineNumber: index + 1
+              type: 'one_time'
             });
           }
-        }
-      });
-
-      // If no structured data found, return the raw text
-      if (data.length === 0) {
-        data.push({
-          product: `OCR Text from ${file.name}`,
-          description: ocrResult.text.substring(0, 300) + (ocrResult.text.length > 300 ? '...' : ''),
-          confidence: ocrResult.confidence,
-          fullText: ocrResult.text
         });
+
+        if (data.length === 0) {
+          data.push({
+            id: 'ocr-content',
+            product: `OCR Text from ${file.name}`,
+            description: ocrResult.text.substring(0, 300) + (ocrResult.text.length > 300 ? '...' : ''),
+            confidence: ocrResult.confidence,
+            fullText: ocrResult.text,
+            type: 'one_time'
+          });
+        }
+
+        return {
+          data,
+          confidence: Math.round(ocrResult.confidence),
+          method: 'image_ocr_fallback'
+        };
       }
 
       return {
-        data,
+        data: parsedData,
         confidence: Math.round(ocrResult.confidence),
         method: 'image_ocr'
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('OCR processing error:', error);
-      throw new Error(`OCR processing failed: ${error}`);
+      throw new Error(`OCR processing failed: ${error.message}`);
     }
   };
 
   const processCSVFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
     return new Promise((resolve, reject) => {
       updateFileProgress(file.name, 40);
+      
       Papa.parse(file, {
         complete: (result) => {
-          if (result.errors.length > 0) {
-            reject(new Error(`CSV parsing error: ${result.errors[0].message}`));
-            return;
-          }
+          try {
+            if (result.errors.length > 0) {
+              console.warn('CSV parsing warnings:', result.errors);
+            }
 
-          updateFileProgress(file.name, 90);
-          resolve({
-            data: result.data as any[],
-            confidence: 98,
-            method: 'csv_parser'
-          });
+            updateFileProgress(file.name, 90);
+            
+            let data = result.data as any[];
+            
+            // Enhanced CSV processing
+            if (data.length === 0) {
+              throw new Error('CSV file is empty');
+            }
+
+            // Auto-detect header row
+            const firstRow = data[0];
+            const hasHeaders = typeof firstRow === 'object' && !Array.isArray(firstRow);
+            
+            if (!hasHeaders && Array.isArray(firstRow)) {
+              // Convert array format to object format
+              const headers = firstRow.map((_, index) => `column_${index}`);
+              data = data.slice(1).map((row: any[], index) => {
+                const obj: any = { id: `csv-${index}` };
+                headers.forEach((header, cellIndex) => {
+                  obj[header] = row[cellIndex] || '';
+                });
+                return obj;
+              });
+            }
+
+            // Clean and process the data
+            const processedData = data
+              .filter(row => row && Object.keys(row).length > 0)
+              .map((row, index) => {
+                const cleanRow = { ...row, id: row.id || `csv-${index}` };
+                
+                // Auto-detect fields
+                cleanRow.product = cleanRow.product || cleanRow.name || cleanRow['Metric Description'] || cleanRow.description;
+                cleanRow.eventName = cleanRow.eventName || cleanRow['Meter Name'] || cleanRow.meter_name;
+                
+                return cleanRow;
+              });
+
+            resolve({
+              data: processedData,
+              confidence: 98,
+              method: 'csv_parser'
+            });
+          } catch (error: any) {
+            reject(new Error(`CSV processing error: ${error.message}`));
+          }
         },
         header: true,
         skipEmptyLines: true,
-        error: (error) => reject(new Error(`CSV processing failed: ${error.message}`))
+        transformHeader: (header) => header.trim(),
+        error: (error) => reject(new Error(`CSV parsing failed: ${error.message}`))
       });
     });
   };
 
   const processJSONFile = async (file: File): Promise<{ data: any[], confidence: number, method: string }> => {
-    updateFileProgress(file.name, 40);
-    const text = await file.text();
-    const jsonData = JSON.parse(text);
-    
-    updateFileProgress(file.name, 80);
-    let data: any[];
-    if (Array.isArray(jsonData)) {
-      data = jsonData;
-    } else if (jsonData.data && Array.isArray(jsonData.data)) {
-      data = jsonData.data;
-    } else {
-      data = [jsonData];
-    }
+    try {
+      updateFileProgress(file.name, 40);
+      const text = await file.text();
+      
+      let jsonData;
+      try {
+        jsonData = JSON.parse(text);
+      } catch (parseError) {
+        throw new Error('Invalid JSON format');
+      }
+      
+      updateFileProgress(file.name, 80);
+      
+      let data: any[];
+      if (Array.isArray(jsonData)) {
+        data = jsonData;
+      } else if (jsonData.data && Array.isArray(jsonData.data)) {
+        data = jsonData.data;
+      } else if (jsonData.products && Array.isArray(jsonData.products)) {
+        data = jsonData.products;
+      } else if (jsonData.items && Array.isArray(jsonData.items)) {
+        data = jsonData.items;
+      } else {
+        data = [jsonData];
+      }
 
-    return {
-      data,
-      confidence: 99,
-      method: 'json_parser'
-    };
+      // Add IDs if missing
+      data = data.map((item, index) => ({
+        ...item,
+        id: item.id || `json-${index}`
+      }));
+
+      return {
+        data,
+        confidence: 99,
+        method: 'json_parser'
+      };
+    } catch (error: any) {
+      console.error('JSON processing error:', error);
+      throw new Error(`JSON processing failed: ${error.message}`);
+    }
   };
 
   const startCamera = async () => {
@@ -354,11 +578,8 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
     
     if (!context) return;
 
-    // Set canvas dimensions to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    
-    // Draw video frame to canvas
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     try {
@@ -368,39 +589,18 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
       });
 
       const ocrResult = await ocrService.processCameraCapture(canvas);
+      const parsedData = parseTabularData(ocrResult.text);
       
-      // Process the OCR result similar to image file processing
-      const lines = ocrResult.text.split('\n').filter(line => line.trim());
-      const data: any[] = [];
-      
-      const pricePattern = /\$\d+\.?\d*/;
-      const servicePattern = /^[A-Za-z\s]+/;
-      
-      lines.forEach((line, index) => {
-        if (pricePattern.test(line) && servicePattern.test(line)) {
-          const priceMatch = line.match(pricePattern);
-          const serviceMatch = line.match(servicePattern);
-          
-          if (priceMatch && serviceMatch) {
-            data.push({
-              product: serviceMatch[0].trim(),
-              price: priceMatch[0],
-              source: 'Camera OCR',
-              confidence: ocrResult.confidence,
-              originalLine: line,
-              lineNumber: index + 1
-            });
-          }
-        }
-      });
-
+      let data = parsedData;
       if (data.length === 0) {
-        data.push({
+        data = [{
+          id: 'camera-capture',
           product: 'Camera Capture OCR',
           description: ocrResult.text.substring(0, 300) + (ocrResult.text.length > 300 ? '...' : ''),
           confidence: ocrResult.confidence,
-          fullText: ocrResult.text
-        });
+          fullText: ocrResult.text,
+          type: 'one_time'
+        }];
       }
 
       onDataProcessed(data, {
@@ -495,14 +695,16 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
               Upload Files
             </Button>
             
-            <Button 
-              variant="outline" 
-              onClick={isCameraActive ? capturePhoto : startCamera}
-              disabled={isProcessing}
-            >
-              <Camera className="h-4 w-4 mr-2" />
-              {isCameraActive ? 'Capture Photo' : 'Start Camera'}
-            </Button>
+            {isMobile && (
+              <Button 
+                variant="outline" 
+                onClick={isCameraActive ? capturePhoto : startCamera}
+                disabled={isProcessing}
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                {isCameraActive ? 'Capture Photo' : 'Take Photo'}
+              </Button>
+            )}
             
             {isCameraActive && (
               <Button variant="outline" onClick={stopCamera}>
@@ -511,8 +713,8 @@ const EnhancedFileProcessor = ({ onDataProcessed }: EnhancedFileProcessorProps) 
             )}
           </div>
 
-          {/* Camera Preview */}
-          {isCameraActive && (
+          {/* Mobile Camera Preview */}
+          {isCameraActive && isMobile && (
             <Card>
               <CardContent className="p-4">
                 <div className="relative">
