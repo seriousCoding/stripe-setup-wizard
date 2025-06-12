@@ -48,6 +48,7 @@ class OCRService {
 
       const confidence = result.data.confidence || 0;
       const text = result.data.text || '';
+      // Fix: Access words correctly from Tesseract result structure
       const words = result.data.words || [];
 
       console.log('OCR completed. Confidence:', confidence, 'Text length:', text.length);
