@@ -6,17 +6,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, RefreshCw, Shield, Lock } from 'lucide-react';
+import { Trash2, RefreshCw, Shield, Lock, Eye, EyeOff, Key } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const StripeManagement = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   // Simple password for demo - in production this should be more secure
-  const ADMIN_PASSWORD = 'stripe-admin-2024';
+  const [ADMIN_PASSWORD, setADMIN_PASSWORD] = useState('stripe-admin-2024');
 
   const handlePasswordSubmit = () => {
     if (password === ADMIN_PASSWORD) {
@@ -33,6 +38,35 @@ const StripeManagement = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handlePasswordReset = () => {
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Password Mismatch",
+        description: "The passwords do not match. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      toast({
+        title: "Password Too Short",
+        description: "Password must be at least 8 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setADMIN_PASSWORD(newPassword);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowResetDialog(false);
+    toast({
+      title: "Password Updated",
+      description: "Admin password has been successfully changed.",
+    });
   };
 
   const handleCleanupStripeData = async () => {
@@ -121,15 +155,113 @@ const StripeManagement = () => {
               className="shadow-inner hover:shadow-lg transition-shadow duration-300"
             />
           </div>
-          <Button 
-            onClick={handlePasswordSubmit}
-            disabled={!password.trim()}
-            className="w-full shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 transform"
-          >
-            <Shield className="h-4 w-4 mr-2" />
-            Authenticate
-          </Button>
+          <div className="flex space-x-2">
+            <Button 
+              onClick={handlePasswordSubmit}
+              disabled={!password.trim()}
+              className="flex-1 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 transform"
+            >
+              <Shield className="h-4 w-4 mr-2" />
+              Authenticate
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setShowResetDialog(true)}
+              className="shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 transform"
+            >
+              <Key className="h-4 w-4 mr-2" />
+              Reset Password
+            </Button>
+          </div>
         </CardContent>
+
+        {/* Password Reset Dialog */}
+        <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+          <AlertDialogContent className="shadow-2xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reset Admin Password</AlertDialogTitle>
+              <AlertDialogDescription>
+                Create a new admin password. Make sure it's at least 8 characters long.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-4 my-4">
+              <div>
+                <Label htmlFor="new-password">New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="new-password"
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                  >
+                    {showNewPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <div className="relative">
+                  <Input
+                    id="confirm-password"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+              {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                <p className="text-sm text-red-600">Passwords do not match</p>
+              )}
+              {newPassword && newPassword.length < 8 && (
+                <p className="text-sm text-red-600">Password must be at least 8 characters long</p>
+              )}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => {
+                setNewPassword('');
+                setConfirmPassword('');
+                setShowNewPassword(false);
+                setShowConfirmPassword(false);
+              }}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handlePasswordReset}
+                disabled={!newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 8}
+              >
+                Update Password
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Card>
     );
   }
@@ -215,14 +347,112 @@ const StripeManagement = () => {
           </AlertDialog>
         </div>
 
-        <Button 
-          variant="ghost" 
-          onClick={() => setIsAuthenticated(false)}
-          className="w-full text-gray-600 hover:text-gray-800 shadow-lg hover:shadow-xl transition-all duration-300"
-        >
-          Lock Management Panel
-        </Button>
+        <div className="flex space-x-2">
+          <Button 
+            variant="ghost" 
+            onClick={() => setIsAuthenticated(false)}
+            className="flex-1 text-gray-600 hover:text-gray-800 shadow-lg hover:shadow-xl transition-all duration-300"
+          >
+            Lock Management Panel
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={() => setShowResetDialog(true)}
+            className="shadow-lg hover:shadow-xl transition-all duration-300"
+          >
+            <Key className="h-4 w-4 mr-2" />
+            Change Password
+          </Button>
+        </div>
       </CardContent>
+
+      {/* Password Reset Dialog for authenticated users */}
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent className="shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change Admin Password</AlertDialogTitle>
+            <AlertDialogDescription>
+              Create a new admin password. Make sure it's at least 8 characters long.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 my-4">
+            <div>
+              <Label htmlFor="new-password-auth">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="new-password-auth"
+                  type={showNewPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                >
+                  {showNewPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="confirm-password-auth">Confirm Password</Label>
+              <div className="relative">
+                <Input
+                  id="confirm-password-auth"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            {newPassword && confirmPassword && newPassword !== confirmPassword && (
+              <p className="text-sm text-red-600">Passwords do not match</p>
+            )}
+            {newPassword && newPassword.length < 8 && (
+              <p className="text-sm text-red-600">Password must be at least 8 characters long</p>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setNewPassword('');
+              setConfirmPassword('');
+              setShowNewPassword(false);
+              setShowConfirmPassword(false);
+            }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handlePasswordReset}
+              disabled={!newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 8}
+            >
+              Update Password
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };
