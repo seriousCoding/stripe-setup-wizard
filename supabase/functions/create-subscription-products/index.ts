@@ -52,66 +52,132 @@ serve(async (req) => {
       apiVersion: '2023-10-16',
     });
 
-    // Define the subscription products with proper pricing structures
+    // Step 1: Create billing meters for usage tracking
+    logStep("Creating billing meters");
+    const meters = [];
+    
+    try {
+      // Create transaction meter
+      const transactionMeter = await stripe.billing.meters.create({
+        display_name: 'API Transactions',
+        event_name: 'api_transaction',
+        customer_mapping: {
+          event_payload_key: 'customer_id',
+          type: 'by_id'
+        },
+        default_aggregation: {
+          formula: 'sum'
+        },
+        value_settings: {
+          event_payload_key: 'transaction_count'
+        }
+      });
+      meters.push(transactionMeter);
+      logStep("Transaction meter created", { meterId: transactionMeter.id });
+
+      // Create AI processing meter
+      const aiMeter = await stripe.billing.meters.create({
+        display_name: 'AI Processing',
+        event_name: 'ai_processing',
+        customer_mapping: {
+          event_payload_key: 'customer_id',
+          type: 'by_id'
+        },
+        default_aggregation: {
+          formula: 'sum'
+        },
+        value_settings: {
+          event_payload_key: 'processing_count'
+        }
+      });
+      meters.push(aiMeter);
+      logStep("AI processing meter created", { meterId: aiMeter.id });
+
+    } catch (meterError: any) {
+      logStep("Meter creation skipped", { error: meterError.message });
+      // Continue without meters if API not available
+    }
+
+    // Step 2: Define the subscription products with proper pricing structures
     const productDefinitions = [
       {
         id: 'trial',
         name: 'Free Trial',
         description: 'Free trial with 500 included transactions.',
-        baseFee: 0, // Free trial base
+        baseFee: 0,
+        includedUsage: 500,
+        overageRate: 500, // $0.05 per transaction in cents
         metadata: {
           tier_id: 'trial',
           plan_type: 'trial',
           billing_model_type: 'free_trial',
-          created_via: 'subscription_billing_v2'
+          created_via: 'subscription_billing_v2',
+          included_transactions: '500',
+          overage_rate_cents: '500'
         }
       },
       {
         id: 'starter',
         name: 'Starter',
         description: 'Perfect for small teams with 1,000 included transactions monthly.',
-        baseFee: 1900, // $19.00
+        baseFee: 1900,
+        includedUsage: 1000,
+        overageRate: 200, // $0.02 per transaction in cents
         metadata: {
           tier_id: 'starter',
           plan_type: 'fixed_overage',
           billing_model_type: 'fixed_fee_overage',
-          created_via: 'subscription_billing_v2'
+          created_via: 'subscription_billing_v2',
+          included_transactions: '1000',
+          overage_rate_cents: '200'
         }
       },
       {
         id: 'professional',
         name: 'Professional',
         description: 'Great for growing businesses with 5,000 included transactions monthly.',
-        baseFee: 4900, // $49.00
+        baseFee: 4900,
+        includedUsage: 5000,
+        overageRate: 150, // $0.015 per transaction in cents
         metadata: {
           tier_id: 'professional',
           plan_type: 'fixed_overage',
           billing_model_type: 'fixed_fee_overage',
-          created_via: 'subscription_billing_v2'
+          created_via: 'subscription_billing_v2',
+          included_transactions: '5000',
+          overage_rate_cents: '150'
         }
       },
       {
         id: 'business',
         name: 'Business',
         description: 'Unlimited transactions with predictable monthly costs.',
-        baseFee: 9900, // $99.00
+        baseFee: 9900,
+        includedUsage: 999999,
+        overageRate: 0,
         metadata: {
           tier_id: 'business',
           plan_type: 'flat_rate',
           billing_model_type: 'flat_recurring',
-          created_via: 'subscription_billing_v2'
+          created_via: 'subscription_billing_v2',
+          included_transactions: 'unlimited',
+          overage_rate_cents: '0'
         }
       },
       {
         id: 'enterprise',
         name: 'Enterprise',
         description: 'Per-seat pricing with unlimited features for large teams.',
-        baseFee: 2500, // $25.00 per user
+        baseFee: 2500,
+        includedUsage: 999999,
+        overageRate: 0,
         metadata: {
           tier_id: 'enterprise',
           plan_type: 'per_seat',
           billing_model_type: 'per_seat',
-          created_via: 'subscription_billing_v2'
+          created_via: 'subscription_billing_v2',
+          included_transactions: 'unlimited',
+          overage_rate_cents: '0'
         }
       }
     ];
@@ -131,7 +197,7 @@ serve(async (req) => {
 
         logStep(`Product created: ${product.id}`, { name: product.name });
 
-        // Create the subscription price
+        // Create the base subscription price
         const priceCreateData: any = {
           currency: 'usd',
           unit_amount: productDef.baseFee,
@@ -149,26 +215,56 @@ serve(async (req) => {
           };
         }
 
-        const price = await stripe.prices.create(priceCreateData);
-        logStep(`Price created: ${price.id}`, { amount: productDef.baseFee });
+        const basePrice = await stripe.prices.create(priceCreateData);
+        logStep(`Base price created: ${basePrice.id}`, { amount: productDef.baseFee });
 
-        // Set the price as the default for the product
+        // Create overage price if applicable and meters exist
+        let overagePrice = null;
+        if (productDef.overageRate > 0 && meters.length > 0) {
+          try {
+            overagePrice = await stripe.prices.create({
+              currency: 'usd',
+              unit_amount: productDef.overageRate,
+              product: product.id,
+              recurring: {
+                interval: 'month',
+                usage_type: 'metered',
+                aggregate_usage: 'sum'
+              },
+              billing_scheme: 'per_unit',
+              metadata: {
+                ...productDef.metadata,
+                price_type: 'overage',
+                meter_id: meters[0].id // Link to transaction meter
+              }
+            });
+            logStep(`Overage price created: ${overagePrice.id}`, { rate: productDef.overageRate });
+          } catch (overageError: any) {
+            logStep(`Overage price creation failed: ${overageError.message}`);
+          }
+        }
+
+        // Set the base price as the default for the product
         await stripe.products.update(product.id, {
-          default_price: price.id
+          default_price: basePrice.id
         });
 
         results.push({
           product_id: product.id,
-          price_id: price.id,
+          base_price_id: basePrice.id,
+          overage_price_id: overagePrice?.id || null,
           tier_id: productDef.id,
           name: productDef.name,
           base_fee: productDef.baseFee,
+          included_usage: productDef.includedUsage,
+          overage_rate: productDef.overageRate,
           status: 'success'
         });
 
         logStep(`Subscription product setup complete for ${productDef.name}`, {
           productId: product.id,
-          priceId: price.id
+          basePriceId: basePrice.id,
+          overagePriceId: overagePrice?.id
         });
 
       } catch (error: any) {
@@ -183,16 +279,19 @@ serve(async (req) => {
     }
 
     logStep("Subscription product creation complete", { 
-      results: results.length
+      results: results.length,
+      meters: meters.length
     });
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: 'Subscription products created successfully',
+        message: 'Subscription products and meters created successfully',
         results,
+        meters: meters.map(m => ({ id: m.id, display_name: m.display_name, event_name: m.event_name })),
         summary: {
           products_created: results.filter(r => r.status === 'success').length,
+          meters_created: meters.length,
           errors: results.filter(r => r.status === 'error').length
         }
       }),
