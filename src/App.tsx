@@ -13,6 +13,7 @@ import Products from "./pages/Products";
 import SavedModels from "./pages/SavedModels";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
+import StripePricing from "./pages/StripePricing";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentCancel from "./pages/PaymentCancel";
 import NotFound from "./pages/NotFound";
