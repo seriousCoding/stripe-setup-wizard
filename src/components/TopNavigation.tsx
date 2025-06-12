@@ -18,38 +18,43 @@ const TopNavigation = () => {
   ];
 
   return (
-    <div className="border-b border-white/20 bg-black/20 backdrop-blur-sm shadow-2xl z-40 relative">
+    <div className="bg-slate-800 border-b border-slate-700 shadow-xl z-50 relative">
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="transform hover:scale-105 transition-all duration-300 hover:shadow-lg">
-            <h1 className="text-2xl font-bold text-black shadow-sm">
-              Stripe Setup Pilot
-            </h1>
-            <p className="text-sm text-white/80 shadow-sm">Automate your Stripe product and billing configuration</p>
+          {/* Logo and Brand */}
+          <div className="flex items-center space-x-3">
+            <div className="bg-gradient-to-r from-teal-500 to-emerald-500 p-2 rounded-lg shadow-lg">
+              <Upload className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white">
+                Stripe Setup Pilot
+              </h1>
+              <p className="text-sm text-slate-400">Automate your Stripe configuration</p>
+            </div>
           </div>
           
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-2">
+          <div className="hidden md:flex items-center space-x-1">
             {navItems.map((item) => (
               <Link key={item.href} to={item.href}>
-                <Card className={`p-3 transition-all duration-300 hover:shadow-2xl hover:scale-110 hover:-translate-y-2 cursor-pointer group shadow-lg z-10 relative transform ${
+                <div className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 hover:bg-slate-700 group ${
                   location.pathname === item.href 
-                    ? 'bg-blue-600/30 border-blue-400 shadow-2xl shadow-blue-500/30 scale-105 -translate-y-1' 
-                    : 'card-on-gradient hover:border-white/40 hover:bg-white/10'
+                    ? 'bg-teal-600 text-white shadow-lg shadow-teal-600/30' 
+                    : 'text-slate-300 hover:text-white'
                 }`}>
-                  <div className="flex items-center space-x-2">
-                    <item.icon className={`h-4 w-4 group-hover:scale-125 transition-all duration-300 ${
-                      location.pathname === item.href ? 'text-blue-300' : 'text-blue-400'
-                    }`} />
-                    <span className="text-sm font-medium text-white group-hover:text-blue-100 transition-colors duration-300">
-                      {item.label}
-                    </span>
-                  </div>
-                </Card>
+                  <item.icon className={`h-5 w-5 transition-transform duration-200 group-hover:scale-110 ${
+                    location.pathname === item.href ? 'text-white' : 'text-slate-400'
+                  }`} />
+                  <span className="text-sm font-medium">
+                    {item.label}
+                  </span>
+                </div>
               </Link>
             ))}
           </div>
 
+          {/* User Menu */}
           <div className="flex items-center space-x-4">
             <UserMenu />
           </div>

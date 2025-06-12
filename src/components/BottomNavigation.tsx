@@ -16,17 +16,29 @@ const BottomNavigation = () => {
   ];
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-lg border-t border-white/20 shadow-2xl z-50">
-      <div className="flex justify-around items-center py-2 px-1">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 shadow-2xl z-50">
+      <div className="flex justify-around items-center py-2">
         {navItems.map((item) => (
           <Link key={item.href} to={item.href} className="flex-1">
-            <div className={`flex flex-col items-center p-2 mx-1 rounded-lg transition-all duration-300 hover:scale-110 hover:-translate-y-2 hover:shadow-xl transform ${
+            <div className={`flex flex-col items-center py-3 px-2 transition-all duration-200 ${
               location.pathname === item.href 
-                ? 'text-blue-400 bg-blue-600/20 shadow-lg shadow-blue-500/20 scale-105 -translate-y-1' 
-                : 'text-white/70 hover:text-white hover:bg-white/10'
+                ? 'text-orange-400' 
+                : 'text-white/70 hover:text-white'
             }`}>
-              <item.icon className="h-5 w-5 mb-1 transition-transform duration-300 hover:scale-125" />
-              <span className="text-xs font-medium">{item.label}</span>
+              <div className={`p-2 rounded-xl transition-all duration-200 ${
+                location.pathname === item.href 
+                  ? 'bg-orange-400/20 shadow-lg transform scale-110' 
+                  : 'hover:bg-white/10'
+              }`}>
+                <item.icon className={`h-5 w-5 transition-transform duration-200 ${
+                  location.pathname === item.href ? 'text-orange-400 scale-110' : ''
+                }`} />
+              </div>
+              <span className={`text-xs font-medium mt-1 transition-colors duration-200 ${
+                location.pathname === item.href ? 'text-orange-400' : 'text-white/80'
+              }`}>
+                {item.label}
+              </span>
             </div>
           </Link>
         ))}
