@@ -56,7 +56,7 @@ serve(async (req) => {
       apiVersion: '2023-10-16',
     });
 
-    // Fetch products with their default prices
+    // Fetch ALL active products with their default prices
     const products = await stripe.products.list({
       expand: ['data.default_price'],
       active: true,
@@ -65,20 +65,16 @@ serve(async (req) => {
 
     logStep("All products fetched from Stripe", { count: products.data.length });
 
-    // Use STRICT filtering - only products with billing_app_v1 identifier
-    const appProducts = products.data.filter(product => {
-      const metadata = product.metadata || {};
-      return metadata.created_via === 'billing_app_v1';
-    });
+    // Show all products - no filtering
+    const allProducts = products.data;
 
-    logStep("Filtered to billing app products", { 
-      originalCount: products.data.length,
-      filteredCount: appProducts.length 
+    logStep("Showing all customer products", { 
+      totalCount: allProducts.length 
     });
 
     // Enhance products with meter information and usage limits
     const enhancedProducts = await Promise.all(
-      appProducts.map(async (product) => {
+      allProducts.map(async (product) => {
         const enhanced = {
           ...product,
           usage_limits: {},
@@ -86,7 +82,7 @@ serve(async (req) => {
           graduated_pricing: null
         };
 
-        // Parse usage limits from metadata
+        // Parse usage limits from metadata if they exist
         if (product.metadata) {
           enhanced.usage_limits = {
             transactions: parseInt(product.metadata.usage_limit_transactions || '0'),
@@ -153,8 +149,8 @@ serve(async (req) => {
         success: true,
         products: enhancedProducts,
         total_count: enhancedProducts.length,
-        filtered_from: products.data.length,
-        app_products_only: true
+        showing_all_products: true,
+        filtered: false
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
