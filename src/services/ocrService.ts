@@ -21,7 +21,7 @@ class OCRService {
       return {
         text: result.data.text,
         confidence: result.data.confidence,
-        words: result.data.words || []
+        words: (result.data as any).words || []
       };
     } catch (error) {
       console.error('OCR processing failed:', error);
