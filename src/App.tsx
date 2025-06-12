@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -83,6 +82,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <SavedModels />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/stripe-pricing"
+        element={
+          <ProtectedRoute>
+            <StripePricing />
           </ProtectedRoute>
         }
       />
