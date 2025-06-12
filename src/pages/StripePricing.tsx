@@ -13,10 +13,12 @@ import { useToast } from '@/hooks/use-toast';
 import { stripeService } from '@/services/stripeService';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 
 interface PricingFormData {
   billingType: 'recurring' | 'oneOff';
-  pricingModel: 'flatRate' | 'package' | 'tiered' | 'usageBased';
+  pricingModel: 'flatRate' | 'package' | 'tiered' | 'usageBased' | 'payAsYouGo';
   amount: string;
   currency: string;
   taxBehavior: 'inclusive' | 'exclusive' | 'unspecified';
@@ -26,6 +28,19 @@ interface PricingFormData {
   unitQuantity: string;
   productName: string;
   productDescription: string;
+  // Pay-as-you-go specific fields
+  hasMeteredUsage: boolean;
+  meteredDisplayName: string;
+  meteredEventName: string;
+  meteredPricePerUnit: string;
+  meteredAggregation: 'sum' | 'last_during_period' | 'last_ever' | 'max';
+  // Additional original fields
+  nickname: string;
+  trialPeriodDays: string;
+  usageType: 'licensed' | 'metered';
+  billingScheme: 'per_unit' | 'tiered';
+  transformQuantityDivideBy: string;
+  transformQuantityRound: 'up' | 'down';
 }
 
 const StripePricing = () => {
@@ -47,6 +62,17 @@ const StripePricing = () => {
       unitQuantity: '1',
       productName: '',
       productDescription: '',
+      hasMeteredUsage: false,
+      meteredDisplayName: '',
+      meteredEventName: '',
+      meteredPricePerUnit: '',
+      meteredAggregation: 'sum',
+      nickname: '',
+      trialPeriodDays: '',
+      usageType: 'licensed',
+      billingScheme: 'per_unit',
+      transformQuantityDivideBy: '',
+      transformQuantityRound: 'up',
     },
   });
 
@@ -58,7 +84,14 @@ const StripePricing = () => {
     const total = (amount * quantity).toFixed(2);
     setPreviewAmount(total);
     setPreviewQuantity(quantity.toString());
-  }, [watchedValues.amount, watchedValues.unitQuantity]);
+
+    // Auto-set amount to $0 for pay-as-you-go
+    if (watchedValues.pricingModel === 'payAsYouGo' && watchedValues.amount !== '0') {
+      form.setValue('amount', '0');
+      form.setValue('hasMeteredUsage', true);
+      form.setValue('usageType', 'metered');
+    }
+  }, [watchedValues.amount, watchedValues.unitQuantity, watchedValues.pricingModel, form]);
 
   const onSubmit = async (data: PricingFormData) => {
     setIsSubmitting(true);
@@ -75,17 +108,31 @@ const StripePricing = () => {
         throw new Error(productResult.error);
       }
 
-      // Then create the price
+      // Create the base price
       const priceData: any = {
         product: productResult.product.id,
         unit_amount: Math.round(parseFloat(data.amount) * 100), // Convert to cents
         currency: data.currency.toLowerCase(),
+        nickname: data.nickname || undefined,
         metadata: {
           pricing_model: data.pricingModel,
           tax_behavior: data.taxBehavior,
           lookup_key: data.lookupKey || undefined,
         },
       };
+
+      // Add billing scheme and usage type
+      if (data.billingScheme) {
+        priceData.billing_scheme = data.billingScheme;
+      }
+
+      // Add transform quantity if specified
+      if (data.transformQuantityDivideBy) {
+        priceData.transform_quantity = {
+          divide_by: parseInt(data.transformQuantityDivideBy),
+          round: data.transformQuantityRound,
+        };
+      }
 
       // Add recurring data if it's a recurring price
       if (data.billingType === 'recurring') {
@@ -109,13 +156,41 @@ const StripePricing = () => {
         priceData.recurring = {
           interval,
           interval_count,
+          usage_type: data.usageType,
         };
+
+        // Add trial period if specified
+        if (data.trialPeriodDays) {
+          priceData.recurring.trial_period_days = parseInt(data.trialPeriodDays);
+        }
       }
 
       const priceResult = await stripeService.createPrice(priceData);
 
       if (priceResult.error) {
         throw new Error(priceResult.error);
+      }
+
+      // If pay-as-you-go with metered usage, create additional metered price
+      if (data.pricingModel === 'payAsYouGo' && data.hasMeteredUsage && data.meteredPricePerUnit) {
+        const meteredPriceData = {
+          product: productResult.product.id,
+          unit_amount: Math.round(parseFloat(data.meteredPricePerUnit) * 100),
+          currency: data.currency.toLowerCase(),
+          nickname: `${data.nickname || 'Metered'} - Usage`,
+          billing_scheme: 'per_unit',
+          recurring: {
+            interval: 'month' as const,
+            usage_type: 'metered' as const,
+            aggregate_usage: data.meteredAggregation,
+          },
+          metadata: {
+            pricing_model: 'metered_usage',
+            event_name: data.meteredEventName,
+          },
+        };
+
+        await stripeService.createPrice(meteredPriceData);
       }
 
       toast({
@@ -156,6 +231,8 @@ const StripePricing = () => {
         return 'Offer different price points based on unit quantity.';
       case 'usageBased':
         return 'Pay-as-you-go billing based on metered usage.';
+      case 'payAsYouGo':
+        return 'Card on file with $0 base price, charge for actual usage.';
       default:
         return '';
     }
@@ -169,10 +246,10 @@ const StripePricing = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Form */}
         <div className="lg:col-span-2">
-          <Card>
+          <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle>Price Builder</CardTitle>
-              <CardDescription>Configure your Stripe pricing model</CardDescription>
+              <CardTitle className="text-card-foreground">Price Builder</CardTitle>
+              <CardDescription className="text-muted-foreground">Configure your Stripe pricing model</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...form}>
@@ -253,23 +330,16 @@ const StripePricing = () => {
                                 <div className="text-sm text-muted-foreground">Pay-as-you-go billing based on metered usage.</div>
                               </div>
                             </SelectItem>
+                            <SelectItem value="payAsYouGo">
+                              <div>
+                                <div className="font-medium">Pay-as-you-go</div>
+                                <div className="text-sm text-muted-foreground">Card on file with $0 base price, charge for actual usage.</div>
+                              </div>
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                         <div className="text-sm text-muted-foreground mt-2">
                           {getPricingModelDescription(watchedValues.pricingModel)}
-                          {watchedValues.pricingModel === 'flatRate' && (
-                            <span>
-                              {' '}
-                              <a 
-                                href="https://stripe.com/docs/products-prices/pricing-models#flat-rate" 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline"
-                              >
-                                View docs
-                              </a>
-                            </span>
-                          )}
                         </div>
                         <FormMessage />
                       </FormItem>
@@ -303,7 +373,7 @@ const StripePricing = () => {
                         <FormItem>
                           <FormLabel>Product Description</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="Describe what customers are purchasing" />
+                            <Textarea {...field} placeholder="Describe what customers are purchasing" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -323,7 +393,12 @@ const StripePricing = () => {
                       name="amount"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Amount (required)</FormLabel>
+                          <FormLabel>
+                            Amount (required)
+                            {watchedValues.pricingModel === 'payAsYouGo' && (
+                              <Badge variant="secondary" className="ml-2">Auto-set to $0</Badge>
+                            )}
+                          </FormLabel>
                           <div className="flex">
                             <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                               <span>$</span>
@@ -336,6 +411,7 @@ const StripePricing = () => {
                                 step="0.01"
                                 min="0"
                                 className="rounded-l-none border-l-0"
+                                disabled={watchedValues.pricingModel === 'payAsYouGo'}
                               />
                             </FormControl>
                             <FormControl>
@@ -353,6 +429,21 @@ const StripePricing = () => {
                               </Select>
                             </FormControl>
                           </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Nickname */}
+                    <FormField
+                      control={form.control}
+                      name="nickname"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Price Nickname</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="e.g. Standard Plan" />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -399,6 +490,7 @@ const StripePricing = () => {
                       <Separator />
                       <div className="space-y-4">
                         <h3 className="text-lg font-semibold">Billing period</h3>
+                        
                         <FormField
                           control={form.control}
                           name="interval"
@@ -425,6 +517,126 @@ const StripePricing = () => {
                             </FormItem>
                           )}
                         />
+
+                        <FormField
+                          control={form.control}
+                          name="usageType"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Usage Type</FormLabel>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="licensed">Licensed</SelectItem>
+                                  <SelectItem value="metered">Metered</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="trialPeriodDays"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Trial Period (days)</FormLabel>
+                              <FormControl>
+                                <Input {...field} type="number" placeholder="0" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Pay-as-you-go Metered Usage */}
+                  {watchedValues.pricingModel === 'payAsYouGo' && (
+                    <>
+                      <Separator />
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold">Metered Usage Configuration</h3>
+                        
+                        <div className="flex items-center space-x-2">
+                          <FormField
+                            control={form.control}
+                            name="hasMeteredUsage"
+                            render={({ field }) => (
+                              <FormItem className="flex items-center space-x-2">
+                                <FormControl>
+                                  <Switch
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                                <FormLabel>Enable metered usage billing</FormLabel>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        {watchedValues.hasMeteredUsage && (
+                          <>
+                            <FormField
+                              control={form.control}
+                              name="meteredPricePerUnit"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Price per unit of usage</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} type="number" step="0.01" placeholder="0.10" />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name="meteredEventName"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Usage Event Name</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} placeholder="api_calls" />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name="meteredAggregation"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Usage Aggregation</FormLabel>
+                                  <Select value={field.value} onValueChange={field.onChange}>
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="sum">Sum</SelectItem>
+                                      <SelectItem value="last_during_period">Last During Period</SelectItem>
+                                      <SelectItem value="last_ever">Last Ever</SelectItem>
+                                      <SelectItem value="max">Maximum</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </>
+                        )}
                       </div>
                     </>
                   )}
@@ -463,7 +675,7 @@ const StripePricing = () => {
                               href="https://stripe.com/docs/products-prices/manage-prices#lookup-keys"
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-600 hover:underline"
+                              className="text-primary hover:underline"
                             >
                               Lookup keys
                             </a>{' '}
@@ -473,6 +685,66 @@ const StripePricing = () => {
                         </FormItem>
                       )}
                     />
+
+                    <FormField
+                      control={form.control}
+                      name="billingScheme"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Billing Scheme</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="per_unit">Per Unit</SelectItem>
+                              <SelectItem value="tiered">Tiered</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="transformQuantityDivideBy"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Transform Quantity (Divide By)</FormLabel>
+                            <FormControl>
+                              <Input {...field} type="number" placeholder="1" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="transformQuantityRound"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Rounding</FormLabel>
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="up">Round Up</SelectItem>
+                                <SelectItem value="down">Round Down</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   </div>
 
                   {/* Submit Buttons */}
@@ -490,10 +762,10 @@ const StripePricing = () => {
 
         {/* Preview Panel */}
         <div className="lg:col-span-1">
-          <Card>
+          <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle>Preview</CardTitle>
-              <CardDescription>Estimate totals based on pricing model, unit quantity, and tax.</CardDescription>
+              <CardTitle className="text-card-foreground">Preview</CardTitle>
+              <CardDescription className="text-muted-foreground">Estimate totals based on pricing model, unit quantity, and tax.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -515,6 +787,12 @@ const StripePricing = () => {
               <div className="text-sm">
                 {previewQuantity} × {formatCurrency(watchedValues.amount || '0')} = {formatCurrency(previewAmount)}
               </div>
+
+              {watchedValues.pricingModel === 'payAsYouGo' && watchedValues.hasMeteredUsage && (
+                <div className="text-sm text-muted-foreground">
+                  + {formatCurrency(watchedValues.meteredPricePerUnit || '0')} per usage unit
+                </div>
+              )}
 
               <Separator />
 
