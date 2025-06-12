@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
@@ -22,9 +23,6 @@ const TopNavigation = () => {
         <div className="flex items-center justify-between">
           {/* Logo and Brand */}
           <div className="flex items-center space-x-3 relative z-50">
-            <div className="bg-gradient-to-r from-teal-500 to-emerald-500 p-2 rounded-lg shadow-lg">
-              <Upload className="h-6 w-6 text-white" />
-            </div>
             <div>
               <h1 className="text-xl font-bold text-white">
                 Stripe Setup Pilot

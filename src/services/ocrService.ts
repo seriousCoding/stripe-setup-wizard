@@ -11,48 +11,107 @@ export interface OCRResult {
 class OCRService {
   async processImage(imageFile: File): Promise<OCRResult> {
     try {
-      console.log('Starting OCR processing for:', imageFile.name);
+      console.log('Starting OCR processing for:', imageFile.name, 'Size:', imageFile.size);
       
       // Validate image file
       if (!imageFile.type.startsWith('image/')) {
-        throw new Error('File is not a valid image');
+        throw new Error('File is not a valid image format');
       }
 
-      // Check file size (limit to 10MB)
-      if (imageFile.size > 10 * 1024 * 1024) {
-        throw new Error('Image file is too large (max 10MB)');
+      // Check file size (limit to 20MB)
+      if (imageFile.size > 20 * 1024 * 1024) {
+        throw new Error('Image file is too large (max 20MB)');
       }
+
+      // Check if file is empty
+      if (imageFile.size === 0) {
+        throw new Error('Image file is empty');
+      }
+
+      // Validate image can be loaded
+      await this.validateImageFile(imageFile);
+
+      console.log('Starting Tesseract recognition...');
 
       const result = await Tesseract.recognize(imageFile, 'eng', {
-        logger: m => console.log('OCR Progress:', m),
-        errorHandler: err => console.error('OCR Error:', err)
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
+          }
+        },
+        errorHandler: (err) => console.error('Tesseract Error:', err)
       });
 
-      if (!result.data) {
+      if (!result || !result.data) {
         throw new Error('OCR processing returned no data');
       }
 
-      console.log('OCR Result:', result.data);
+      const confidence = result.data.confidence || 0;
+      const text = result.data.text || '';
+      const words = result.data.words || [];
 
-      const extractedData = this.extractStructuredData(result.data.text);
+      console.log('OCR completed. Confidence:', confidence, 'Text length:', text.length);
+
+      if (text.trim().length === 0) {
+        console.warn('OCR returned empty text');
+        return {
+          text: '',
+          confidence: 0,
+          words: [],
+          data: []
+        };
+      }
+
+      const extractedData = this.extractStructuredData(text);
 
       return {
-        text: result.data.text || '',
-        confidence: result.data.confidence || 0,
-        words: (result.data as any).words || [],
+        text,
+        confidence,
+        words,
         data: extractedData
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('OCR processing failed:', error);
-      throw new Error(`OCR processing failed: ${error}`);
+      
+      // Provide more specific error messages
+      if (error.message?.includes('network') || error.message?.includes('fetch')) {
+        throw new Error('Network error during OCR processing. Please check your connection and try again.');
+      } else if (error.message?.includes('worker')) {
+        throw new Error('OCR engine failed to initialize. Please refresh the page and try again.');
+      } else {
+        throw new Error(`OCR processing failed: ${error.message || 'Unknown error'}`);
+      }
     }
+  }
+
+  private async validateImageFile(imageFile: File): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(imageFile);
+      
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        if (img.width === 0 || img.height === 0) {
+          reject(new Error('Invalid image dimensions'));
+        } else {
+          resolve();
+        }
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Cannot load image file - file may be corrupted'));
+      };
+      
+      img.src = url;
+    });
   }
 
   async processCameraCapture(canvas: HTMLCanvasElement): Promise<OCRResult> {
     return new Promise((resolve, reject) => {
       canvas.toBlob(async (blob) => {
         if (!blob) {
-          reject(new Error('Failed to capture image'));
+          reject(new Error('Failed to capture image from camera'));
           return;
         }
         
@@ -63,86 +122,121 @@ class OCRService {
         } catch (error) {
           reject(error);
         }
-      }, 'image/jpeg', 0.8);
+      }, 'image/jpeg', 0.9);
     });
   }
 
   private extractStructuredData(text: string): any[] {
-    const lines = text.split('\n').filter(line => line.trim());
+    if (!text || text.trim().length === 0) {
+      return [];
+    }
+
+    const lines = text.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 2);
+    
     const data: any[] = [];
-    const pricePattern = /\$\d+\.?\d*/g;
+    const pricePattern = /\$?\d+\.?\d*/g;
+    const currencyPattern = /\$\d+(?:\.\d{2})?/g;
     const numberPattern = /\d+\.?\d*/;
     
     lines.forEach((line, index) => {
-      const trimmedLine = line.trim();
-      if (!trimmedLine || trimmedLine.length < 3) return;
+      // Skip very short lines
+      if (line.length < 4) return;
 
-      // Split by tabs, multiple spaces, or single spaces
-      let parts = trimmedLine.split('\t');
+      // Split by tabs, multiple spaces, or other delimiters
+      let parts = line.split('\t').filter(part => part.trim());
       if (parts.length === 1) {
-        parts = trimmedLine.split(/\s{2,}/);
+        parts = line.split(/\s{3,}/).filter(part => part.trim());
       }
       if (parts.length === 1) {
-        parts = trimmedLine.split(/\s+/);
+        parts = line.split(/\|/).filter(part => part.trim());
+      }
+      if (parts.length === 1) {
+        parts = line.split(/,(?=\s)/).filter(part => part.trim());
+      }
+      if (parts.length === 1) {
+        parts = line.split(/\s+/).filter(part => part.trim());
       }
 
-      parts = parts.filter(part => part.trim());
-
-      if (parts.length >= 1) {
-        const prices = trimmedLine.match(pricePattern) || [];
-        const hasPrice = prices.length > 0;
-        const hasNumbers = numberPattern.test(trimmedLine);
+      const prices = line.match(currencyPattern) || [];
+      const numbers = line.match(pricePattern) || [];
+      const hasPrice = prices.length > 0;
+      const hasNumbers = numberPattern.test(line);
         
-        // Process any line that could contain product information
-        if (hasPrice || hasNumbers || parts.length >= 2) {
-          const item: any = {
-            id: `ocr-${index}`,
-            product: parts[0] || `Service ${index + 1}`,
-            description: parts[0] || `Service ${index + 1}`,
-            source: 'ocr',
-            lineNumber: index + 1,
-            originalLine: trimmedLine
-          };
+      // Determine if this could be product information
+      const isProductLine = hasPrice || 
+                           hasNumbers || 
+                           parts.length >= 2 ||
+                           line.toLowerCase().includes('service') ||
+                           line.toLowerCase().includes('product') ||
+                           line.toLowerCase().includes('plan') ||
+                           line.toLowerCase().includes('subscription') ||
+                           line.toLowerCase().includes('api') ||
+                           line.toLowerCase().includes('usage');
 
-          // Add additional details if available
-          if (parts.length > 1) {
-            item.details = parts.slice(1).join(' ');
+      if (isProductLine && parts.length > 0) {
+        const productName = parts[0] || `Service ${index + 1}`;
+        
+        const item: any = {
+          id: `ocr-${index}`,
+          product: productName,
+          description: parts.length > 1 ? parts.slice(1).join(' ') : productName,
+          source: 'ocr',
+          lineNumber: index + 1,
+          originalLine: line,
+          rawParts: parts
+        };
+
+        // Extract pricing information
+        if (hasPrice && prices.length > 0) {
+          const mainPrice = prices[0];
+          const numericPrice = parseFloat(mainPrice.replace(/[$,]/g, ''));
+          if (!isNaN(numericPrice)) {
+            item.price = numericPrice;
+            item.unit_amount = Math.round(numericPrice * 100);
           }
-
-          // Extract pricing
-          if (hasPrice) {
-            const mainPrice = prices[prices.length - 1] || prices[0];
-            item.price = parseFloat(mainPrice.replace('$', '')) || 0;
+        } else if (hasNumbers && numbers.length > 0) {
+          // Try to find a reasonable price from numbers
+          const validNumbers = numbers
+            .map(n => parseFloat(n))
+            .filter(n => !isNaN(n) && n > 0 && n < 100000);
+          
+          if (validNumbers.length > 0) {
+            item.price = validNumbers[validNumbers.length - 1];
             item.unit_amount = Math.round(item.price * 100);
-          } else {
-            item.price = 0;
-            item.unit_amount = 0;
           }
-
-          // Determine product type
-          const lowerLine = trimmedLine.toLowerCase();
-          if (lowerLine.includes('per') || lowerLine.includes('usage') || lowerLine.includes('meter')) {
-            item.type = 'metered';
-            item.billing_scheme = 'per_unit';
-            item.usage_type = 'metered';
-            item.aggregate_usage = 'sum';
-          } else if (lowerLine.includes('month') || lowerLine.includes('subscription')) {
-            item.type = 'recurring';
-            item.billing_scheme = 'per_unit';
-            item.interval = 'month';
-          } else {
-            item.type = 'one_time';
-          }
-
-          item.currency = 'usd';
-          item.metadata = {
-            auto_detected_type: item.type,
-            source: 'ocr_parser',
-            confidence: 80
-          };
-
-          data.push(item);
         }
+
+        if (!item.price) {
+          item.price = 0;
+          item.unit_amount = 0;
+        }
+
+        // Determine product type based on content
+        const lowerLine = line.toLowerCase();
+        if (lowerLine.includes('per') || lowerLine.includes('usage') || lowerLine.includes('meter') || lowerLine.includes('api')) {
+          item.type = 'metered';
+          item.billing_scheme = 'per_unit';
+          item.usage_type = 'metered';
+          item.aggregate_usage = 'sum';
+        } else if (lowerLine.includes('month') || lowerLine.includes('subscription') || lowerLine.includes('recurring')) {
+          item.type = 'recurring';
+          item.billing_scheme = 'per_unit';
+          item.interval = 'month';
+        } else {
+          item.type = 'one_time';
+        }
+
+        item.currency = 'usd';
+        item.metadata = {
+          auto_detected_type: item.type,
+          source: 'ocr_parser',
+          confidence: 75,
+          extraction_method: 'text_analysis'
+        };
+
+        data.push(item);
       }
     });
 
