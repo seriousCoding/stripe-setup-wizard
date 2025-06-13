@@ -11,31 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Trash2, Plus, Save, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-
-interface StripeProduct {
-  id: string;
-  name: string;
-  description: string;
-  active: boolean;
-  metadata: Record<string, string>;
-  prices: StripePrice[];
-}
-
-interface StripePrice {
-  id: string;
-  unit_amount: number;
-  currency: string;
-  type: 'one_time' | 'recurring';
-  interval?: 'month' | 'year' | 'week' | 'day';
-  active: boolean;
-  metadata: Record<string, string>;
-  billing_scheme?: 'per_unit' | 'tiered';
-  tiers?: Array<{
-    up_to: number | null;
-    unit_amount: number;
-    flat_amount: number;
-  }>;
-}
+import { StripeProduct, StripePrice } from '@/services/stripeService';
 
 interface ProductEditDialogProps {
   product: StripeProduct | null;
@@ -290,7 +266,7 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
                           <span className="font-medium">
                             {formatPrice(price.unit_amount, price.currency)}
                           </span>
-                          {price.type === 'recurring' && (
+                          {price.type === 'recurring' && price.interval && (
                             <Badge variant="outline">/{price.interval}</Badge>
                           )}
                           {price.billing_scheme === 'tiered' && (

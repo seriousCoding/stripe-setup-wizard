@@ -8,31 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { ProductEditDialog } from '@/components/ProductEditDialog';
-
-interface StripeProduct {
-  id: string;
-  name: string;
-  description: string;
-  active: boolean;
-  metadata: Record<string, string>;
-  default_price?: {
-    id: string;
-    unit_amount: number;
-    currency: string;
-    type: 'one_time' | 'recurring';
-    interval?: string;
-  };
-  prices: Array<{
-    id: string;
-    unit_amount: number;
-    currency: string;
-    type: 'one_time' | 'recurring';
-    interval?: string;
-    active: boolean;
-    billing_scheme?: 'per_unit' | 'tiered';
-    metadata: Record<string, string>;
-  }>;
-}
+import { StripeProduct } from '@/services/stripeService';
 
 const Products = () => {
   const { toast } = useToast();
@@ -213,35 +189,16 @@ const Products = () => {
                     <p className="text-sm text-gray-600">{product.description}</p>
                   )}
 
-                  {/* Default Price */}
-                  {product.default_price && (
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">Default Price:</span>
-                        <div className="text-right">
-                          <div className="font-bold">
-                            {formatPrice(product.default_price.unit_amount, product.default_price.currency)}
-                          </div>
-                          {product.default_price.type === 'recurring' && (
-                            <Badge variant="outline" className="text-xs">
-                              /{product.default_price.interval}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Additional Prices */}
+                  {/* All Prices */}
                   {product.prices && product.prices.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="font-medium text-sm">All Prices ({product.prices.length}):</h4>
+                      <h4 className="font-medium text-sm">Prices ({product.prices.length}):</h4>
                       <div className="space-y-2 max-h-32 overflow-y-auto">
                         {product.prices.map((price) => (
                           <div key={price.id} className="flex items-center justify-between text-sm p-2 border rounded">
                             <div className="flex items-center space-x-2">
                               <span>{formatPrice(price.unit_amount, price.currency)}</span>
-                              {price.type === 'recurring' && (
+                              {price.type === 'recurring' && price.interval && (
                                 <Badge variant="outline" className="text-xs">
                                   /{price.interval}
                                 </Badge>
