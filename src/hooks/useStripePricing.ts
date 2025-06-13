@@ -41,7 +41,7 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
   const fetchPricingData = async (isAutoRefresh = false) => {
     // Prevent too frequent requests
     const now = Date.now();
-    if (now - lastFetchRef.current < 10000 && isAutoRefresh) {
+    if (now - lastFetchRef.current < 5000 && isAutoRefresh) {
       console.log('Skipping fetch due to rate limiting');
       return;
     }
@@ -61,8 +61,10 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
 
       if (error) {
         console.error('Error fetching Stripe data:', error);
-        throw new Error(error.message);
+        throw new Error(error.message || 'Failed to fetch pricing data');
       }
+
+      console.log('Fetch response:', data);
 
       if (data?.success) {
         setAllProducts(data.all_products || []);
@@ -74,17 +76,22 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
           setPricingTiers(tiers);
           console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length);
         } else {
-          console.log(`No ${useAllProducts ? '' : 'app '}products found`);
-          setPricingTiers([]);
+          console.log(`No ${useAllProducts ? '' : 'app '}products found, using fallback`);
+          // Use fallback pricing tiers if no products found
+          const fallbackTiers = getDefaultPricingTiers();
+          setPricingTiers(fallbackTiers);
         }
       } else {
-        console.log('No products found or fetch unsuccessful');
-        setPricingTiers([]);
+        console.log('No products found or fetch unsuccessful, using fallback');
+        const fallbackTiers = getDefaultPricingTiers();
+        setPricingTiers(fallbackTiers);
       }
     } catch (err: any) {
       console.error('Error fetching pricing data:', err);
       setError(err.message);
-      setPricingTiers([]);
+      // Use fallback pricing tiers on error
+      const fallbackTiers = getDefaultPricingTiers();
+      setPricingTiers(fallbackTiers);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

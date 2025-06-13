@@ -20,54 +20,6 @@ const logStep = (step: string, details?: any) => {
   console.log(`[SEND-NOTIFICATION] ${step}${detailsStr}`);
 };
 
-// Real email service using Resend
-async function sendRealEmail(notification: EmailNotification): Promise<void> {
-  const resendApiKey = Deno.env.get('RESEND_API_KEY');
-  
-  if (!resendApiKey) {
-    throw new Error('RESEND_API_KEY not configured');
-  }
-
-  logStep("Using Resend email service");
-  
-  const resend = new Resend(resendApiKey);
-  
-  const emailResponse = await resend.emails.send({
-    from: "Stripe Setup Pilot <noreply@yourdomain.com>",
-    to: [notification.to],
-    subject: notification.subject,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">${notification.subject}</h2>
-        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <p style="white-space: pre-line; color: #555;">${notification.message}</p>
-        </div>
-        <p style="color: #888; font-size: 12px;">
-          This email was sent from your Stripe Setup Pilot application.
-        </p>
-      </div>
-    `,
-  });
-
-  logStep("Email sent successfully", { messageId: emailResponse.data?.id });
-}
-
-// Fallback email service for when Resend is not configured
-async function sendFallbackEmail(notification: EmailNotification): Promise<void> {
-  logStep("Using fallback email service (logging only)");
-  
-  logStep("Email content", {
-    to: notification.to,
-    subject: notification.subject,
-    message: notification.message.substring(0, 100) + '...',
-    type: notification.type
-  });
-  
-  // Simulate successful email sending
-  await new Promise(resolve => setTimeout(resolve, 100));
-  logStep("Email logged successfully (fallback mode)");
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -90,18 +42,38 @@ serve(async (req) => {
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     
-    if (resendApiKey) {
-      await sendRealEmail(notification);
-    } else {
-      logStep("RESEND_API_KEY not found, using fallback");
-      await sendFallbackEmail(notification);
+    if (!resendApiKey) {
+      throw new Error('RESEND_API_KEY not configured');
     }
+
+    logStep("Using Resend email service");
+    
+    const resend = new Resend(resendApiKey);
+    
+    const emailResponse = await resend.emails.send({
+      from: "Stripe Setup Pilot <noreply@yourdomain.com>",
+      to: [notification.to],
+      subject: notification.subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">${notification.subject}</h2>
+          <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p style="white-space: pre-line; color: #555;">${notification.message}</p>
+          </div>
+          <p style="color: #888; font-size: 12px;">
+            This email was sent from your Stripe Setup Pilot application.
+          </p>
+        </div>
+      `,
+    });
+
+    logStep("Email sent successfully", { messageId: emailResponse.data?.id });
 
     return new Response(
       JSON.stringify({ 
         success: true,
         message: 'Email notification sent successfully',
-        method: resendApiKey ? 'resend' : 'fallback'
+        messageId: emailResponse.data?.id
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
