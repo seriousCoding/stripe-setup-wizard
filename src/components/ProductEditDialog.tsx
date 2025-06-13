@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -15,6 +14,7 @@ import { Trash2, Plus, Save, X, Edit2, DollarSign, Calendar } from 'lucide-react
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { StripeProduct, StripePrice } from '@/services/stripeService';
+import { PriceEditForm } from './PriceEditForm';
 
 interface ProductEditDialogProps {
   product: StripeProduct | null;
@@ -71,6 +71,7 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
   const [newMetadataKey, setNewMetadataKey] = useState('');
   const [newMetadataValue, setNewMetadataValue] = useState('');
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [editingPrice, setEditingPrice] = useState<StripePrice | null>(null);
 
   useEffect(() => {
     if (product) {
@@ -115,6 +116,50 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
         round: 'up'
       }
     });
+  };
+
+  const handleEditPrice = async (priceId: string) => {
+    setIsLoading(true);
+    try {
+      const { price, error } = await stripeService.retrievePrice(priceId);
+      
+      if (error) {
+        throw new Error(error);
+      }
+
+      if (price) {
+        setEditingPrice(price);
+        setEditingPriceId(priceId);
+      }
+    } catch (error: any) {
+      console.error('Error retrieving price:', error);
+      toast({
+        title: "Failed to Load Price",
+        description: error.message || "Failed to retrieve price details.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePriceUpdated = (updatedPrice: StripePrice) => {
+    // Update the local prices array
+    setPrices(prevPrices => 
+      prevPrices.map(p => p.id === updatedPrice.id ? updatedPrice : p)
+    );
+    
+    // Close the edit form
+    setEditingPrice(null);
+    setEditingPriceId(null);
+    
+    // Refresh the parent component
+    onProductUpdated();
+  };
+
+  const handleCancelPriceEdit = () => {
+    setEditingPrice(null);
+    setEditingPriceId(null);
   };
 
   const handleUpdateProduct = async () => {
@@ -307,446 +352,464 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="pricing">Pricing</TabsTrigger>
-            <TabsTrigger value="metadata">Metadata</TabsTrigger>
-            <TabsTrigger value="advanced">Advanced</TabsTrigger>
-          </TabsList>
+        {editingPrice ? (
+          <PriceEditForm
+            price={editingPrice}
+            onPriceUpdated={handlePriceUpdated}
+            onCancel={handleCancelPriceEdit}
+          />
+        ) : (
+          <Tabs defaultValue="general" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="pricing">Pricing</TabsTrigger>
+              <TabsTrigger value="metadata">Metadata</TabsTrigger>
+              <TabsTrigger value="advanced">Advanced</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="general" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Basic Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+            <TabsContent value="general" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Basic Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="product-name">Product Name *</Label>
+                      <Input
+                        id="product-name"
+                        value={productData.name}
+                        onChange={(e) => setProductData({ ...productData, name: e.target.value })}
+                        placeholder="Enter product name"
+                      />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="product-active"
+                        checked={productData.active}
+                        onCheckedChange={(checked) => setProductData({ ...productData, active: checked })}
+                      />
+                      <Label htmlFor="product-active">Active</Label>
+                    </div>
+                  </div>
+
                   <div>
-                    <Label htmlFor="product-name">Product Name *</Label>
-                    <Input
-                      id="product-name"
-                      value={productData.name}
-                      onChange={(e) => setProductData({ ...productData, name: e.target.value })}
-                      placeholder="Enter product name"
+                    <Label htmlFor="product-description">Description</Label>
+                    <Textarea
+                      id="product-description"
+                      value={productData.description}
+                      onChange={(e) => setProductData({ ...productData, description: e.target.value })}
+                      placeholder="Enter product description"
+                      rows={3}
                     />
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="product-active"
-                      checked={productData.active}
-                      onCheckedChange={(checked) => setProductData({ ...productData, active: checked })}
-                    />
-                    <Label htmlFor="product-active">Active</Label>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="product-url">Product URL</Label>
+                      <Input
+                        id="product-url"
+                        value={productData.url}
+                        onChange={(e) => setProductData({ ...productData, url: e.target.value })}
+                        placeholder="https://example.com/product"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="unit-label">Unit Label</Label>
+                      <Input
+                        id="unit-label"
+                        value={productData.unit_label}
+                        onChange={(e) => setProductData({ ...productData, unit_label: e.target.value })}
+                        placeholder="e.g., per user, per GB"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <Label htmlFor="product-description">Description</Label>
-                  <Textarea
-                    id="product-description"
-                    value={productData.description}
-                    onChange={(e) => setProductData({ ...productData, description: e.target.value })}
-                    placeholder="Enter product description"
-                    rows={3}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="product-url">Product URL</Label>
+                    <Label htmlFor="statement-descriptor">Statement Descriptor</Label>
                     <Input
-                      id="product-url"
-                      value={productData.url}
-                      onChange={(e) => setProductData({ ...productData, url: e.target.value })}
-                      placeholder="https://example.com/product"
+                      id="statement-descriptor"
+                      value={productData.statement_descriptor}
+                      onChange={(e) => setProductData({ ...productData, statement_descriptor: e.target.value })}
+                      placeholder="Appears on customer's credit card statement"
+                      maxLength={22}
                     />
+                    <p className="text-xs text-gray-500 mt-1">Maximum 22 characters</p>
                   </div>
-                  <div>
-                    <Label htmlFor="unit-label">Unit Label</Label>
-                    <Input
-                      id="unit-label"
-                      value={productData.unit_label}
-                      onChange={(e) => setProductData({ ...productData, unit_label: e.target.value })}
-                      placeholder="e.g., per user, per GB"
-                    />
-                  </div>
-                </div>
 
-                <div>
-                  <Label htmlFor="statement-descriptor">Statement Descriptor</Label>
-                  <Input
-                    id="statement-descriptor"
-                    value={productData.statement_descriptor}
-                    onChange={(e) => setProductData({ ...productData, statement_descriptor: e.target.value })}
-                    placeholder="Appears on customer's credit card statement"
-                    maxLength={22}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Maximum 22 characters</p>
-                </div>
-
-                <Button onClick={handleUpdateProduct} disabled={isLoading} className="w-full">
-                  <Save className="h-4 w-4 mr-2" />
-                  Update Product
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="pricing" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Existing Prices ({prices.length})</span>
-                  <Button onClick={() => setShowAddPrice(true)} disabled={showAddPrice}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Price
+                  <Button onClick={handleUpdateProduct} disabled={isLoading} className="w-full">
+                    <Save className="h-4 w-4 mr-2" />
+                    Update Product
                   </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {prices.map((price) => (
-                    <div key={price.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <DollarSign className="h-4 w-4 text-green-600" />
-                          <span className="font-medium text-lg">
-                            {getPriceDisplayText(price)}
-                          </span>
-                          {price.billing_scheme === 'tiered' && (
-                            <Badge variant="secondary">Tiered</Badge>
-                          )}
-                          {price.type === 'recurring' && price.recurring?.usage_type === 'metered' && (
-                            <Badge variant="outline">Metered</Badge>
-                          )}
-                          {!price.active && (
-                            <Badge variant="destructive">Inactive</Badge>
-                          )}
-                        </div>
-                        {price.nickname && (
-                          <div className="text-sm text-gray-600 mb-1">
-                            Nickname: {price.nickname}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="pricing" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Existing Prices ({prices.length})</span>
+                    <Button onClick={() => setShowAddPrice(true)} disabled={showAddPrice}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Price
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {prices.map((price) => (
+                      <div key={price.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <DollarSign className="h-4 w-4 text-green-600" />
+                            <span className="font-medium text-lg">
+                              {getPriceDisplayText(price)}
+                            </span>
+                            {price.billing_scheme === 'tiered' && (
+                              <Badge variant="secondary">Tiered</Badge>
+                            )}
+                            {price.type === 'recurring' && price.recurring?.usage_type === 'metered' && (
+                              <Badge variant="outline">Metered</Badge>
+                            )}
+                            {!price.active && (
+                              <Badge variant="destructive">Inactive</Badge>
+                            )}
                           </div>
-                        )}
-                        <div className="text-xs text-gray-400">
-                          ID: {price.id} • Currency: {price.currency.toUpperCase()}
+                          {price.nickname && (
+                            <div className="text-sm text-gray-600 mb-1">
+                              Nickname: {price.nickname}
+                            </div>
+                          )}
+                          <div className="text-xs text-gray-400">
+                            ID: {price.id} • Currency: {price.currency.toUpperCase()}
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditPrice(price.id)}
+                            disabled={isLoading}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          {price.active && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeactivatePrice(price.id)}
+                              disabled={isLoading}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
-                      {price.active && (
+                    ))}
+                  </div>
+
+                  {showAddPrice && (
+                    <div className="mt-6 p-4 border rounded-lg space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium">Add New Price</h4>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
-                          onClick={() => handleDeactivatePrice(price.id)}
-                          disabled={isLoading}
+                          onClick={() => {
+                            setShowAddPrice(false);
+                            resetNewPrice();
+                          }}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <X className="h-4 w-4" />
                         </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {showAddPrice && (
-                  <div className="mt-6 p-4 border rounded-lg space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium">Add New Price</h4>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setShowAddPrice(false);
-                          resetNewPrice();
-                        }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <Label>Amount ($) *</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={newPrice.unit_amount}
-                          onChange={(e) => setNewPrice({ ...newPrice, unit_amount: parseFloat(e.target.value) || 0 })}
-                          placeholder="0.00"
-                        />
                       </div>
 
-                      <div>
-                        <Label>Currency</Label>
-                        <Select
-                          value={newPrice.currency}
-                          onValueChange={(value) => setNewPrice({ ...newPrice, currency: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="usd">USD</SelectItem>
-                            <SelectItem value="eur">EUR</SelectItem>
-                            <SelectItem value="gbp">GBP</SelectItem>
-                            <SelectItem value="cad">CAD</SelectItem>
-                            <SelectItem value="aud">AUD</SelectItem>
-                            <SelectItem value="jpy">JPY</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div>
-                        <Label>Type</Label>
-                        <Select
-                          value={newPrice.type}
-                          onValueChange={(value: 'one_time' | 'recurring') => setNewPrice({ ...newPrice, type: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="one_time">One Time</SelectItem>
-                            <SelectItem value="recurring">Recurring</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {newPrice.type === 'recurring' && (
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <Label>Interval</Label>
-                          <Select
-                            value={newPrice.interval}
-                            onValueChange={(value: 'month' | 'year' | 'week' | 'day') => setNewPrice({ ...newPrice, interval: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="day">Daily</SelectItem>
-                              <SelectItem value="week">Weekly</SelectItem>
-                              <SelectItem value="month">Monthly</SelectItem>
-                              <SelectItem value="year">Yearly</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label>Interval Count</Label>
+                          <Label>Amount ($) *</Label>
                           <Input
                             type="number"
-                            min="1"
-                            value={newPrice.interval_count}
-                            onChange={(e) => setNewPrice({ ...newPrice, interval_count: parseInt(e.target.value) || 1 })}
+                            step="0.01"
+                            value={newPrice.unit_amount}
+                            onChange={(e) => setNewPrice({ ...newPrice, unit_amount: parseFloat(e.target.value) || 0 })}
+                            placeholder="0.00"
                           />
                         </div>
 
                         <div>
-                          <Label>Usage Type</Label>
+                          <Label>Currency</Label>
                           <Select
-                            value={newPrice.usage_type}
-                            onValueChange={(value: 'licensed' | 'metered') => setNewPrice({ ...newPrice, usage_type: value })}
+                            value={newPrice.currency}
+                            onValueChange={(value) => setNewPrice({ ...newPrice, currency: value })}
                           >
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="licensed">Licensed</SelectItem>
-                              <SelectItem value="metered">Metered</SelectItem>
+                              <SelectItem value="usd">USD</SelectItem>
+                              <SelectItem value="eur">EUR</SelectItem>
+                              <SelectItem value="gbp">GBP</SelectItem>
+                              <SelectItem value="cad">CAD</SelectItem>
+                              <SelectItem value="aud">AUD</SelectItem>
+                              <SelectItem value="jpy">JPY</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label>Type</Label>
+                          <Select
+                            value={newPrice.type}
+                            onValueChange={(value: 'one_time' | 'recurring') => setNewPrice({ ...newPrice, type: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="one_time">One Time</SelectItem>
+                              <SelectItem value="recurring">Recurring</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                       </div>
-                    )}
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>Billing Scheme</Label>
-                        <Select
-                          value={newPrice.billing_scheme}
-                          onValueChange={(value: 'per_unit' | 'tiered') => setNewPrice({ ...newPrice, billing_scheme: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="per_unit">Per Unit</SelectItem>
-                            <SelectItem value="tiered">Tiered</SelectItem>
-                          </SelectContent>
-                        </Select>
+                      {newPrice.type === 'recurring' && (
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <Label>Interval</Label>
+                            <Select
+                              value={newPrice.interval}
+                              onValueChange={(value: 'month' | 'year' | 'week' | 'day') => setNewPrice({ ...newPrice, interval: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="day">Daily</SelectItem>
+                                <SelectItem value="week">Weekly</SelectItem>
+                                <SelectItem value="month">Monthly</SelectItem>
+                                <SelectItem value="year">Yearly</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label>Interval Count</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={newPrice.interval_count}
+                              onChange={(e) => setNewPrice({ ...newPrice, interval_count: parseInt(e.target.value) || 1 })}
+                            />
+                          </div>
+
+                          <div>
+                            <Label>Usage Type</Label>
+                            <Select
+                              value={newPrice.usage_type}
+                              onValueChange={(value: 'licensed' | 'metered') => setNewPrice({ ...newPrice, usage_type: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="licensed">Licensed</SelectItem>
+                                <SelectItem value="metered">Metered</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Billing Scheme</Label>
+                          <Select
+                            value={newPrice.billing_scheme}
+                            onValueChange={(value: 'per_unit' | 'tiered') => setNewPrice({ ...newPrice, billing_scheme: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="per_unit">Per Unit</SelectItem>
+                              <SelectItem value="tiered">Tiered</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label>Nickname</Label>
+                          <Input
+                            value={newPrice.nickname}
+                            onChange={(e) => setNewPrice({ ...newPrice, nickname: e.target.value })}
+                            placeholder="Optional price nickname"
+                          />
+                        </div>
                       </div>
 
+                      <Button onClick={handleAddPrice} disabled={isLoading} className="w-full">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Price
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="metadata" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Product Metadata</CardTitle>
+                  <DialogDescription>
+                    Add custom key-value pairs to store additional information about this product
+                  </DialogDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {Object.entries(productData.metadata).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between p-3 border rounded">
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">{key}</div>
+                          <div className="text-sm text-gray-500 break-all">{value}</div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveMetadata(key)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Metadata key"
+                        value={newMetadataKey}
+                        onChange={(e) => setNewMetadataKey(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Metadata value"
+                        value={newMetadataValue}
+                        onChange={(e) => setNewMetadataValue(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddMetadata}
+                      disabled={!newMetadataKey || !newMetadataValue}
+                      className="w-full"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Metadata
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="advanced" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Advanced Options</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="tax-code">Tax Code</Label>
+                    <Input
+                      id="tax-code"
+                      value={productData.tax_code}
+                      onChange={(e) => setProductData({ ...productData, tax_code: e.target.value })}
+                      placeholder="e.g., txcd_99999999"
+                    />
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="shippable"
+                      checked={productData.shippable}
+                      onCheckedChange={(checked) => setProductData({ ...productData, shippable: checked })}
+                    />
+                    <Label htmlFor="shippable">Shippable Product</Label>
+                  </div>
+
+                  {productData.shippable && (
+                    <div className="grid grid-cols-2 gap-4 pl-6">
                       <div>
-                        <Label>Nickname</Label>
+                        <Label>Height (inches)</Label>
                         <Input
-                          value={newPrice.nickname}
-                          onChange={(e) => setNewPrice({ ...newPrice, nickname: e.target.value })}
-                          placeholder="Optional price nickname"
+                          type="number"
+                          step="0.01"
+                          value={productData.package_dimensions.height}
+                          onChange={(e) => setProductData({
+                            ...productData,
+                            package_dimensions: {
+                              ...productData.package_dimensions,
+                              height: parseFloat(e.target.value) || 0
+                            }
+                          })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Length (inches)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={productData.package_dimensions.length}
+                          onChange={(e) => setProductData({
+                            ...productData,
+                            package_dimensions: {
+                              ...productData.package_dimensions,
+                              length: parseFloat(e.target.value) || 0
+                            }
+                          })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Width (inches)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={productData.package_dimensions.width}
+                          onChange={(e) => setProductData({
+                            ...productData,
+                            package_dimensions: {
+                              ...productData.package_dimensions,
+                              width: parseFloat(e.target.value) || 0
+                            }
+                          })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Weight (ounces)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={productData.package_dimensions.weight}
+                          onChange={(e) => setProductData({
+                            ...productData,
+                            package_dimensions: {
+                              ...productData.package_dimensions,
+                              weight: parseFloat(e.target.value) || 0
+                            }
+                          })}
                         />
                       </div>
                     </div>
-
-                    <Button onClick={handleAddPrice} disabled={isLoading} className="w-full">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Price
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="metadata" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Product Metadata</CardTitle>
-                <DialogDescription>
-                  Add custom key-value pairs to store additional information about this product
-                </DialogDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {Object.entries(productData.metadata).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between p-3 border rounded">
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">{key}</div>
-                        <div className="text-sm text-gray-500 break-all">{value}</div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveMetadata(key)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      placeholder="Metadata key"
-                      value={newMetadataKey}
-                      onChange={(e) => setNewMetadataKey(e.target.value)}
-                    />
-                    <Input
-                      placeholder="Metadata value"
-                      value={newMetadataValue}
-                      onChange={(e) => setNewMetadataValue(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddMetadata}
-                    disabled={!newMetadataKey || !newMetadataValue}
-                    className="w-full"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Metadata
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="advanced" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Advanced Options</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="tax-code">Tax Code</Label>
-                  <Input
-                    id="tax-code"
-                    value={productData.tax_code}
-                    onChange={(e) => setProductData({ ...productData, tax_code: e.target.value })}
-                    placeholder="e.g., txcd_99999999"
-                  />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="shippable"
-                    checked={productData.shippable}
-                    onCheckedChange={(checked) => setProductData({ ...productData, shippable: checked })}
-                  />
-                  <Label htmlFor="shippable">Shippable Product</Label>
-                </div>
-
-                {productData.shippable && (
-                  <div className="grid grid-cols-2 gap-4 pl-6">
-                    <div>
-                      <Label>Height (inches)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={productData.package_dimensions.height}
-                        onChange={(e) => setProductData({
-                          ...productData,
-                          package_dimensions: {
-                            ...productData.package_dimensions,
-                            height: parseFloat(e.target.value) || 0
-                          }
-                        })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Length (inches)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={productData.package_dimensions.length}
-                        onChange={(e) => setProductData({
-                          ...productData,
-                          package_dimensions: {
-                            ...productData.package_dimensions,
-                            length: parseFloat(e.target.value) || 0
-                          }
-                        })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Width (inches)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={productData.package_dimensions.width}
-                        onChange={(e) => setProductData({
-                          ...productData,
-                          package_dimensions: {
-                            ...productData.package_dimensions,
-                            width: parseFloat(e.target.value) || 0
-                          }
-                        })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Weight (ounces)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={productData.package_dimensions.weight}
-                        onChange={(e) => setProductData({
-                          ...productData,
-                          package_dimensions: {
-                            ...productData.package_dimensions,
-                            weight: parseFloat(e.target.value) || 0
-                          }
-                        })}
-                      />
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        )}
       </DialogContent>
     </Dialog>
   );

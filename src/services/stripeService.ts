@@ -254,6 +254,57 @@ class StripeService {
     }
   }
 
+  async retrievePrice(priceId: string): Promise<{ price?: StripePrice; error?: string }> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      return { error: 'Stripe API key not configured' };
+    }
+
+    try {
+      const { data: result, error } = await supabase.functions.invoke('retrieve-stripe-price', {
+        body: { price_id: priceId, apiKey }
+      });
+
+      if (error) {
+        console.error('Error retrieving price:', error);
+        return { error: error.message };
+      }
+
+      return { price: result.price };
+    } catch (error: any) {
+      console.error('Error retrieving price:', error);
+      return { error: error.message };
+    }
+  }
+
+  async updatePrice(priceId: string, updates: {
+    nickname?: string;
+    active?: boolean;
+    metadata?: Record<string, string>;
+    tax_behavior?: 'inclusive' | 'exclusive' | 'unspecified';
+  }): Promise<{ price?: StripePrice; error?: string }> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      return { error: 'Stripe API key not configured' };
+    }
+
+    try {
+      const { data: result, error } = await supabase.functions.invoke('update-stripe-price', {
+        body: { price_id: priceId, updates, apiKey }
+      });
+
+      if (error) {
+        console.error('Error updating price:', error);
+        return { error: error.message };
+      }
+
+      return { price: result.price };
+    } catch (error: any) {
+      console.error('Error updating price:', error);
+      return { error: error.message };
+    }
+  }
+
   private generateEventName(productName: string): string {
     return productName
       .toLowerCase()
