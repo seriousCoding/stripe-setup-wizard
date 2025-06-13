@@ -51,26 +51,16 @@ export interface BillingItem {
 }
 
 class StripeService {
-  private getApiKey(): string | null {
-    return localStorage.getItem('stripe_api_key');
-  }
-
   async createProduct(data: {
     name: string;
     description?: string;
     type?: 'service' | 'good';
     metadata?: Record<string, string>;
   }): Promise<{ product?: any; error?: string }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { error: 'Stripe API key not configured' };
-    }
-
     try {
       const { data: result, error } = await supabase.functions.invoke('create-stripe-product', {
         body: { 
           ...data, 
-          apiKey,
           type: data.type || 'service',
           metadata: {
             created_via: 'stripe_setup_pilot',
@@ -104,11 +94,6 @@ class StripeService {
     aggregate_usage?: 'sum' | 'last_during_period' | 'last_ever' | 'max';
     metadata?: Record<string, string>;
   }): Promise<{ price?: any; error?: string }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { error: 'Stripe API key not configured' };
-    }
-
     try {
       // Ensure unit_amount is an integer (Stripe requirement)
       const unit_amount = Math.round(data.unit_amount);
@@ -120,7 +105,6 @@ class StripeService {
         ...data,
         unit_amount,
         currency,
-        apiKey,
         metadata: {
           created_via: 'stripe_setup_pilot',
           ...data.metadata
@@ -143,6 +127,34 @@ class StripeService {
     }
   }
 
+  async createBillingMeter(data: {
+    display_name: string;
+    event_name: string;
+    aggregation_formula?: 'sum' | 'count' | 'last_during_period' | 'last_ever' | 'max';
+    description?: string;
+  }): Promise<{ meter?: any; error?: string }> {
+    try {
+      const { data: result, error } = await supabase.functions.invoke('create-billing-meter', {
+        body: {
+          display_name: data.display_name,
+          event_name: data.event_name,
+          aggregation_formula: data.aggregation_formula || 'sum',
+          description: data.description
+        }
+      });
+
+      if (error) {
+        console.error('Error creating billing meter:', error);
+        return { error: error.message };
+      }
+
+      return { meter: result.meter };
+    } catch (error: any) {
+      console.error('Error creating billing meter:', error);
+      return { error: error.message };
+    }
+  }
+
   async createMeter(data: {
     display_name: string;
     event_name: string;
@@ -157,11 +169,6 @@ class StripeService {
       event_payload_key: string;
     };
   }): Promise<{ meter?: any; error?: string }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { error: 'Stripe API key not configured' };
-    }
-
     try {
       const meterData = {
         display_name: data.display_name,
@@ -175,8 +182,7 @@ class StripeService {
         },
         value_settings: data.value_settings || {
           event_payload_key: 'value'
-        },
-        apiKey
+        }
       };
 
       const { data: result, error } = await supabase.functions.invoke('create-stripe-meter', {
@@ -196,11 +202,6 @@ class StripeService {
   }
 
   async deployBillingModel(billingModel: any): Promise<{ results?: any; error?: string }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { error: 'Stripe API key not configured' };
-    }
-
     try {
       // Validate and format billing model data according to Stripe requirements
       const formattedBillingModel = {
@@ -224,7 +225,7 @@ class StripeService {
       };
 
       const { data: result, error } = await supabase.functions.invoke('deploy-billing-model', {
-        body: { billingModel: formattedBillingModel, apiKey }
+        body: { billingModel: formattedBillingModel }
       });
 
       if (error) {
@@ -249,11 +250,6 @@ class StripeService {
   }
 
   async listProducts(): Promise<{ products?: StripeProduct[]; error?: string }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { error: 'Stripe API key not configured' };
-    }
-
     try {
       // For now, return empty array since we'd need another edge function to list products
       // In a real implementation, you'd create a list-stripe-products edge function
@@ -265,14 +261,9 @@ class StripeService {
   }
 
   async checkConnection(): Promise<{ connected?: boolean; error?: string }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { connected: false, error: 'No API key provided' };
-    }
-
     try {
       const { data: result, error } = await supabase.functions.invoke('check-stripe-connection', {
-        body: { apiKey }
+        body: {}
       });
 
       if (error) {

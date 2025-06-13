@@ -35,9 +35,10 @@ serve(async (req) => {
       throw new Error('Display name and event name are required');
     }
 
+    // Use Stripe secret from Supabase secrets instead of from request body
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeKey) {
-      throw new Error('Stripe secret key not configured');
+      throw new Error('Stripe secret key not configured in Supabase secrets');
     }
 
     const stripe = new Stripe(stripeKey, {
