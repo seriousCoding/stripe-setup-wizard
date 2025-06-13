@@ -95,37 +95,41 @@ serve(async (req) => {
       logStep("Meter creation failed, continuing without meters", { error: error.message });
     }
 
-    // Define the billing plans based on the pricing image
+    // Define the billing plans - ALL AS RECURRING MONTHLY
     const billingPlans = [
       {
         id: 'starter',
         name: 'Starter',
-        subtitle: 'Pay As-You-Go',
-        description: 'Perfect for getting started with transaction-based billing.',
-        price: 99, // $0.99 per transaction
-        type: 'per_unit',
+        subtitle: 'Fixed Fee + Overage',
+        description: 'Perfect for small teams with 1,000 included transactions monthly.',
+        price: 1900, // $19.00 per month
+        type: 'recurring',
+        interval: 'month',
         metadata: {
           tier_id: 'starter',
-          billing_model_type: 'pay_as_you_go',
-          usage_limit_transactions: '20',
-          usage_limit_ai_processing: '5',
-          overage_rate: '0.05'
+          billing_model_type: 'fixed_fee_graduated',
+          usage_limit_transactions: '1000',
+          usage_limit_ai_processing: '100',
+          overage_rate: '0.02',
+          subtitle: 'Fixed Fee + Overage'
         }
       },
       {
         id: 'professional',
         name: 'Professional',
-        subtitle: 'Credit Burndown',
-        description: 'Buy credits in advance for better rates and flexibility.',
-        price: 4900, // $49 prepaid credits
-        type: 'one_time',
+        subtitle: 'Fixed Fee + Overage',
+        description: 'Great for growing businesses with 5,000 included transactions monthly.',
+        price: 4900, // $49.00 per month
+        type: 'recurring',
+        interval: 'month',
         metadata: {
           tier_id: 'professional',
-          billing_model_type: 'credit_burndown',
-          usage_limit_transactions: '1200',
-          usage_limit_ai_processing: '300',
-          overage_rate: '0.04',
-          popular: 'true'
+          billing_model_type: 'fixed_fee_graduated',
+          usage_limit_transactions: '5000',
+          usage_limit_ai_processing: '500',
+          overage_rate: '0.015',
+          popular: 'true',
+          subtitle: 'Fixed Fee + Overage'
         }
       },
       {
@@ -140,7 +144,8 @@ serve(async (req) => {
           tier_id: 'business',
           billing_model_type: 'flat_recurring',
           usage_limit_transactions: 'unlimited',
-          usage_limit_ai_processing: 'unlimited'
+          usage_limit_ai_processing: 'unlimited',
+          subtitle: 'Flat Fee'
         }
       },
       {
@@ -155,14 +160,15 @@ serve(async (req) => {
           tier_id: 'enterprise',
           billing_model_type: 'per_seat',
           usage_limit_transactions: 'unlimited',
-          usage_limit_ai_processing: 'unlimited'
+          usage_limit_ai_processing: 'unlimited',
+          subtitle: 'Per Seat'
         }
       },
       {
         id: 'trial',
         name: 'Free Trial',
         subtitle: 'Trial',
-        description: 'Try all features risk-free before committing.',
+        description: 'Try all features risk-free with 500 included transactions monthly.',
         price: 0, // Free
         type: 'recurring',
         interval: 'month',
@@ -172,7 +178,8 @@ serve(async (req) => {
           usage_limit_transactions: '500',
           usage_limit_ai_processing: '50',
           overage_rate: '0.05',
-          badge: 'Free Trial'
+          badge: 'Free Trial',
+          subtitle: 'Trial'
         }
       }
     ];
@@ -189,39 +196,34 @@ serve(async (req) => {
           description: plan.description,
           metadata: {
             ...plan.metadata,
-            created_via: 'stripe_billing_pilot',
-            subtitle: plan.subtitle
+            created_via: 'stripe_billing_pilot'
           }
         });
 
         logStep(`Product created: ${product.id}`, { name: product.name });
 
-        // Create the main price
+        // Create the main recurring price - ALL PLANS ARE RECURRING MONTHLY
         const priceData: any = {
           currency: 'usd',
           product: product.id,
+          recurring: { 
+            interval: plan.interval || 'month',
+            usage_type: 'licensed' // Base subscription fee
+          },
+          unit_amount: plan.price,
           metadata: {
             ...plan.metadata,
-            price_type: plan.type
+            price_type: 'recurring_base'
           }
         };
 
-        if (plan.type === 'recurring') {
-          priceData.recurring = { interval: plan.interval || 'month' };
-          priceData.unit_amount = plan.price;
-        } else if (plan.type === 'per_unit') {
-          priceData.unit_amount = plan.price;
-        } else {
-          priceData.unit_amount = plan.price;
-        }
-
         const price = await stripe.prices.create(priceData);
-        logStep(`Main price created: ${price.id}`, { amount: plan.price });
+        logStep(`Main recurring price created: ${price.id}`, { amount: plan.price });
 
         // Create graduated pricing for usage limits if applicable
         const additionalPrices = [];
         if (plan.metadata.overage_rate && meters.length > 0) {
-          // Create overage pricing for transactions
+          // Create overage pricing for transactions using graduated tiers
           const transactionOveragePrice = await stripe.prices.create({
             currency: 'usd',
             product: product.id,
@@ -234,13 +236,13 @@ serve(async (req) => {
             },
             tiers: [
               {
-                up_to: parseInt(plan.metadata.usage_limit_transactions) || 20,
-                unit_amount: 0,
+                up_to: parseInt(plan.metadata.usage_limit_transactions) || 1000,
+                unit_amount: 0, // Free up to limit
                 flat_amount: 0
               },
               {
-                up_to: null, // Unlimited
-                unit_amount: Math.round(parseFloat(plan.metadata.overage_rate) * 100),
+                up_to: null, // Unlimited overage
+                unit_amount: Math.round(parseFloat(plan.metadata.overage_rate) * 100), // Convert to cents
                 flat_amount: 0
               }
             ],
@@ -267,8 +269,8 @@ serve(async (req) => {
               },
               tiers: [
                 {
-                  up_to: parseInt(plan.metadata.usage_limit_ai_processing) || 5,
-                  unit_amount: 0,
+                  up_to: parseInt(plan.metadata.usage_limit_ai_processing) || 100,
+                  unit_amount: 0, // Free up to limit
                   flat_amount: 0
                 },
                 {
@@ -302,13 +304,15 @@ serve(async (req) => {
           subtitle: plan.subtitle,
           amount: plan.price,
           type: plan.type,
+          interval: plan.interval,
           status: 'success'
         });
 
         logStep(`Billing plan setup complete for ${plan.name}`, {
           productId: product.id,
           priceId: price.id,
-          additionalPrices: additionalPrices.length
+          additionalPrices: additionalPrices.length,
+          recurringMonthly: true
         });
 
       } catch (error: any) {
@@ -324,19 +328,21 @@ serve(async (req) => {
 
     logStep("Stripe billing initialization complete", { 
       results: results.length,
-      meters_created: meters.length
+      meters_created: meters.length,
+      all_recurring_monthly: true
     });
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: 'Stripe billing system initialized successfully',
+        message: 'Stripe billing system initialized successfully - all plans are recurring monthly',
         results,
         meters: meters.map(m => ({ id: m.id, display_name: m.display_name })),
         summary: {
           products_created: results.filter(r => r.status === 'success').length,
           errors: results.filter(r => r.status === 'error').length,
-          meters_created: meters.length
+          meters_created: meters.length,
+          all_recurring_monthly: true
         }
       }),
       {
