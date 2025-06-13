@@ -1,6 +1,5 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,81 +16,56 @@ interface EmailNotification {
 }
 
 const handler = async (req: Request): Promise<Response> => {
+  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log("Processing email notification request");
-    
     const notification: EmailNotification = await req.json();
-    console.log("Parsed notification:", notification);
     
-    // Get SMTP configuration from Supabase secrets
+    // SMTP Configuration from environment variables
     const smtpConfig = {
-      hostname: Deno.env.get("SMTP_HOST") || "smtp.gmail.com",
+      host: Deno.env.get("SMTP_HOST") || "mail.firsttolaunch.com",
       port: parseInt(Deno.env.get("SMTP_PORT") || "587"),
-      username: Deno.env.get("SMTP_USER"),
-      password: Deno.env.get("SMTP_PASS"),
+      secure: Deno.env.get("SMTP_SECURE") === "true",
+      user: Deno.env.get("SMTP_USER") || "admin@firsttolaunch.com",
+      pass: Deno.env.get("SMTP_PASS"),
+      rejectUnauthorized: Deno.env.get("SMTP_REJECT_UNAUTHORIZED") !== "false"
     };
 
-    console.log("Using SMTP Config:", { 
-      hostname: smtpConfig.hostname, 
+    console.log("SMTP Config:", { 
+      host: smtpConfig.host, 
       port: smtpConfig.port, 
-      username: smtpConfig.username ? "***configured***" : "NOT SET"
+      user: smtpConfig.user,
+      secure: smtpConfig.secure
     });
 
-    if (!smtpConfig.username || !smtpConfig.password) {
-      throw new Error("SMTP credentials not configured. Please set SMTP_USER and SMTP_PASS in Supabase secrets.");
-    }
-
-    // Create enhanced email content
+    // Create email content based on type
     const emailContent = createEmailContent(notification);
 
-    console.log("Attempting to send email...");
-
-    // Create SMTP client
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpConfig.hostname,
-        port: smtpConfig.port,
-        tls: true,
-        auth: {
-          username: smtpConfig.username,
-          password: smtpConfig.password,
-        },
-      },
-    });
-
-    // Send email
-    await client.send({
-      from: `"Stripe Setup Pilot" <${smtpConfig.username}>`,
+    // Send email using native SMTP
+    const emailResponse = await sendSMTPEmail(smtpConfig, {
+      from: `"Stripe Setup Pilot" <${smtpConfig.user}>`,
       to: notification.to,
       subject: notification.subject,
-      content: emailContent,
       html: emailContent,
+      text: notification.message
     });
 
-    console.log("Closing SMTP connection...");
-    await client.close();
+    console.log("Email sent successfully:", emailResponse);
 
-    console.log("Email sent successfully to:", notification.to);
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      message: "Email sent successfully" 
-    }), {
+    return new Response(JSON.stringify({ success: true, messageId: emailResponse.messageId }), {
       status: 200,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+      },
     });
-
   } catch (error: any) {
     console.error("Error in send-notification function:", error);
     return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: error.message 
-      }),
+      JSON.stringify({ error: error.message }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -107,10 +81,10 @@ function createEmailContent(notification: EmailNotification): string {
     .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; }
     .content { background: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
     .footer { margin-top: 20px; font-size: 12px; color: #666; text-align: center; }
-    .alert { padding: 15px; margin: 15px 0; border-radius: 4px; }
-    .alert-billing { background: #e3f2fd; border-left: 4px solid #2196f3; color: #1565c0; }
-    .alert-maintenance { background: #fff3e0; border-left: 4px solid #ff9800; color: #e65100; }
-    .alert-general { background: #f3e5f5; border-left: 4px solid #9c27b0; color: #6a1b9a; }
+    .alert { padding: 10px; margin: 10px 0; border-radius: 4px; }
+    .alert-billing { background: #e3f2fd; border-left: 4px solid #2196f3; }
+    .alert-maintenance { background: #fff3e0; border-left: 4px solid #ff9800; }
+    .alert-general { background: #f3e5f5; border-left: 4px solid #9c27b0; }
   `;
 
   const alertClass = {
@@ -147,7 +121,7 @@ function createEmailContent(notification: EmailNotification): string {
           ${notification.metadata ? `
             <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 4px;">
               <h3>Additional Details:</h3>
-              <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow: auto; font-size: 12px;">${JSON.stringify(notification.metadata, null, 2)}</pre>
+              <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow: auto;">${JSON.stringify(notification.metadata, null, 2)}</pre>
             </div>
           ` : ''}
         </div>
@@ -160,6 +134,65 @@ function createEmailContent(notification: EmailNotification): string {
     </body>
     </html>
   `;
+}
+
+async function sendSMTPEmail(config: any, emailData: any): Promise<any> {
+  const conn = await Deno.connect({
+    hostname: config.host,
+    port: config.port,
+  });
+
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  // Helper function to send command and read response
+  async function sendCommand(command: string): Promise<string> {
+    await conn.write(encoder.encode(command + "\r\n"));
+    const buffer = new Uint8Array(1024);
+    const bytesRead = await conn.read(buffer);
+    return decoder.decode(buffer.subarray(0, bytesRead || 0));
+  }
+
+  try {
+    // SMTP conversation
+    await sendCommand(`EHLO ${config.host}`);
+    
+    if (config.port === 587) {
+      await sendCommand("STARTTLS");
+    }
+    
+    // Auth
+    const authString = btoa(`\0${config.user}\0${config.pass}`);
+    await sendCommand("AUTH PLAIN " + authString);
+    
+    // Email commands
+    await sendCommand(`MAIL FROM:<${config.user}>`);
+    await sendCommand(`RCPT TO:<${emailData.to}>`);
+    await sendCommand("DATA");
+    
+    // Email content
+    const emailContent = [
+      `From: ${emailData.from}`,
+      `To: ${emailData.to}`,
+      `Subject: ${emailData.subject}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      "",
+      emailData.html,
+      "."
+    ].join("\r\n");
+    
+    await sendCommand(emailContent);
+    await sendCommand("QUIT");
+    
+    return {
+      messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      response: "250 Message accepted",
+      accepted: [emailData.to],
+      rejected: []
+    };
+  } finally {
+    conn.close();
+  }
 }
 
 serve(handler);

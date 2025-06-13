@@ -23,7 +23,7 @@ class EmailService {
         return { success: false, error: error.message };
       }
 
-      console.log('Email notification result:', data);
+      console.log('Email notification sent successfully:', data);
       return { success: true };
     } catch (error: any) {
       console.error('Error sending notification:', error);

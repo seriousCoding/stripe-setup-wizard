@@ -10,7 +10,7 @@ const corsHeaders = {
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[CLEANUP-STRIPE] ${step}${detailsStr}`);
+  console.log(`[CLEANUP-STRIPE-PRODUCTS] ${step}${detailsStr}`);
 };
 
 serve(async (req) => {
@@ -19,7 +19,13 @@ serve(async (req) => {
   }
 
   try {
-    logStep("Cleanup function started");
+    logStep("Function started");
+    
+    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeSecretKey) {
+      throw new Error('Stripe secret key not configured in Supabase secrets');
+    }
+    logStep("Stripe secret key found");
 
     // Authenticate user
     const supabaseClient = createClient(
@@ -40,115 +46,129 @@ serve(async (req) => {
       throw new Error('User not authenticated');
     }
 
-    logStep("User authenticated", { userId: data.user.id });
+    logStep("User authenticated", { email: data.user.email });
 
-    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!stripeKey) {
-      throw new Error('Stripe secret key not configured');
-    }
-
-    const stripe = new Stripe(stripeKey, {
-      apiVersion: '2024-06-20',
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2023-10-16',
     });
 
-    logStep("Starting cleanup of Stripe products and prices");
+    // Fetch all products
+    const products = await stripe.products.list({
+      limit: 100,
+      active: true
+    });
 
-    // Get all products first
-    const products = await stripe.products.list({ limit: 100 });
-    logStep("Found products to cleanup", { count: products.data.length });
+    logStep("All products fetched", { count: products.data.length });
 
-    let cleanupCount = 0;
-    let skippedCount = 0;
+    // Filter products to only include those created by this billing app or with app-specific metadata
+    const appProducts = products.data.filter(product => {
+      const metadata = product.metadata || {};
+      return (
+        metadata.created_via === 'stripe_setup_pilot' ||
+        metadata.billing_model_type ||
+        metadata.tier_id ||
+        metadata.usage_limit_api_calls ||
+        metadata.meter_rate ||
+        metadata.package_credits ||
+        metadata.included_usage ||
+        // Also include if product name matches common billing patterns
+        product.name.toLowerCase().includes('trial') ||
+        product.name.toLowerCase().includes('starter') ||
+        product.name.toLowerCase().includes('professional') ||
+        product.name.toLowerCase().includes('business') ||
+        product.name.toLowerCase().includes('enterprise') ||
+        product.name.toLowerCase().includes('premium')
+      );
+    });
 
-    // Archive products (this will also handle associated prices)
-    for (const product of products.data) {
-      if (product.active) {
-        try {
-          await stripe.products.update(product.id, { active: false });
-          cleanupCount++;
-          logStep("Archived product", { productId: product.id, name: product.name });
-        } catch (productError: any) {
-          logStep("Could not archive product", { 
-            productId: product.id, 
-            name: product.name, 
-            error: productError.message 
-          });
-          skippedCount++;
-        }
+    logStep("Filtered app-specific products", { 
+      originalCount: products.data.length,
+      appProductsCount: appProducts.length 
+    });
+
+    const cleanupResults = [];
+
+    // Step 1: Deactivate all app products
+    for (const product of appProducts) {
+      try {
+        await stripe.products.update(product.id, {
+          active: false
+        });
+        
+        cleanupResults.push({
+          product_id: product.id,
+          name: product.name,
+          action: 'deactivated',
+          status: 'success'
+        });
+        
+        logStep(`Product deactivated: ${product.name}`, { id: product.id });
+      } catch (error: any) {
+        logStep(`Error deactivating product ${product.name}`, { error: error.message });
+        cleanupResults.push({
+          product_id: product.id,
+          name: product.name,
+          action: 'deactivate_failed',
+          status: 'error',
+          error: error.message
+        });
       }
     }
 
-    // Get all prices and archive them (handling default price issues)
-    const prices = await stripe.prices.list({ limit: 100 });
-    logStep("Found prices to cleanup", { count: prices.data.length });
+    // Step 2: Get all prices for these products and deactivate them
+    for (const product of appProducts) {
+      try {
+        const prices = await stripe.prices.list({
+          product: product.id,
+          active: true,
+          limit: 100
+        });
 
-    let pricesArchived = 0;
-    let pricesSkipped = 0;
-
-    for (const price of prices.data) {
-      if (price.active) {
-        try {
-          await stripe.prices.update(price.id, { active: false });
-          pricesArchived++;
-          logStep("Archived price", { priceId: price.id });
-        } catch (priceError: any) {
-          // Skip default prices that can't be archived
-          if (priceError.message.includes('default price')) {
-            logStep("Skipped default price", { priceId: price.id });
-            pricesSkipped++;
-          } else {
-            logStep("Could not archive price", { 
-              priceId: price.id, 
-              error: priceError.message 
-            });
-            pricesSkipped++;
-          }
-        }
-      }
-    }
-
-    // Get all billing meters and deactivate them
-    let metersDeactivated = 0;
-    try {
-      const meters = await stripe.billing.meters.list({ limit: 100 });
-      logStep("Found meters to cleanup", { count: meters.data.length });
-
-      for (const meter of meters.data) {
-        if (meter.status === 'active') {
+        for (const price of prices.data) {
           try {
-            await stripe.billing.meters.update(meter.id, { status: 'inactive' });
-            metersDeactivated++;
-            logStep("Deactivated meter", { meterId: meter.id });
-          } catch (meterError: any) {
-            logStep("Could not deactivate meter", { 
-              meterId: meter.id, 
-              error: meterError.message 
+            await stripe.prices.update(price.id, {
+              active: false
+            });
+            
+            cleanupResults.push({
+              price_id: price.id,
+              product_id: product.id,
+              action: 'price_deactivated',
+              status: 'success'
+            });
+            
+            logStep(`Price deactivated`, { priceId: price.id, productId: product.id });
+          } catch (error: any) {
+            logStep(`Error deactivating price`, { priceId: price.id, error: error.message });
+            cleanupResults.push({
+              price_id: price.id,
+              product_id: product.id,
+              action: 'price_deactivate_failed',
+              status: 'error',
+              error: error.message
             });
           }
         }
+      } catch (error: any) {
+        logStep(`Error fetching prices for product ${product.id}`, { error: error.message });
       }
-    } catch (meterListError: any) {
-      logStep("Could not list meters", { error: meterListError.message });
     }
 
-    logStep("Cleanup completed", { 
-      productsArchived: cleanupCount,
-      productsSkipped: skippedCount,
-      pricesArchived,
-      pricesSkipped,
-      metersDeactivated
+    logStep("Cleanup complete", { 
+      processedProducts: appProducts.length,
+      resultsCount: cleanupResults.length 
     });
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Cleanup completed. Archived ${cleanupCount} products, ${pricesArchived} prices, and deactivated ${metersDeactivated} meters. Skipped ${skippedCount + pricesSkipped} items that couldn't be archived.`,
-        data: {
-          productsArchived: cleanupCount,
-          productsSkipped: skippedCount,
-          pricesArchived,
-          pricesSkipped,
-          metersDeactivated
+        message: `Cleaned up ${appProducts.length} app-specific products`,
+        results: cleanupResults,
+        summary: {
+          products_processed: appProducts.length,
+          actions_taken: cleanupResults.length,
+          deactivated_products: cleanupResults.filter(r => r.action === 'deactivated' && r.status === 'success').length,
+          deactivated_prices: cleanupResults.filter(r => r.action === 'price_deactivated' && r.status === 'success').length
         }
       }),
       {
@@ -158,7 +178,7 @@ serve(async (req) => {
     );
 
   } catch (error: any) {
-    logStep("ERROR in cleanup-stripe-products", { message: error.message, stack: error.stack });
+    logStep("ERROR in cleanup-stripe-products", { message: error.message });
     
     return new Response(
       JSON.stringify({ 
