@@ -1,706 +1,315 @@
+
 import React, { useState, useEffect } from 'react';
-import DashboardLayout from '@/components/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Search, Plus, ExternalLink, Edit, Trash2, RefreshCw, Zap, CreditCard, Users, Target, BarChart3, Settings, DollarSign } from 'lucide-react';
+import { Edit, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-
-interface StripePrice {
-  id: string;
-  unit_amount: number;
-  currency: string;
-  recurring?: {
-    interval: string;
-    interval_count?: number;
-    usage_type?: string;
-    aggregate_usage?: string;
-  };
-  billing_scheme?: string;
-  usage_type?: string;
-  tiers?: any[];
-  transform_quantity?: any;
-  metadata?: Record<string, string>;
-}
-
-interface StripeMeter {
-  id: string;
-  display_name: string;
-  event_name: string;
-  status: string;
-  value_settings: {
-    event_payload_key: string;
-  };
-  default_aggregation: {
-    formula: string;
-  };
-  created: number;
-}
+import DashboardLayout from '@/components/DashboardLayout';
+import { ProductEditDialog } from '@/components/ProductEditDialog';
 
 interface StripeProduct {
   id: string;
   name: string;
   description: string;
   active: boolean;
-  created: number;
-  default_price?: StripePrice;
-  prices?: StripePrice[];
-  metadata?: Record<string, string>;
-  // Enhanced product data
-  meters?: StripeMeter[];
-  usage_records?: any[];
-  subscription_data?: any;
-  billing_thresholds?: any;
-  // Computed properties
-  totalPriceOptions?: number;
-  hasMeteredPricing?: boolean;
-  isRecurring?: boolean;
-}
-
-interface ProductFormData {
-  name: string;
-  description: string;
-  active: boolean;
+  metadata: Record<string, string>;
+  default_price?: {
+    id: string;
+    unit_amount: number;
+    currency: string;
+    type: 'one_time' | 'recurring';
+    interval?: string;
+  };
+  prices: Array<{
+    id: string;
+    unit_amount: number;
+    currency: string;
+    type: 'one_time' | 'recurring';
+    interval?: string;
+    active: boolean;
+    billing_scheme?: 'per_unit' | 'tiered';
+    metadata: Record<string, string>;
+  }>;
 }
 
 const Products = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [products, setProducts] = useState<StripeProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingProduct, setEditingProduct] = useState<StripeProduct | null>(null);
-  const [newProductForm, setNewProductForm] = useState<ProductFormData>({
-    name: '',
-    description: '',
-    active: true
-  });
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+  const [products, setProducts] = useState<StripeProduct[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedProduct, setSelectedProduct] = useState<StripeProduct | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
-  const loadProducts = async () => {
-    setLoading(true);
+  const fetchProducts = async () => {
     try {
-      console.log('Fetching comprehensive Stripe product data...');
-      
-      const { data, error } = await supabase.functions.invoke('fetch-stripe-data', {
-        body: { 
-          include_meters: true,
-          include_usage: true,
-          include_detailed_pricing: true 
-        }
-      });
+      setIsLoading(true);
+      const { data, error } = await supabase.functions.invoke('fetch-stripe-data');
 
       if (error) {
-        console.error('Error fetching Stripe data:', error);
-        toast({
-          title: "Error Loading Products",
-          description: "Failed to fetch products from Stripe. Please check your connection.",
-          variant: "destructive",
-        });
-        return;
+        throw error;
       }
 
-      if (data?.success) {
-        // Enhanced product data processing
-        const enhancedProducts = await Promise.all(
-          (data.all_products || []).map(async (product: any) => {
-            try {
-              // Fetch additional product details
-              const enhancedProduct = { ...product };
-              
-              // Get all prices for this product
-              if (data.all_prices) {
-                enhancedProduct.prices = data.all_prices.filter(
-                  (price: any) => price.product === product.id
-                );
-              }
-
-              // Get related meters
-              if (data.meters) {
-                enhancedProduct.meters = data.meters.filter((meter: any) => 
-                  meter.display_name?.toLowerCase().includes(product.name.toLowerCase()) ||
-                  product.metadata?.meter_ids?.split(',').includes(meter.id)
-                );
-              }
-
-              // Calculate aggregated metrics
-              enhancedProduct.totalPriceOptions = enhancedProduct.prices?.length || 0;
-              enhancedProduct.hasMeteredPricing = enhancedProduct.prices?.some(
-                (price: any) => price.recurring?.usage_type === 'metered'
-              ) || false;
-              enhancedProduct.isRecurring = enhancedProduct.prices?.some(
-                (price: any) => price.recurring
-              ) || false;
-
-              return enhancedProduct;
-            } catch (error) {
-              console.error(`Error enhancing product ${product.id}:`, error);
-              return product;
-            }
-          })
-        );
-
-        setProducts(enhancedProducts);
-        console.log('Enhanced products loaded:', enhancedProducts.length);
-        
-        toast({
-          title: "Products Loaded",
-          description: `Loaded ${enhancedProducts.length} products with complete data from Stripe.`,
-        });
+      if (data?.success && data.all_products) {
+        setProducts(data.all_products);
       }
     } catch (error: any) {
-      console.error('Error in loadProducts:', error);
+      console.error('Error fetching products:', error);
       toast({
-        title: "Error Loading Products",
-        description: "Failed to fetch products. Please try again.",
+        title: "Failed to Load Products",
+        description: error.message || "Could not fetch Stripe products",
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const getBillingTierInfo = (product: StripeProduct) => {
-    const metadata = product.metadata || {};
-    const defaultPrice = product.default_price;
-    const hasMetered = product.hasMeteredPricing || false;
-    const isRecurring = product.isRecurring || false;
-    
-    // Check metadata for tier information
-    if (metadata.tier_id) {
-      return {
-        tier: metadata.tier_id,
-        type: metadata.billing_model_type || 'unknown',
-        icon: getTierIcon(metadata.tier_id)
-      };
-    }
-    
-    // Determine tier based on enhanced data
-    if (hasMetered) {
-      return {
-        tier: 'usage-based',
-        type: 'metered',
-        icon: <Zap className="h-4 w-4" />
-      };
-    }
-    
-    if (defaultPrice) {
-      const amount = defaultPrice.unit_amount || 0;
-      
-      if (isRecurring) {
-        if (amount === 0) {
-          return {
-            tier: 'trial',
-            type: 'free_trial',
-            icon: <Target className="h-4 w-4" />
-          };
-        } else if (amount < 1000) {
-          return {
-            tier: 'starter',
-            type: 'flat_recurring',
-            icon: <CreditCard className="h-4 w-4" />
-          };
-        } else {
-          return {
-            tier: 'premium',
-            type: 'flat_recurring',
-            icon: <Users className="h-4 w-4" />
-          };
-        }
-      }
-      
-      return {
-        tier: 'one-time',
-        type: 'one_time',
-        icon: <CreditCard className="h-4 w-4" />
-      };
-    }
-    
-    return {
-      tier: 'unknown',
-      type: 'unknown',
-      icon: <CreditCard className="h-4 w-4" />
-    };
-  };
-
-  const getTierIcon = (tierId: string) => {
-    const iconMap: { [key: string]: React.ReactNode } = {
-      trial: <Target className="h-4 w-4" />,
-      starter: <CreditCard className="h-4 w-4" />,
-      professional: <Users className="h-4 w-4" />,
-      business: <Zap className="h-4 w-4" />,
-      enterprise: <Users className="h-4 w-4" />
-    };
-    return iconMap[tierId] || <CreditCard className="h-4 w-4" />;
-  };
-
-  const getTierColor = (tier: string) => {
-    const colorMap: { [key: string]: string } = {
-      trial: 'bg-green-100 text-green-800',
-      starter: 'bg-blue-100 text-blue-800',
-      professional: 'bg-purple-100 text-purple-800',
-      business: 'bg-orange-100 text-orange-800',
-      enterprise: 'bg-red-100 text-red-800',
-      'usage-based': 'bg-yellow-100 text-yellow-800',
-      'one-time': 'bg-gray-100 text-gray-800',
-      unknown: 'bg-gray-100 text-gray-600'
-    };
-    return colorMap[tier] || 'bg-gray-100 text-gray-600';
-  };
-
-  const toggleProductExpansion = (productId: string) => {
-    setExpandedProducts(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(productId)) {
-        newSet.delete(productId);
-      } else {
-        newSet.add(productId);
-      }
-      return newSet;
-    });
-  };
-
-  const handleCreateProduct = async () => {
+  const handleInitializeBilling = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('create-stripe-product', {
-        body: {
-          name: newProductForm.name,
-          description: newProductForm.description,
-          type: 'service',
-          metadata: {
-            active: newProductForm.active.toString(),
-            created_via: 'billing_app_v1',
-            enhanced_tracking: 'true'
-          }
-        }
-      });
+      setIsLoading(true);
+      const { data, error } = await supabase.functions.invoke('initialize-stripe-billing');
 
       if (error) {
-        throw new Error(error.message);
+        throw error;
       }
 
-      toast({
-        title: "Product Created",
-        description: `Successfully created product: ${newProductForm.name}`,
-      });
-
-      setNewProductForm({ name: '', description: '', active: true });
-      setIsAddDialogOpen(false);
-      loadProducts();
+      if (data?.success) {
+        toast({
+          title: "Billing Initialized",
+          description: `Created ${data.summary?.products_created || 0} products with meters and pricing`,
+        });
+        fetchProducts();
+      }
     } catch (error: any) {
+      console.error('Error initializing billing:', error);
       toast({
-        title: "Error Creating Product",
-        description: error.message,
+        title: "Initialization Failed",
+        description: error.message || "Failed to initialize billing system",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleUpdateProduct = async () => {
-    if (!editingProduct) return;
-
-    try {
-      toast({
-        title: "Update Feature",
-        description: "Product updates require additional Stripe API integration. Opening Stripe dashboard for manual editing.",
-      });
-      
-      window.open(`https://dashboard.stripe.com/products/${editingProduct.id}`, '_blank');
-      setIsEditDialogOpen(false);
-    } catch (error: any) {
-      toast({
-        title: "Error Updating Product",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+  const handleEditProduct = (product: StripeProduct) => {
+    setSelectedProduct(product);
+    setShowEditDialog(true);
   };
 
-  const handleDeleteProduct = async (productId: string, productName: string) => {
-    try {
-      toast({
-        title: "Delete Feature",
-        description: "Product deletion requires additional setup. Opening Stripe dashboard for manual management.",
-      });
-      
-      window.open(`https://dashboard.stripe.com/products/${productId}`, '_blank');
-    } catch (error: any) {
-      toast({
-        title: "Error Deleting Product",
-        description: error.message,
-        variant: "destructive",
-      });
+  const formatPrice = (amount: number, currency: string) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+    }).format(amount / 100);
+  };
+
+  const getBillingType = (metadata: Record<string, string>) => {
+    return metadata.billing_model_type || 'standard';
+  };
+
+  const getTierInfo = (metadata: Record<string, string>) => {
+    const tierInfo = [];
+    if (metadata.usage_limit_transactions) {
+      tierInfo.push(`${metadata.usage_limit_transactions} transactions`);
     }
+    if (metadata.usage_limit_ai_processing) {
+      tierInfo.push(`${metadata.usage_limit_ai_processing} AI processing`);
+    }
+    if (metadata.overage_rate) {
+      tierInfo.push(`$${metadata.overage_rate}/overage`);
+    }
+    return tierInfo;
   };
 
   useEffect(() => {
-    loadProducts();
+    fetchProducts();
   }, []);
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  const formatPrice = (amount: number, currency: string, interval?: string) => {
-    const price = (amount / 100).toFixed(2);
-    const intervalText = interval ? `/${interval}` : '';
-    return `$${price} ${currency.toUpperCase()}${intervalText}`;
-  };
-
-  const openStripeProduct = (productId: string) => {
-    window.open(`https://dashboard.stripe.com/products/${productId}`, '_blank');
-  };
-
-  if (loading && products.length === 0) {
-    return (
-      <DashboardLayout
-        title="Products"
-        description="Manage your existing Stripe products and pricing"
-      >
-        <div className="flex items-center justify-center h-64">
-          <div className="flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            <span>Loading comprehensive Stripe data...</span>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
-    <DashboardLayout
-      title="Products"
-      description="Manage your existing Stripe products and pricing"
+    <DashboardLayout 
+      title="Stripe Products" 
+      description="Manage your Stripe products and pricing"
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search products..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex space-x-2">
-            <Button 
-              variant="outline" 
-              onClick={loadProducts}
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+        {/* Header Actions */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-between">
+          <div className="flex gap-2">
+            <Button onClick={fetchProducts} disabled={isLoading} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
-            
-            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-indigo-600 to-purple-600">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Product
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create New Product</DialogTitle>
-                  <DialogDescription>
-                    Add a new product to your Stripe catalog.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="product-name">Product Name</Label>
-                    <Input
-                      id="product-name"
-                      value={newProductForm.name}
-                      onChange={(e) => setNewProductForm(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="Enter product name"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="product-description">Description</Label>
-                    <Textarea
-                      id="product-description"
-                      value={newProductForm.description}
-                      onChange={(e) => setNewProductForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Enter product description"
-                    />
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button 
-                      onClick={handleCreateProduct}
-                      disabled={!newProductForm.name.trim()}
-                    >
-                      Create Product
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={handleInitializeBilling} disabled={isLoading}>
+              <Plus className="h-4 w-4 mr-2" />
+              Initialize Billing Plans
+            </Button>
           </div>
         </div>
 
-        {loading && (
+        {/* Products Grid */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="animate-pulse">
+                <Card>
+                  <CardHeader>
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-gray-200 rounded"></div>
+                      <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+        ) : products.length === 0 ? (
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-3">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                <span>Loading products...</span>
+            <CardContent className="text-center py-12">
+              <div className="max-w-md mx-auto">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Products Found</h3>
+                <p className="text-gray-500 mb-6">
+                  You haven't created any Stripe products yet. Initialize your billing plans to get started.
+                </p>
+                <Button onClick={handleInitializeBilling} disabled={isLoading}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Initialize Billing Plans
+                </Button>
               </div>
             </CardContent>
           </Card>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((product) => {
-            const tierInfo = getBillingTierInfo(product);
-            const isExpanded = expandedProducts.has(product.id);
-            
-            return (
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {products.map((product) => (
               <Card key={product.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader className="pb-3">
+                <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <CardTitle className="text-lg">{product.name}</CardTitle>
-                      <CardDescription className="mt-1">{product.description}</CardDescription>
+                      {product.metadata?.subtitle && (
+                        <p className="text-sm text-gray-500 mt-1">{product.metadata.subtitle}</p>
+                      )}
                     </div>
-                    <div className="flex flex-col items-end space-y-1">
-                      <Badge variant={product.active ? "default" : "secondary"}>
-                        {product.active ? "Active" : "Inactive"}
-                      </Badge>
-                      <Badge className={getTierColor(tierInfo.tier)}>
-                        <div className="flex items-center space-x-1">
-                          {tierInfo.icon}
-                          <span className="capitalize">{tierInfo.tier.replace('-', ' ')}</span>
-                        </div>
-                      </Badge>
+                    <div className="flex items-center space-x-2">
+                      {product.metadata?.popular === 'true' && (
+                        <Badge className="bg-blue-600">Most Popular</Badge>
+                      )}
+                      {product.metadata?.badge && (
+                        <Badge variant="secondary">{product.metadata.badge}</Badge>
+                      )}
+                      {!product.active && (
+                        <Badge variant="destructive">Inactive</Badge>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {/* Enhanced Pricing Section */}
-                    {product.default_price && (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2 flex items-center">
-                          <DollarSign className="h-4 w-4 mr-1" />
-                          Default Pricing
-                        </h4>
-                        <div className="text-sm text-muted-foreground">
-                          {formatPrice(
-                            product.default_price.unit_amount,
-                            product.default_price.currency,
-                            product.default_price.recurring?.interval
-                          )}
-                          {product.default_price.recurring && (
-                            <Badge variant="outline" className="ml-2 text-xs">
-                              {product.default_price.recurring.usage_type === 'metered' ? 'Metered' : 'Recurring'}
+
+                <CardContent className="space-y-4">
+                  {product.description && (
+                    <p className="text-sm text-gray-600">{product.description}</p>
+                  )}
+
+                  {/* Default Price */}
+                  {product.default_price && (
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Default Price:</span>
+                        <div className="text-right">
+                          <div className="font-bold">
+                            {formatPrice(product.default_price.unit_amount, product.default_price.currency)}
+                          </div>
+                          {product.default_price.type === 'recurring' && (
+                            <Badge variant="outline" className="text-xs">
+                              /{product.default_price.interval}
                             </Badge>
                           )}
                         </div>
-                        {tierInfo.type === 'metered' && (
-                          <div className="text-xs text-blue-600 mt-1">
-                            Usage-based billing enabled
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Enhanced Product Stats */}
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center space-x-1">
-                        <BarChart3 className="h-3 w-3 text-gray-500" />
-                        <span>{product.totalPriceOptions || 0} price options</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Zap className="h-3 w-3 text-gray-500" />
-                        <span>{product.meters?.length || 0} meters</span>
                       </div>
                     </div>
+                  )}
 
-                    {/* Expansion Toggle */}
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => toggleProductExpansion(product.id)}
-                      className="w-full"
-                    >
-                      {isExpanded ? 'Show Less' : 'Show Details'}
-                    </Button>
-
-                    {/* Expanded Details */}
-                    {isExpanded && (
-                      <div className="space-y-3 border-t pt-3">
-                        {/* All Prices */}
-                        {product.prices && product.prices.length > 0 && (
-                          <div>
-                            <h5 className="text-xs font-medium mb-1">All Pricing Options</h5>
-                            <div className="space-y-1">
-                              {product.prices.slice(0, 3).map((price, index) => (
-                                <div key={index} className="text-xs text-muted-foreground">
-                                  {formatPrice(price.unit_amount, price.currency, price.recurring?.interval)}
-                                  {price.billing_scheme === 'tiered' && (
-                                    <Badge variant="outline" className="ml-1 text-xs">Tiered</Badge>
-                                  )}
-                                </div>
-                              ))}
-                              {product.prices.length > 3 && (
-                                <div className="text-xs text-gray-500">
-                                  +{product.prices.length - 3} more...
-                                </div>
+                  {/* Additional Prices */}
+                  {product.prices && product.prices.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm">All Prices ({product.prices.length}):</h4>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {product.prices.map((price) => (
+                          <div key={price.id} className="flex items-center justify-between text-sm p-2 border rounded">
+                            <div className="flex items-center space-x-2">
+                              <span>{formatPrice(price.unit_amount, price.currency)}</span>
+                              {price.type === 'recurring' && (
+                                <Badge variant="outline" className="text-xs">
+                                  /{price.interval}
+                                </Badge>
+                              )}
+                              {price.billing_scheme === 'tiered' && (
+                                <Badge variant="secondary" className="text-xs">Tiered</Badge>
                               )}
                             </div>
+                            {!price.active && (
+                              <Badge variant="destructive" className="text-xs">Inactive</Badge>
+                            )}
                           </div>
-                        )}
-
-                        {/* Meters */}
-                        {product.meters && product.meters.length > 0 && (
-                          <div>
-                            <h5 className="text-xs font-medium mb-1">Associated Meters</h5>
-                            <div className="space-y-1">
-                              {product.meters.map((meter, index) => (
-                                <div key={index} className="text-xs text-muted-foreground">
-                                  {meter.display_name} ({meter.event_name})
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Metadata */}
-                        {product.metadata && Object.keys(product.metadata).length > 0 && (
-                          <div>
-                            <h5 className="text-xs font-medium mb-1">Metadata</h5>
-                            <div className="space-y-1">
-                              {Object.entries(product.metadata).slice(0, 3).map(([key, value]) => (
-                                <div key={key} className="text-xs text-muted-foreground">
-                                  <span className="font-mono">{key}:</span> {value}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between pt-3 border-t">
-                      <span className="text-xs text-muted-foreground">
-                        ID: {product.id.substring(0, 12)}...
-                      </span>
-                      <div className="flex space-x-2">
-                        <Dialog open={isEditDialogOpen && editingProduct?.id === product.id} onOpenChange={(open) => {
-                          setIsEditDialogOpen(open);
-                          if (!open) setEditingProduct(null);
-                        }}>
-                          <DialogTrigger asChild>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              title="Edit Product"
-                              onClick={() => setEditingProduct(product)}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Edit Product</DialogTitle>
-                              <DialogDescription>
-                                Update product details. Note: Some changes require Stripe dashboard access.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                              <div>
-                                <Label>Product Name</Label>
-                                <Input value={editingProduct?.name || ''} disabled />
-                              </div>
-                              <div>
-                                <Label>Description</Label>
-                                <Textarea value={editingProduct?.description || ''} disabled />
-                              </div>
-                              <div className="flex justify-end space-x-2">
-                                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                                  Cancel
-                                </Button>
-                                <Button onClick={handleUpdateProduct}>
-                                  Open in Stripe
-                                </Button>
-                              </div>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              title="Delete Product"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Product</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete "{product.name}"? This action will open the Stripe dashboard for safe product management.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteProduct(product.id, product.name)}>
-                                Open Stripe Dashboard
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          title="View in Stripe"
-                          onClick={() => openStripeProduct(product.id)}
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </Button>
+                        ))}
                       </div>
                     </div>
+                  )}
+
+                  {/* Billing Model Info */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Billing Type:</span>
+                      <Badge variant="outline">{getBillingType(product.metadata)}</Badge>
+                    </div>
+                    
+                    {/* Usage Limits */}
+                    {getTierInfo(product.metadata).length > 0 && (
+                      <div className="text-xs text-gray-500">
+                        <div className="font-medium">Usage Limits:</div>
+                        <ul className="list-disc list-inside">
+                          {getTierInfo(product.metadata).map((info, index) => (
+                            <li key={index}>{info}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex space-x-2 pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditProduct(product)}
+                      className="flex-1"
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  </div>
+
+                  {/* Product ID */}
+                  <div className="text-xs text-gray-400 truncate">
+                    ID: {product.id}
                   </div>
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
-
-        {filteredProducts.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <div className="text-muted-foreground mb-4">
-              {searchTerm ? 'No products found matching your search.' : 'No products found.'}
-            </div>
-            {!searchTerm && (
-              <Button 
-                className="bg-gradient-to-r from-indigo-600 to-purple-600"
-                onClick={() => setIsAddDialogOpen(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Your First Product
-              </Button>
-            )}
+            ))}
           </div>
         )}
       </div>
+
+      {/* Edit Product Dialog */}
+      <ProductEditDialog
+        product={selectedProduct}
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        onProductUpdated={fetchProducts}
+      />
     </DashboardLayout>
   );
 };

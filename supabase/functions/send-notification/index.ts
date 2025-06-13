@@ -16,7 +16,6 @@ interface EmailNotification {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -40,6 +39,10 @@ const handler = async (req: Request): Promise<Response> => {
       user: smtpConfig.user,
       secure: smtpConfig.secure
     });
+
+    if (!smtpConfig.pass) {
+      throw new Error('SMTP password not configured. Please set SMTP_PASS in Supabase secrets.');
+    }
 
     // Create email content based on type
     const emailContent = createEmailContent(notification);
@@ -65,7 +68,11 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (error: any) {
     console.error("Error in send-notification function:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        success: false,
+        error: error.message,
+        details: error.stack
+      }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -137,61 +144,77 @@ function createEmailContent(notification: EmailNotification): string {
 }
 
 async function sendSMTPEmail(config: any, emailData: any): Promise<any> {
-  const conn = await Deno.connect({
-    hostname: config.host,
-    port: config.port,
-  });
-
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-
-  // Helper function to send command and read response
-  async function sendCommand(command: string): Promise<string> {
-    await conn.write(encoder.encode(command + "\r\n"));
-    const buffer = new Uint8Array(1024);
-    const bytesRead = await conn.read(buffer);
-    return decoder.decode(buffer.subarray(0, bytesRead || 0));
-  }
-
   try {
-    // SMTP conversation
-    await sendCommand(`EHLO ${config.host}`);
-    
-    if (config.port === 587) {
-      await sendCommand("STARTTLS");
+    const conn = await Deno.connect({
+      hostname: config.host,
+      port: config.port,
+    });
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    // Helper function to send command and read response
+    async function sendCommand(command: string): Promise<string> {
+      await conn.write(encoder.encode(command + "\r\n"));
+      const buffer = new Uint8Array(1024);
+      const bytesRead = await conn.read(buffer);
+      return decoder.decode(buffer.subarray(0, bytesRead || 0));
     }
-    
-    // Auth
-    const authString = btoa(`\0${config.user}\0${config.pass}`);
-    await sendCommand("AUTH PLAIN " + authString);
-    
-    // Email commands
-    await sendCommand(`MAIL FROM:<${config.user}>`);
-    await sendCommand(`RCPT TO:<${emailData.to}>`);
-    await sendCommand("DATA");
-    
-    // Email content
-    const emailContent = [
-      `From: ${emailData.from}`,
-      `To: ${emailData.to}`,
-      `Subject: ${emailData.subject}`,
-      `Content-Type: text/html; charset=UTF-8`,
-      "",
-      emailData.html,
-      "."
-    ].join("\r\n");
-    
-    await sendCommand(emailContent);
-    await sendCommand("QUIT");
-    
-    return {
-      messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      response: "250 Message accepted",
-      accepted: [emailData.to],
-      rejected: []
-    };
-  } finally {
-    conn.close();
+
+    try {
+      // SMTP conversation
+      let response = await sendCommand(`EHLO ${config.host}`);
+      console.log("EHLO response:", response);
+      
+      if (config.port === 587) {
+        response = await sendCommand("STARTTLS");
+        console.log("STARTTLS response:", response);
+      }
+      
+      // Auth
+      const authString = btoa(`\0${config.user}\0${config.pass}`);
+      response = await sendCommand("AUTH PLAIN " + authString);
+      console.log("AUTH response:", response);
+      
+      // Email commands
+      response = await sendCommand(`MAIL FROM:<${config.user}>`);
+      console.log("MAIL FROM response:", response);
+      
+      response = await sendCommand(`RCPT TO:<${emailData.to}>`);
+      console.log("RCPT TO response:", response);
+      
+      response = await sendCommand("DATA");
+      console.log("DATA response:", response);
+      
+      // Email content
+      const emailContent = [
+        `From: ${emailData.from}`,
+        `To: ${emailData.to}`,
+        `Subject: ${emailData.subject}`,
+        `Content-Type: text/html; charset=UTF-8`,
+        "",
+        emailData.html,
+        "."
+      ].join("\r\n");
+      
+      response = await sendCommand(emailContent);
+      console.log("Email content response:", response);
+      
+      response = await sendCommand("QUIT");
+      console.log("QUIT response:", response);
+      
+      return {
+        messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        response: "250 Message accepted",
+        accepted: [emailData.to],
+        rejected: []
+      };
+    } finally {
+      conn.close();
+    }
+  } catch (error: any) {
+    console.error("SMTP Error:", error);
+    throw new Error(`Failed to send email: ${error.message}`);
   }
 }
 

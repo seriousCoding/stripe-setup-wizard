@@ -23,6 +23,11 @@ class EmailService {
         return { success: false, error: error.message };
       }
 
+      if (!data?.success) {
+        console.error('Email sending failed:', data);
+        return { success: false, error: data?.error || 'Email sending failed' };
+      }
+
       console.log('Email notification sent successfully:', data);
       return { success: true };
     } catch (error: any) {
