@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail } from 'lucide-react';
 import { emailService } from '@/services/emailService';
 import DashboardLayout from '@/components/DashboardLayout';
+import StripeManagement from '@/components/StripeManagement';
 
 const Settings = () => {
   const { user } = useAuth();
@@ -124,6 +126,8 @@ const Settings = () => {
             </Button>
           </CardContent>
         </Card>
+
+        <StripeManagement />
       </div>
     </DashboardLayout>
   );
