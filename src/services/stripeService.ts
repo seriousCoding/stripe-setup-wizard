@@ -133,6 +133,8 @@ class StripeService {
     description?: string;
   }): Promise<{ meter?: any; error?: string }> {
     try {
+      console.log('Creating billing meter:', data);
+      
       const { data: result, error } = await supabase.functions.invoke('create-billing-meter', {
         body: {
           display_name: data.display_name,
@@ -147,6 +149,12 @@ class StripeService {
         return { error: error.message };
       }
 
+      if (!result?.success) {
+        console.error('Billing meter creation failed:', result);
+        return { error: result?.error || 'Failed to create billing meter' };
+      }
+
+      console.log('Billing meter created successfully:', result.meter);
       return { meter: result.meter };
     } catch (error: any) {
       console.error('Error creating billing meter:', error);

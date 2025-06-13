@@ -166,44 +166,98 @@ const Products = () => {
 
   const createAppBillingMeters = async () => {
     try {
+      console.log('Creating essential billing meters for app functionality...');
+      
       // Create essential billing meters for app functionality
       const requiredMeters = [
         {
           display_name: 'API Calls',
           event_name: 'api_calls',
+          aggregation_formula: 'sum',
           description: 'Track API calls for usage-based billing'
         },
         {
           display_name: 'Data Processing',
           event_name: 'data_processing',
+          aggregation_formula: 'sum',
           description: 'Track data processing operations'
         },
         {
           display_name: 'AI Processing',
           event_name: 'ai_processing',
+          aggregation_formula: 'sum',
           description: 'Track AI processing requests'
         },
         {
           display_name: 'Document Uploads',
           event_name: 'document_uploads',
+          aggregation_formula: 'count',
           description: 'Track document upload operations'
+        },
+        {
+          display_name: 'Storage Usage',
+          event_name: 'storage_usage',
+          aggregation_formula: 'sum',
+          description: 'Track storage usage in bytes'
+        },
+        {
+          display_name: 'User Sessions',
+          event_name: 'user_sessions',
+          aggregation_formula: 'count',
+          description: 'Track active user sessions'
         }
       ];
 
+      const createdMeters = [];
+      
       for (const meterConfig of requiredMeters) {
         try {
+          console.log(`Creating meter: ${meterConfig.display_name}`);
+          
           const { meter, error } = await stripeService.createBillingMeter(meterConfig);
+          
           if (error) {
             console.warn(`Could not create meter ${meterConfig.event_name}:`, error);
+            toast({
+              title: "Meter Creation Warning",
+              description: `Could not create ${meterConfig.display_name}: ${error}`,
+              variant: "destructive",
+            });
           } else {
-            console.log(`Created billing meter: ${meterConfig.display_name}`);
+            console.log(`Successfully created billing meter: ${meterConfig.display_name}`);
+            createdMeters.push(meter);
+            
+            toast({
+              title: "Meter Created",
+              description: `Successfully created ${meterConfig.display_name} billing meter`,
+            });
           }
-        } catch (meterError) {
+        } catch (meterError: any) {
           console.warn(`Error creating meter ${meterConfig.event_name}:`, meterError);
+          toast({
+            title: "Meter Creation Error",
+            description: `Failed to create ${meterConfig.display_name}: ${meterError.message}`,
+            variant: "destructive",
+          });
         }
       }
-    } catch (error) {
-      console.warn('Error creating app billing meters:', error);
+
+      if (createdMeters.length > 0) {
+        toast({
+          title: "Billing Meters Setup Complete",
+          description: `Successfully created ${createdMeters.length} billing meters for app usage tracking.`,
+        });
+      }
+
+      return createdMeters;
+    } catch (error: any) {
+      console.error('Error creating app billing meters:', error);
+      toast({
+        title: "Error Creating Billing Meters",
+        description: "Failed to create billing meters. Please check your Stripe configuration.",
+        variant: "destructive",
+      });
+      return [];
     }
   };
 

@@ -51,21 +51,21 @@ serve(async (req) => {
 
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeKey) {
-      throw new Error('Stripe secret key not configured in Supabase secrets');
+      throw new Error('Stripe secret key not configured');
     }
 
-    logStep("Creating Stripe meter", { display_name, event_name, aggregation_formula });
+    logStep("Creating Stripe billing meter", { display_name, event_name, aggregation_formula });
 
     const stripe = new Stripe(stripeKey, {
       apiVersion: '2023-10-16',
     });
 
-    // Create the billing meter in Stripe
+    // Create the billing meter according to Stripe documentation
     const meter = await stripe.billing.meters.create({
       display_name,
       event_name,
       customer_mapping: {
-        event_payload_key: 'customer_id',
+        event_payload_key: 'stripe_customer_id',
         type: 'by_id'
       },
       default_aggregation: {
@@ -76,7 +76,7 @@ serve(async (req) => {
       }
     });
 
-    logStep("Stripe meter created", { meterId: meter.id });
+    logStep("Stripe billing meter created successfully", { meterId: meter.id });
 
     // Store meter info in Supabase for tracking
     const supabaseService = createClient(
@@ -92,7 +92,8 @@ serve(async (req) => {
         display_name: display_name,
         event_name: event_name,
         stripe_meter_id: meter.id,
-        unit_label: 'units'
+        unit_label: 'units',
+        created_by: user.id
       })
       .select()
       .single();
@@ -111,6 +112,7 @@ serve(async (req) => {
           id: meter.id,
           display_name: meter.display_name,
           event_name: meter.event_name,
+          status: meter.status,
           created: meter.created
         }
       }),
@@ -121,7 +123,7 @@ serve(async (req) => {
     );
 
   } catch (error: any) {
-    logStep("ERROR in create-billing-meter", { message: error.message });
+    logStep("ERROR in create-billing-meter", { message: error.message, stack: error.stack });
     
     return new Response(
       JSON.stringify({ 
