@@ -66,7 +66,7 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
 
       console.log('Fetch response:', data);
 
-      if (data?.success) {
+      if (data?.success && data.all_products) {
         setAllProducts(data.all_products || []);
         
         const productsToUse = useAllProducts ? data.all_products : data.app_products;
@@ -74,22 +74,22 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
         if (productsToUse && productsToUse.length > 0) {
           const tiers = mapStripeProductsToTiers(productsToUse);
           setPricingTiers(tiers);
-          console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length);
+          console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length, tiers);
         } else {
-          console.log(`No ${useAllProducts ? '' : 'app '}products found, using fallback`);
-          // Use fallback pricing tiers if no products found
+          console.log(`No ${useAllProducts ? '' : 'app '}products found, creating default tiers`);
+          // Always show default tiers as fallback
           const fallbackTiers = getDefaultPricingTiers();
           setPricingTiers(fallbackTiers);
         }
       } else {
-        console.log('No products found or fetch unsuccessful, using fallback');
+        console.log('No products found or fetch unsuccessful, using default tiers');
         const fallbackTiers = getDefaultPricingTiers();
         setPricingTiers(fallbackTiers);
       }
     } catch (err: any) {
       console.error('Error fetching pricing data:', err);
       setError(err.message);
-      // Use fallback pricing tiers on error
+      // Always show default tiers as fallback on error
       const fallbackTiers = getDefaultPricingTiers();
       setPricingTiers(fallbackTiers);
     } finally {
@@ -130,19 +130,25 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
 };
 
 const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
+  console.log('Mapping products to tiers:', products);
+  
   const tiers: StripePricingTier[] = [];
 
   products.forEach((product) => {
     const defaultPrice = product.default_price;
-    if (!defaultPrice) return;
+    if (!defaultPrice) {
+      console.log('Product missing default price:', product.name);
+      return;
+    }
 
     // Convert from cents to dollars
     const priceAmount = defaultPrice.unit_amount ? defaultPrice.unit_amount / 100 : 0;
     const isRecurring = defaultPrice.recurring?.interval === 'month';
     const metadata = product.metadata || {};
     
-    const tierId = metadata.tier_id || 'custom';
+    const tierId = metadata.tier_id || product.id;
 
+    // Extract usage limits from metadata
     const usageLimits = [];
     
     if (metadata.usage_limit_transactions) {
@@ -175,7 +181,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       name: product.name || 'Custom Plan',
       subtitle: metadata.subtitle || getSubtitleFromBillingType(metadata.billing_model_type, isRecurring),
       description: product.description || getDescriptionFromTierId(tierId),
-      price: priceAmount, // Now in dollars, not cents
+      price: priceAmount,
       currency: defaultPrice.currency?.toUpperCase() || 'USD',
       icon: getIconForTier(tierId),
       features: features,
@@ -191,14 +197,18 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       tierStructure: 'flat'
     };
 
+    console.log('Created tier:', tier);
     tiers.push(tier);
   });
 
-  return tiers.sort((a, b) => {
+  const sortedTiers = tiers.sort((a, b) => {
     if (a.id === 'trial') return -1;
     if (b.id === 'trial') return 1;
     return a.price - b.price;
   });
+
+  console.log('Final sorted tiers:', sortedTiers);
+  return sortedTiers;
 };
 
 const getFeaturesFromTierId = (tierId: string): string[] => {
@@ -307,6 +317,8 @@ const getIconForTier = (tierId: string): string => {
 };
 
 const getDefaultPricingTiers = (): StripePricingTier[] => {
+  console.log('Using default pricing tiers');
+  
   return [
     {
       id: 'trial',

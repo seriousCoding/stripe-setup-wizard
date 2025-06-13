@@ -20,8 +20,7 @@ const Pricing = () => {
   
   // Use the hook to get live pricing data with background updates
   const { pricingTiers, isLoading: pricingLoading, error: pricingError } = useStripePricing({
-    autoRefresh: true,
-    refreshInterval: 60000, // Refresh every minute in background
+    autoRefresh: false, // No auto refresh needed
     useAllProducts: false // Only use app-specific products
   });
 
@@ -107,7 +106,8 @@ const Pricing = () => {
         description="Select the perfect pricing model for your business needs"
       >
         <div className="text-center py-12">
-          <p className="text-red-500 mb-4">Error loading pricing plans. Please try again later.</p>
+          <p className="text-red-500 mb-4">Error loading pricing plans: {pricingError}</p>
+          <p className="text-gray-400">Displaying default pricing plans</p>
         </div>
       </DashboardLayout>
     );
