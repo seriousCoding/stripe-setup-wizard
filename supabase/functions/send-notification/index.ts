@@ -42,65 +42,48 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     if (!smtpConfig.username || !smtpConfig.password) {
-      throw new Error("SMTP credentials not configured in Supabase secrets");
+      throw new Error("SMTP credentials not configured. Please set SMTP_USER and SMTP_PASS in Supabase secrets.");
     }
 
     // Create enhanced email content
     const emailContent = createEmailContent(notification);
 
-    try {
-      // Create SMTP client with better error handling
-      const client = new SMTPClient({
-        connection: {
-          hostname: smtpConfig.hostname,
-          port: smtpConfig.port,
-          tls: true,
-          auth: {
-            username: smtpConfig.username,
-            password: smtpConfig.password,
-          },
+    console.log("Attempting to send email...");
+
+    // Create SMTP client
+    const client = new SMTPClient({
+      connection: {
+        hostname: smtpConfig.hostname,
+        port: smtpConfig.port,
+        tls: true,
+        auth: {
+          username: smtpConfig.username,
+          password: smtpConfig.password,
         },
-      });
+      },
+    });
 
-      console.log("Attempting to send email...");
+    // Send email
+    await client.send({
+      from: `"Stripe Setup Pilot" <${smtpConfig.username}>`,
+      to: notification.to,
+      subject: notification.subject,
+      content: emailContent,
+      html: emailContent,
+    });
 
-      // Send email
-      await client.send({
-        from: `"Stripe Setup Pilot" <${smtpConfig.username}>`,
-        to: notification.to,
-        subject: notification.subject,
-        content: emailContent,
-        html: emailContent,
-      });
+    console.log("Closing SMTP connection...");
+    await client.close();
 
-      console.log("Closing SMTP connection...");
-      await client.close();
+    console.log("Email sent successfully to:", notification.to);
 
-      console.log("Email sent successfully to:", notification.to);
-
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: "Email sent successfully" 
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
-
-    } catch (smtpError: any) {
-      console.error("SMTP Error:", smtpError);
-      
-      // For demo purposes, return success but log the error
-      console.log("Email would have been sent (demo mode):", notification);
-      
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: "Email processed (demo mode - SMTP not configured)",
-        demo: true
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
-    }
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: "Email sent successfully" 
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
 
   } catch (error: any) {
     console.error("Error in send-notification function:", error);
