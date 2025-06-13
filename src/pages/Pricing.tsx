@@ -18,10 +18,10 @@ const Pricing = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   
-  // Use the hook to get live pricing data with background updates
+  // Use the hook to get live pricing data
   const { pricingTiers, isLoading: pricingLoading, error: pricingError } = useStripePricing({
-    autoRefresh: false, // No auto refresh needed
-    useAllProducts: false // Only use app-specific products
+    autoRefresh: false,
+    useAllProducts: false
   });
 
   const handleSelectPlan = async (planId: string) => {
@@ -35,13 +35,12 @@ const Pricing = () => {
       return;
     }
 
-    if (selectedPlan === planId) return; // Prevent duplicate calls
+    if (selectedPlan === planId) return;
     
     setSelectedPlan(planId);
     setIsLoading(true);
 
     try {
-      // For trial plan, handle locally
       if (planId === 'trial') {
         toast({
           title: "Free Trial Activated",
@@ -205,6 +204,7 @@ const Pricing = () => {
       {pricingTiers.length === 0 && !pricingLoading && (
         <div className="text-center py-12">
           <p className="text-gray-400 mb-4">No pricing plans available</p>
+          <p className="text-gray-500 text-sm">Please check your Stripe configuration or contact support.</p>
         </div>
       )}
     </DashboardLayout>

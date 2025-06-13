@@ -73,18 +73,21 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
         
         if (productsToUse && productsToUse.length > 0) {
           const tiers = mapStripeProductsToTiers(productsToUse);
-          setPricingTiers(tiers);
-          console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length, tiers);
+          console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length, 'mapped to tiers:', tiers.length);
+          
+          if (tiers.length > 0) {
+            setPricingTiers(tiers);
+          } else {
+            console.log('No valid tiers created from products, using default tiers');
+            setPricingTiers(getDefaultPricingTiers());
+          }
         } else {
-          console.log(`No ${useAllProducts ? '' : 'app '}products found, creating default tiers`);
-          // Always show default tiers as fallback
-          const fallbackTiers = getDefaultPricingTiers();
-          setPricingTiers(fallbackTiers);
+          console.log(`No ${useAllProducts ? '' : 'app '}products found, using default tiers`);
+          setPricingTiers(getDefaultPricingTiers());
         }
       } else {
         console.log('No products found or fetch unsuccessful, using default tiers');
-        const fallbackTiers = getDefaultPricingTiers();
-        setPricingTiers(fallbackTiers);
+        setPricingTiers(getDefaultPricingTiers());
       }
     } catch (err: any) {
       console.error('Error fetching pricing data:', err);
@@ -135,43 +138,82 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
   const tiers: StripePricingTier[] = [];
 
   products.forEach((product) => {
-    const defaultPrice = product.default_price;
-    if (!defaultPrice) {
-      console.log('Product missing default price:', product.name);
-      return;
+    console.log('Processing product:', product.name, 'ID:', product.id);
+    
+    // Handle products with or without default_price
+    let priceAmount = 0;
+    let isRecurring = false;
+    let currency = 'USD';
+    
+    if (product.default_price) {
+      priceAmount = product.default_price.unit_amount ? product.default_price.unit_amount / 100 : 0;
+      isRecurring = product.default_price.recurring?.interval === 'month';
+      currency = product.default_price.currency?.toUpperCase() || 'USD';
+    } else if (product.prices && product.prices.length > 0) {
+      // Use first available price if no default price
+      const firstPrice = product.prices[0];
+      priceAmount = firstPrice.unit_amount ? firstPrice.unit_amount / 100 : 0;
+      isRecurring = firstPrice.recurring?.interval === 'month';
+      currency = firstPrice.currency?.toUpperCase() || 'USD';
+      console.log('Using first available price for product:', product.name);
+    } else {
+      console.log('Product has no pricing data, skipping:', product.name);
+      return; // Skip products without any pricing
     }
 
-    // Convert from cents to dollars
-    const priceAmount = defaultPrice.unit_amount ? defaultPrice.unit_amount / 100 : 0;
-    const isRecurring = defaultPrice.recurring?.interval === 'month';
     const metadata = product.metadata || {};
-    
     const tierId = metadata.tier_id || product.id;
 
-    // Extract usage limits from metadata
+    // Extract usage limits from metadata or product properties
     const usageLimits = [];
     
-    if (metadata.usage_limit_transactions) {
-      const transactionLimit = metadata.usage_limit_transactions;
-      usageLimits.push({ 
-        name: 'Transactions', 
-        value: transactionLimit === 'unlimited' ? 'Unlimited' : parseInt(transactionLimit).toLocaleString() 
-      });
-    }
-    
-    if (metadata.usage_limit_ai_processing) {
-      const aiLimit = metadata.usage_limit_ai_processing;
-      usageLimits.push({ 
-        name: 'AI Processing', 
-        value: aiLimit === 'unlimited' ? 'Unlimited' : parseInt(aiLimit).toLocaleString() 
-      });
+    if (product.usage_limits) {
+      if (product.usage_limits.transactions > 0) {
+        usageLimits.push({ 
+          name: 'Transactions', 
+          value: product.usage_limits.transactions === 999999 ? 'Unlimited' : product.usage_limits.transactions.toLocaleString() 
+        });
+      }
+      
+      if (product.usage_limits.ai_processing > 0) {
+        usageLimits.push({ 
+          name: 'AI Processing', 
+          value: product.usage_limits.ai_processing === 999999 ? 'Unlimited' : product.usage_limits.ai_processing.toLocaleString() 
+        });
+      }
+
+      if (product.usage_limits.meter_rate > 0) {
+        usageLimits.push({
+          name: 'After limit',
+          value: `$${product.usage_limits.meter_rate}/transaction`
+        });
+      }
     }
 
-    if (metadata.overage_rate) {
-      usageLimits.push({
-        name: 'After limit',
-        value: `$${metadata.overage_rate}/transaction`
-      });
+    // Fallback to metadata if usage_limits not available
+    if (usageLimits.length === 0) {
+      if (metadata.usage_limit_transactions) {
+        const transactionLimit = metadata.usage_limit_transactions;
+        usageLimits.push({ 
+          name: 'Transactions', 
+          value: transactionLimit === 'unlimited' ? 'Unlimited' : parseInt(transactionLimit).toLocaleString() 
+        });
+      }
+      
+      if (metadata.usage_limit_ai_processing) {
+        const aiLimit = metadata.usage_limit_ai_processing;
+        usageLimits.push({ 
+          name: 'AI Processing', 
+          value: aiLimit === 'unlimited' ? 'Unlimited' : parseInt(aiLimit).toLocaleString() 
+        });
+      }
+
+      if (metadata.overage_rate) {
+        usageLimits.push({
+          name: 'After limit',
+          value: `$${metadata.overage_rate}/transaction`
+        });
+      }
     }
 
     const features = getFeaturesFromTierId(tierId);
@@ -182,7 +224,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       subtitle: metadata.subtitle || getSubtitleFromBillingType(metadata.billing_model_type, isRecurring),
       description: product.description || getDescriptionFromTierId(tierId),
       price: priceAmount,
-      currency: defaultPrice.currency?.toUpperCase() || 'USD',
+      currency: currency,
       icon: getIconForTier(tierId),
       features: features,
       usageLimits: usageLimits.length > 0 ? usageLimits : undefined,
@@ -207,7 +249,7 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
     return a.price - b.price;
   });
 
-  console.log('Final sorted tiers:', sortedTiers);
+  console.log('Final sorted tiers:', sortedTiers.length, 'tiers created');
   return sortedTiers;
 };
 
