@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import ProductEditDialog from '@/components/ProductEditDialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,8 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Search, Plus, ExternalLink, Edit, Trash2, RefreshCw, Zap, CreditCard, Users, Target, BarChart3, Settings, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -83,17 +82,7 @@ const Products = () => {
   });
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isPriceDialogOpen, setIsPriceDialogOpen] = useState(false);
-  const [selectedProductForPrice, setSelectedProductForPrice] = useState<StripeProduct | null>(null);
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
-  const [newPriceForm, setNewPriceForm] = useState({
-    unit_amount: 0,
-    currency: 'usd',
-    interval: 'month',
-    type: 'recurring' as 'recurring' | 'one_time',
-    billing_scheme: 'per_unit' as 'per_unit' | 'tiered',
-    usage_type: 'licensed' as 'licensed' | 'metered'
-  });
   const { toast } = useToast();
 
   const loadProducts = async () => {
@@ -159,6 +148,9 @@ const Products = () => {
           title: "Products Loaded",
           description: `Loaded ${enhancedProducts.length} products with complete pricing data from Stripe.`,
         });
+
+        // Create billing meters for app usage if needed
+        await createAppBillingMeters();
       }
     } catch (error: any) {
       console.error('Error in loadProducts:', error);
@@ -169,6 +161,49 @@ const Products = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const createAppBillingMeters = async () => {
+    try {
+      // Create essential billing meters for app functionality
+      const requiredMeters = [
+        {
+          display_name: 'API Calls',
+          event_name: 'api_calls',
+          description: 'Track API calls for usage-based billing'
+        },
+        {
+          display_name: 'Data Processing',
+          event_name: 'data_processing',
+          description: 'Track data processing operations'
+        },
+        {
+          display_name: 'AI Processing',
+          event_name: 'ai_processing',
+          description: 'Track AI processing requests'
+        },
+        {
+          display_name: 'Document Uploads',
+          event_name: 'document_uploads',
+          description: 'Track document upload operations'
+        }
+      ];
+
+      for (const meterConfig of requiredMeters) {
+        try {
+          const { meter, error } = await stripeService.createBillingMeter(meterConfig);
+          if (error) {
+            console.warn(`Could not create meter ${meterConfig.event_name}:`, error);
+          } else {
+            console.log(`Created billing meter: ${meterConfig.display_name}`);
+          }
+        } catch (meterError) {
+          console.warn(`Error creating meter ${meterConfig.event_name}:`, meterError);
+        }
+      }
+    } catch (error) {
+      console.warn('Error creating app billing meters:', error);
     }
   };
 
@@ -206,58 +241,9 @@ const Products = () => {
     }
   };
 
-  const handleAddPrice = async () => {
-    if (!selectedProductForPrice) return;
-
-    try {
-      const priceData = {
-        product: selectedProductForPrice.id,
-        unit_amount: Math.round(newPriceForm.unit_amount * 100), // Convert to cents
-        currency: newPriceForm.currency,
-        billing_scheme: newPriceForm.billing_scheme,
-        metadata: {
-          created_via: 'billing_app_products_page',
-          product_name: selectedProductForPrice.name
-        }
-      };
-
-      // Add recurring data if it's a recurring price
-      if (newPriceForm.type === 'recurring') {
-        (priceData as any).recurring = {
-          interval: newPriceForm.interval,
-          usage_type: newPriceForm.usage_type
-        };
-      }
-
-      const { price, error } = await stripeService.createPrice(priceData);
-
-      if (error) {
-        throw new Error(error);
-      }
-
-      toast({
-        title: "Price Added",
-        description: `Successfully added new price to ${selectedProductForPrice.name}`,
-      });
-
-      setIsPriceDialogOpen(false);
-      setSelectedProductForPrice(null);
-      setNewPriceForm({
-        unit_amount: 0,
-        currency: 'usd',
-        interval: 'month',
-        type: 'recurring',
-        billing_scheme: 'per_unit',
-        usage_type: 'licensed'
-      });
-      loadProducts();
-    } catch (error: any) {
-      toast({
-        title: "Error Adding Price",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+  const handleEditProduct = (product: StripeProduct) => {
+    setEditingProduct(product);
+    setIsEditDialogOpen(true);
   };
 
   const getBillingTierInfo = (product: StripeProduct) => {
@@ -471,101 +457,18 @@ const Products = () => {
           </div>
         </div>
 
-        {/* Add Price Dialog */}
-        <Dialog open={isPriceDialogOpen} onOpenChange={setIsPriceDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add New Price</DialogTitle>
-              <DialogDescription>
-                Add a new pricing option to {selectedProductForPrice?.name}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="price-amount">Price Amount ($)</Label>
-                <Input
-                  id="price-amount"
-                  type="number"
-                  step="0.01"
-                  value={newPriceForm.unit_amount}
-                  onChange={(e) => setNewPriceForm(prev => ({ ...prev, unit_amount: parseFloat(e.target.value) || 0 }))}
-                  placeholder="Enter price amount"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="price-currency">Currency</Label>
-                <Select value={newPriceForm.currency} onValueChange={(value) => setNewPriceForm(prev => ({ ...prev, currency: value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select currency" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="usd">USD</SelectItem>
-                    <SelectItem value="eur">EUR</SelectItem>
-                    <SelectItem value="gbp">GBP</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="price-type">Price Type</Label>
-                <Select value={newPriceForm.type} onValueChange={(value: 'recurring' | 'one_time') => setNewPriceForm(prev => ({ ...prev, type: value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select price type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recurring">Recurring</SelectItem>
-                    <SelectItem value="one_time">One-time</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {newPriceForm.type === 'recurring' && (
-                <>
-                  <div>
-                    <Label htmlFor="price-interval">Billing Interval</Label>
-                    <Select value={newPriceForm.interval} onValueChange={(value) => setNewPriceForm(prev => ({ ...prev, interval: value }))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select interval" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="day">Daily</SelectItem>
-                        <SelectItem value="week">Weekly</SelectItem>
-                        <SelectItem value="month">Monthly</SelectItem>
-                        <SelectItem value="year">Yearly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="usage-type">Usage Type</Label>
-                    <Select value={newPriceForm.usage_type} onValueChange={(value: 'licensed' | 'metered') => setNewPriceForm(prev => ({ ...prev, usage_type: value }))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select usage type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="licensed">Licensed (Fixed quantity)</SelectItem>
-                        <SelectItem value="metered">Metered (Usage-based)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
-
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setIsPriceDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={handleAddPrice}
-                  disabled={newPriceForm.unit_amount <= 0}
-                >
-                  Add Price
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Product Edit Dialog */}
+        <ProductEditDialog
+          product={editingProduct}
+          isOpen={isEditDialogOpen}
+          onClose={() => {
+            setIsEditDialogOpen(false);
+            setEditingProduct(null);
+          }}
+          onSave={() => {
+            loadProducts();
+          }}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProducts.map((product) => {
@@ -602,17 +505,6 @@ const Products = () => {
                           <DollarSign className="h-4 w-4 mr-1" />
                           Pricing Options ({product.totalPriceOptions || 0})
                         </h4>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedProductForPrice(product);
-                            setIsPriceDialogOpen(true);
-                          }}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add Price
-                        </Button>
                       </div>
                       
                       {/* Display all prices for this product */}
@@ -713,6 +605,14 @@ const Products = () => {
                         ID: {product.id.substring(0, 12)}...
                       </span>
                       <div className="flex space-x-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          title="Edit Product"
+                          onClick={() => handleEditProduct(product)}
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
                         <Button 
                           variant="outline" 
                           size="sm" 
