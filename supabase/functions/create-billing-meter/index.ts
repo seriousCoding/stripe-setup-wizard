@@ -57,7 +57,7 @@ serve(async (req) => {
     logStep("Creating Stripe billing meter", { display_name, event_name, aggregation_formula });
 
     const stripe = new Stripe(stripeKey, {
-      apiVersion: '2023-10-16',
+      apiVersion: '2024-06-20',
     });
 
     // Create the billing meter according to Stripe documentation

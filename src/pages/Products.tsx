@@ -179,37 +179,37 @@ const Products = () => {
         {
           display_name: 'API Calls',
           event_name: 'api_calls',
-          aggregation_formula: 'sum' as const,
+          aggregation_formula: 'sum',
           description: 'Track API calls for usage-based billing'
         },
         {
           display_name: 'Data Processing',
           event_name: 'data_processing',
-          aggregation_formula: 'sum' as const,
+          aggregation_formula: 'sum',
           description: 'Track data processing operations'
         },
         {
           display_name: 'AI Processing',
           event_name: 'ai_processing',
-          aggregation_formula: 'sum' as const,
+          aggregation_formula: 'sum',
           description: 'Track AI processing requests'
         },
         {
           display_name: 'Document Uploads',
           event_name: 'document_uploads',
-          aggregation_formula: 'count' as const,
+          aggregation_formula: 'count',
           description: 'Track document upload operations'
         },
         {
           display_name: 'Storage Usage',
           event_name: 'storage_usage',
-          aggregation_formula: 'sum' as const,
+          aggregation_formula: 'sum',
           description: 'Track storage usage in bytes'
         },
         {
           display_name: 'User Sessions',
           event_name: 'user_sessions',
-          aggregation_formula: 'count' as const,
+          aggregation_formula: 'count',
           description: 'Track active user sessions'
         }
       ];
@@ -220,22 +220,31 @@ const Products = () => {
         try {
           console.log(`Creating meter: ${meterConfig.display_name}`);
           
-          const { meter, error } = await stripeService.createBillingMeter(meterConfig);
+          const { data, error } = await supabase.functions.invoke('create-billing-meter', {
+            body: meterConfig
+          });
           
           if (error) {
             console.warn(`Could not create meter ${meterConfig.event_name}:`, error);
             toast({
               title: "Meter Creation Warning",
-              description: `Could not create ${meterConfig.display_name}: ${error}`,
+              description: `Could not create ${meterConfig.display_name}: ${error.message}`,
               variant: "destructive",
             });
-          } else {
+          } else if (data?.success) {
             console.log(`Successfully created billing meter: ${meterConfig.display_name}`);
-            createdMeters.push(meter);
+            createdMeters.push(data.meter);
             
             toast({
               title: "Meter Created",
               description: `Successfully created ${meterConfig.display_name} billing meter`,
+            });
+          } else {
+            console.warn(`Failed to create meter ${meterConfig.event_name}:`, data?.error);
+            toast({
+              title: "Meter Creation Error",
+              description: `Failed to create ${meterConfig.display_name}: ${data?.error || 'Unknown error'}`,
+              variant: "destructive",
             });
           }
         } catch (meterError: any) {

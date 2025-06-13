@@ -1,5 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,42 +26,54 @@ const handler = async (req: Request): Promise<Response> => {
     
     // Get SMTP configuration from Supabase secrets
     const smtpConfig = {
-      host: Deno.env.get("SMTP_HOST") || "mail.firsttolaunch.com",
+      hostname: Deno.env.get("SMTP_HOST") || "mail.firsttolaunch.com",
       port: parseInt(Deno.env.get("SMTP_PORT") || "587"),
-      secure: Deno.env.get("SMTP_SECURE") === "true",
-      user: Deno.env.get("SMTP_USER") || "admin@firsttolaunch.com",
-      pass: Deno.env.get("SMTP_PASS"),
+      username: Deno.env.get("SMTP_USER") || "admin@firsttolaunch.com",
+      password: Deno.env.get("SMTP_PASS"),
     };
 
     console.log("Using SMTP Config:", { 
-      host: smtpConfig.host, 
+      hostname: smtpConfig.hostname, 
       port: smtpConfig.port, 
-      user: smtpConfig.user,
-      secure: smtpConfig.secure
+      username: smtpConfig.username
     });
 
-    if (!smtpConfig.pass) {
+    if (!smtpConfig.password) {
       throw new Error("SMTP password not configured in Supabase secrets");
     }
 
     // Create enhanced email content
     const emailContent = createEmailContent(notification);
 
-    // Send email using improved SMTP
-    const emailResponse = await sendEmail(smtpConfig, {
-      from: `"Stripe Setup Pilot" <${smtpConfig.user}>`,
-      to: notification.to,
-      subject: notification.subject,
-      html: emailContent,
-      text: notification.message
+    // Create SMTP client
+    const client = new SMTPClient({
+      connection: {
+        hostname: smtpConfig.hostname,
+        port: smtpConfig.port,
+        tls: true,
+        auth: {
+          username: smtpConfig.username,
+          password: smtpConfig.password,
+        },
+      },
     });
 
-    console.log("Email sent successfully:", emailResponse);
+    // Send email
+    await client.send({
+      from: `"Stripe Setup Pilot" <${smtpConfig.username}>`,
+      to: notification.to,
+      subject: notification.subject,
+      content: emailContent,
+      html: emailContent,
+    });
+
+    await client.close();
+
+    console.log("Email sent successfully to:", notification.to);
 
     return new Response(JSON.stringify({ 
       success: true, 
-      messageId: emailResponse.messageId,
-      response: emailResponse.response 
+      message: "Email sent successfully" 
     }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -141,29 +154,6 @@ function createEmailContent(notification: EmailNotification): string {
     </body>
     </html>
   `;
-}
-
-async function sendEmail(config: any, emailData: any): Promise<any> {
-  // For development/testing, we'll simulate email sending
-  // In production, you would integrate with a proper email service
-  
-  console.log("Simulating email send with config:", {
-    host: config.host,
-    port: config.port,
-    user: config.user,
-    to: emailData.to,
-    subject: emailData.subject
-  });
-
-  // Simulate email sending delay
-  await new Promise(resolve => setTimeout(resolve, 100));
-
-  return {
-    messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    response: "250 OK: Message accepted for delivery",
-    accepted: [emailData.to],
-    rejected: []
-  };
 }
 
 serve(handler);
