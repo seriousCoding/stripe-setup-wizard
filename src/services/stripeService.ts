@@ -88,10 +88,9 @@ class StripeService {
     recurring?: {
       interval: 'month' | 'year' | 'week' | 'day';
       interval_count?: number;
+      usage_type?: 'metered' | 'licensed';
     };
     billing_scheme?: 'per_unit' | 'tiered';
-    usage_type?: 'metered' | 'licensed';
-    aggregate_usage?: 'sum' | 'last_during_period' | 'last_ever' | 'max';
     metadata?: Record<string, string>;
   }): Promise<{ price?: any; error?: string }> {
     try {
@@ -151,6 +150,84 @@ class StripeService {
       return { meter: result.meter };
     } catch (error: any) {
       console.error('Error creating billing meter:', error);
+      return { error: error.message };
+    }
+  }
+
+  async createAppPricingPlan(planConfig: {
+    tier: 'starter' | 'professional' | 'business' | 'enterprise';
+    name: string;
+    description: string;
+    basePrice: number;
+    currency: string;
+    billingInterval: 'month' | 'year';
+    includedUsage?: number;
+    meterRate?: number;
+    features: string[];
+  }): Promise<{ product?: any; price?: any; meter?: any; error?: string }> {
+    try {
+      // 1. Create the product
+      const { product, error: productError } = await this.createProduct({
+        name: planConfig.name,
+        description: planConfig.description,
+        type: 'service',
+        metadata: {
+          tier_id: planConfig.tier,
+          billing_model_type: 'flat_recurring',
+          usage_limit_transactions: planConfig.includedUsage?.toString() || '0',
+          meter_rate: planConfig.meterRate?.toString() || '0',
+          features: planConfig.features.join(','),
+          created_for: 'app_pricing_plans'
+        }
+      });
+
+      if (productError) {
+        throw new Error(productError);
+      }
+
+      // 2. Create the base recurring price
+      const { price, error: priceError } = await this.createPrice({
+        product: product.id,
+        unit_amount: Math.round(planConfig.basePrice * 100), // Convert to cents
+        currency: planConfig.currency,
+        recurring: {
+          interval: planConfig.billingInterval,
+          usage_type: 'licensed'
+        },
+        metadata: {
+          tier_id: planConfig.tier,
+          price_type: 'base_recurring'
+        }
+      });
+
+      if (priceError) {
+        throw new Error(priceError);
+      }
+
+      // 3. Create meter for usage tracking if meterRate is specified
+      let meter = null;
+      if (planConfig.meterRate && planConfig.meterRate > 0) {
+        const { meter: createdMeter, error: meterError } = await this.createBillingMeter({
+          display_name: `${planConfig.name} Usage Tracking`,
+          event_name: `${planConfig.tier}_usage_events`,
+          aggregation_formula: 'sum',
+          description: `Usage meter for ${planConfig.name} plan overage billing`
+        });
+
+        if (meterError) {
+          console.warn('Could not create meter:', meterError);
+        } else {
+          meter = createdMeter;
+        }
+      }
+
+      return {
+        product,
+        price,
+        meter,
+      };
+    } catch (error: any) {
+      console.error('Error creating app pricing plan:', error);
       return { error: error.message };
     }
   }
