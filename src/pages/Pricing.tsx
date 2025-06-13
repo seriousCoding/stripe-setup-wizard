@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, RefreshCw } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -18,17 +18,12 @@ const Pricing = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   
-  // Use the hook to get live pricing data
-  const { pricingTiers, isLoading: pricingLoading, error: pricingError, refetch } = useStripePricing({
+  // Use the hook to get live pricing data with background updates
+  const { pricingTiers, isLoading: pricingLoading, error: pricingError } = useStripePricing({
     autoRefresh: true,
-    refreshInterval: 30000, // Refresh every 30 seconds
+    refreshInterval: 60000, // Refresh every minute in background
     useAllProducts: false // Only use app-specific products
   });
-
-  useEffect(() => {
-    // Refetch pricing data when component mounts
-    refetch();
-  }, [refetch]);
 
   const handleSelectPlan = async (planId: string) => {
     if (!user) {
@@ -63,7 +58,7 @@ const Pricing = () => {
         body: { 
           tier_id: planId,
           user_email: user.email,
-          mode: 'subscription' // Always use subscription mode to prevent duplicates
+          mode: 'subscription'
         }
       });
 
@@ -74,7 +69,6 @@ const Pricing = () => {
 
       if (data?.url) {
         console.log('Redirecting to checkout:', data.url);
-        // Navigate within the app instead of external redirect
         window.location.href = data.url;
       } else {
         throw new Error('No checkout URL returned');
@@ -100,8 +94,8 @@ const Pricing = () => {
   const getPriceSubtext = (tier: any): string => {
     if (tier.price === 0) return '14 days free';
     if (tier.isMonthly) return 'per month';
-    if (tier.id === 'starter') return 'per transaction';
-    if (tier.id === 'professional') return 'prepaid credits';
+    if (tier.id === 'starter') return 'per month + overages';
+    if (tier.id === 'professional') return 'per month + overages';
     if (tier.id === 'enterprise') return 'per user/month';
     return '';
   };
@@ -113,11 +107,7 @@ const Pricing = () => {
         description="Select the perfect pricing model for your business needs"
       >
         <div className="text-center py-12">
-          <p className="text-red-500 mb-4">Error loading pricing: {pricingError}</p>
-          <Button onClick={refetch} variant="outline">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Retry
-          </Button>
+          <p className="text-red-500 mb-4">Error loading pricing plans. Please try again later.</p>
         </div>
       </DashboardLayout>
     );
@@ -128,15 +118,11 @@ const Pricing = () => {
       title="Choose Your Plan" 
       description="Select the perfect pricing model for your business needs"
     >
-      <div className="mb-6 flex justify-between items-center">
-        <div className="text-sm text-gray-400">
-          {pricingLoading ? 'Loading latest pricing...' : `${pricingTiers.length} plans available`}
+      {pricingLoading && (
+        <div className="mb-6 text-center">
+          <div className="text-sm text-gray-400">Loading pricing plans...</div>
         </div>
-        <Button onClick={refetch} variant="outline" size="sm" disabled={pricingLoading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${pricingLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
         {pricingTiers.map((tier) => (
@@ -219,10 +205,6 @@ const Pricing = () => {
       {pricingTiers.length === 0 && !pricingLoading && (
         <div className="text-center py-12">
           <p className="text-gray-400 mb-4">No pricing plans available</p>
-          <Button onClick={refetch} variant="outline">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
         </div>
       )}
     </DashboardLayout>

@@ -80,12 +80,11 @@ serve(async (req) => {
     const customerId = customers.data[0].id;
     logStep("Found Stripe customer", { customerId });
 
-    // Get subscriptions with proper expand - fix the expand error
+    // Get subscriptions - using separate API calls to avoid expand issues
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
       status: 'active',
-      limit: 1,
-      expand: ['data.items.data.price'] // Fixed: only expand to 3 levels max
+      limit: 1
     });
 
     if (subscriptions.data.length === 0) {
@@ -109,7 +108,9 @@ serve(async (req) => {
 
     const subscription = subscriptions.data[0];
     const subscriptionItem = subscription.items.data[0];
-    const price = subscriptionItem.price;
+    
+    // Get the price separately to avoid expand issues
+    const price = await stripe.prices.retrieve(subscriptionItem.price.id);
     
     logStep("Active subscription found", {
       subscriptionId: subscription.id,

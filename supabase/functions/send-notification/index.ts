@@ -1,5 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { Resend } from "npm:resend@2.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,11 +20,42 @@ const logStep = (step: string, details?: any) => {
   console.log(`[SEND-NOTIFICATION] ${step}${detailsStr}`);
 };
 
-// Fallback email service using a simple approach
-async function sendSimpleEmail(notification: EmailNotification): Promise<void> {
-  logStep("Using simple email fallback");
+// Real email service using Resend
+async function sendRealEmail(notification: EmailNotification): Promise<void> {
+  const resendApiKey = Deno.env.get('RESEND_API_KEY');
   
-  // For now, just log the email content - in production you'd use a reliable email service
+  if (!resendApiKey) {
+    throw new Error('RESEND_API_KEY not configured');
+  }
+
+  logStep("Using Resend email service");
+  
+  const resend = new Resend(resendApiKey);
+  
+  const emailResponse = await resend.emails.send({
+    from: "Stripe Setup Pilot <noreply@yourdomain.com>",
+    to: [notification.to],
+    subject: notification.subject,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">${notification.subject}</h2>
+        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <p style="white-space: pre-line; color: #555;">${notification.message}</p>
+        </div>
+        <p style="color: #888; font-size: 12px;">
+          This email was sent from your Stripe Setup Pilot application.
+        </p>
+      </div>
+    `,
+  });
+
+  logStep("Email sent successfully", { messageId: emailResponse.data?.id });
+}
+
+// Fallback email service for when Resend is not configured
+async function sendFallbackEmail(notification: EmailNotification): Promise<void> {
+  logStep("Using fallback email service (logging only)");
+  
   logStep("Email content", {
     to: notification.to,
     subject: notification.subject,
@@ -33,7 +65,7 @@ async function sendSimpleEmail(notification: EmailNotification): Promise<void> {
   
   // Simulate successful email sending
   await new Promise(resolve => setTimeout(resolve, 100));
-  logStep("Email sent successfully (simulated)");
+  logStep("Email logged successfully (fallback mode)");
 }
 
 serve(async (req) => {
@@ -56,14 +88,20 @@ serve(async (req) => {
       type: notification.type
     });
 
-    // Use simple email fallback for now to avoid SMTP connection issues
-    await sendSimpleEmail(notification);
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    
+    if (resendApiKey) {
+      await sendRealEmail(notification);
+    } else {
+      logStep("RESEND_API_KEY not found, using fallback");
+      await sendFallbackEmail(notification);
+    }
 
     return new Response(
       JSON.stringify({ 
         success: true,
         message: 'Email notification sent successfully',
-        method: 'simple_fallback'
+        method: resendApiKey ? 'resend' : 'fallback'
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

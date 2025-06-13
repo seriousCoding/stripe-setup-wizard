@@ -41,7 +41,7 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
   const fetchPricingData = async (isAutoRefresh = false) => {
     // Prevent too frequent requests
     const now = Date.now();
-    if (now - lastFetchRef.current < 5000 && isAutoRefresh) {
+    if (now - lastFetchRef.current < 10000 && isAutoRefresh) {
       console.log('Skipping fetch due to rate limiting');
       return;
     }
@@ -74,17 +74,17 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
           setPricingTiers(tiers);
           console.log(`Loaded ${useAllProducts ? 'all' : 'app'} products:`, productsToUse.length);
         } else {
-          console.log(`No ${useAllProducts ? '' : 'app '}products found, using defaults`);
-          setPricingTiers(getDefaultPricingTiers());
+          console.log(`No ${useAllProducts ? '' : 'app '}products found`);
+          setPricingTiers([]);
         }
       } else {
-        console.log('No products found or fetch unsuccessful, using defaults');
-        setPricingTiers(getDefaultPricingTiers());
+        console.log('No products found or fetch unsuccessful');
+        setPricingTiers([]);
       }
     } catch (err: any) {
       console.error('Error fetching pricing data:', err);
       setError(err.message);
-      setPricingTiers(getDefaultPricingTiers());
+      setPricingTiers([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -305,7 +305,7 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
       id: 'trial',
       name: 'Free Trial',
       subtitle: 'Trial',
-      description: 'Try all features risk-free with 500 included transactions monthly.',
+      description: 'Try all features risk-free with included transactions monthly.',
       price: 0,
       currency: 'USD',
       icon: '🎁',
