@@ -41,22 +41,16 @@ const Pricing = () => {
     setIsLoading(true);
 
     try {
-      if (planId === 'trial') {
-        toast({
-          title: "Free Trial Activated",
-          description: "Your free trial has been activated!",
-        });
-        navigate('/');
-        return;
-      }
-
       console.log(`Creating checkout for plan: ${planId}`);
+      
+      // Determine the mode based on the plan type
+      const mode = planId === 'trial' ? 'subscription' : 'subscription';
       
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: { 
           tier_id: planId,
           user_email: user.email,
-          mode: 'subscription'
+          mode: mode
         }
       });
 
@@ -85,12 +79,12 @@ const Pricing = () => {
   };
 
   const formatPrice = (price: number): string => {
-    if (price === 0) return '$0';
+    if (price === 0) return 'Free';
     return `$${price}`;
   };
 
   const getPriceSubtext = (tier: any): string => {
-    if (tier.price === 0) return '14 days free';
+    if (tier.price === 0) return '14 days free trial';
     if (tier.isMonthly) return 'per month';
     if (tier.id === 'starter') return 'per month + overages';
     if (tier.id === 'professional') return 'per month + overages';

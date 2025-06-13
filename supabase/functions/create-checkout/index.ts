@@ -116,13 +116,17 @@ serve(async (req) => {
       let productName = '';
       
       switch (tier_id) {
+        case 'trial':
+          unitAmount = 0; // Free trial
+          productName = 'Free Trial - 14 Days';
+          break;
         case 'starter':
-          unitAmount = 99; // $0.99
-          productName = 'Starter Plan - Pay As You Go';
+          unitAmount = 1900; // $19.00
+          productName = 'Starter Plan';
           break;
         case 'professional':
           unitAmount = 4900; // $49.00
-          productName = 'Professional Plan - Credit Bundle';
+          productName = 'Professional Plan';
           break;
         case 'business':
           unitAmount = 9900; // $99.00
@@ -145,7 +149,7 @@ serve(async (req) => {
         }
       });
 
-      // Create price - use payment mode for starter/professional, subscription for others
+      // Create price
       const priceConfig: any = {
         product: product.id,
         unit_amount: unitAmount,
@@ -155,18 +159,17 @@ serve(async (req) => {
         }
       };
 
-      // Only add recurring for subscription plans
+      // Add recurring for subscription plans
       if (mode === 'subscription') {
         priceConfig.recurring = { interval: 'month' };
       }
 
       const price = await stripe.prices.create(priceConfig);
-
       priceToUse = price.id;
       logStep("Created new product and price", { productId: product.id, priceId: priceToUse, unitAmount, mode });
     }
 
-    // Create checkout session
+    // Create checkout session with trial handling
     const sessionConfig: any = {
       customer: customerId,
       line_items: [{
@@ -182,9 +185,22 @@ serve(async (req) => {
       }
     };
 
+    // Add trial period for free trial tier
+    if (tier_id === 'trial') {
+      sessionConfig.subscription_data = {
+        trial_period_days: 14,
+        trial_settings: {
+          end_behavior: {
+            missing_payment_method: 'cancel'
+          }
+        }
+      };
+      sessionConfig.payment_method_collection = 'if_required';
+    }
+
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
-    logStep("Checkout session created", { sessionId: session.id, url: session.url, mode });
+    logStep("Checkout session created", { sessionId: session.id, url: session.url, mode, hasTrial: tier_id === 'trial' });
 
     return new Response(
       JSON.stringify({ 

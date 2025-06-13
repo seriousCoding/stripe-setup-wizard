@@ -44,6 +44,8 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
     metadata: {} as Record<string, string>
   });
   const [showAddPrice, setShowAddPrice] = useState(false);
+  const [newMetadataKey, setNewMetadataKey] = useState('');
+  const [newMetadataValue, setNewMetadataValue] = useState('');
 
   useEffect(() => {
     if (product) {
@@ -187,6 +189,29 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
     }
   };
 
+  const handleAddMetadata = () => {
+    if (newMetadataKey && newMetadataValue) {
+      setProductData({
+        ...productData,
+        metadata: {
+          ...productData.metadata,
+          [newMetadataKey]: newMetadataValue
+        }
+      });
+      setNewMetadataKey('');
+      setNewMetadataValue('');
+    }
+  };
+
+  const handleRemoveMetadata = (key: string) => {
+    const updatedMetadata = { ...productData.metadata };
+    delete updatedMetadata[key];
+    setProductData({
+      ...productData,
+      metadata: updatedMetadata
+    });
+  };
+
   const formatPrice = (amount: number, currency: string) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -196,15 +221,15 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Product: {product?.name}</DialogTitle>
           <DialogDescription>
-            Update product details and manage pricing options
+            Update product details, metadata, and manage pricing options
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Product Details */}
           <div className="space-y-4">
             <Card>
@@ -249,21 +274,74 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Metadata Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Metadata</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  {Object.entries(productData.metadata).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between p-2 border rounded">
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">{key}</div>
+                        <div className="text-sm text-gray-500">{value}</div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveMetadata(key)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      placeholder="Key"
+                      value={newMetadataKey}
+                      onChange={(e) => setNewMetadataKey(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Value"
+                      value={newMetadataValue}
+                      onChange={(e) => setNewMetadataValue(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddMetadata}
+                    disabled={!newMetadataKey || !newMetadataValue}
+                    className="w-full"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Metadata
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Existing Prices */}
-          <div className="space-y-4">
+          <div className="lg:col-span-2 space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Existing Prices</CardTitle>
+                <CardTitle className="text-lg">Pricing ({prices.length} prices)</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-60 overflow-y-auto">
                   {prices.map((price) => (
-                    <div key={price.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div key={price.id} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-medium">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="font-medium text-lg">
                             {formatPrice(price.unit_amount, price.currency)}
                           </span>
                           {price.type === 'recurring' && price.interval && (
@@ -276,7 +354,12 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
                             <Badge variant="destructive">Inactive</Badge>
                           )}
                         </div>
-                        <p className="text-sm text-gray-500">ID: {price.id}</p>
+                        <div className="text-sm text-gray-500">
+                          ID: {price.id}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          Currency: {price.currency.toUpperCase()}
+                        </div>
                       </div>
                       {price.active && (
                         <Button
