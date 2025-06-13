@@ -22,7 +22,21 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const notification: EmailNotification = await req.json();
+    console.log("Processing email notification request");
+    
+    // Read the request body as text first, then parse as JSON
+    const requestBody = await req.text();
+    console.log("Raw request body:", requestBody);
+    
+    let notification: EmailNotification;
+    try {
+      notification = JSON.parse(requestBody);
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      throw new Error("Invalid JSON in request body");
+    }
+
+    console.log("Parsed notification:", notification);
     
     // Get SMTP configuration from Supabase secrets
     const smtpConfig = {

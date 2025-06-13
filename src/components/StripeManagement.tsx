@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +7,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from '@/components/ui/badge';
 import { Trash2, RefreshCw, Shield, Lock, Eye, EyeOff, Key } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const StripeManagement = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -72,26 +72,30 @@ const StripeManagement = () => {
   const handleCleanupStripeData = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/cleanup-stripe-products', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      console.log('Starting Stripe cleanup...');
+      
+      const { data, error } = await supabase.functions.invoke('cleanup-stripe-products', {
+        body: {}
       });
 
-      if (response.ok) {
+      if (error) {
+        console.error('Cleanup error:', error);
+        throw new Error(error.message);
+      }
+
+      if (data?.success) {
         toast({
           title: "Cleanup Completed",
-          description: "All Stripe products and prices have been removed.",
+          description: data.message || "All Stripe products and prices have been archived.",
         });
       } else {
-        throw new Error('Cleanup failed');
+        throw new Error(data?.error || 'Cleanup failed');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Cleanup error:', error);
       toast({
         title: "Cleanup Failed",
-        description: "Failed to cleanup Stripe data. Please try again.",
+        description: error.message || "Failed to cleanup Stripe data. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -102,26 +106,30 @@ const StripeManagement = () => {
   const handleReseedStripeData = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/seed-stripe-products', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      console.log('Starting Stripe reseed...');
+      
+      const { data, error } = await supabase.functions.invoke('reseed-stripe-products', {
+        body: {}
       });
 
-      if (response.ok) {
+      if (error) {
+        console.error('Reseed error:', error);
+        throw new Error(error.message);
+      }
+
+      if (data?.success) {
         toast({
           title: "Reseed Completed",
-          description: "Sample Stripe products and prices have been created.",
+          description: data.message || "Sample Stripe products and prices have been created.",
         });
       } else {
-        throw new Error('Reseed failed');
+        throw new Error(data?.error || 'Reseed failed');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Reseed error:', error);
       toast({
         title: "Reseed Failed",
-        description: "Failed to reseed Stripe data. Please try again.",
+        description: error.message || "Failed to reseed Stripe data. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -288,15 +296,15 @@ const StripeManagement = () => {
                 className="shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 transform"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Cleanup Stripe Data
+                {isLoading ? 'Processing...' : 'Cleanup Stripe Data'}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent className="shadow-2xl">
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete all Stripe products, 
-                  prices, and associated data from your Stripe account.
+                  This action will archive all Stripe products, prices, and deactivate billing meters. 
+                  This is reversible by reactivating them in the Stripe dashboard.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -307,7 +315,7 @@ const StripeManagement = () => {
                   onClick={handleCleanupStripeData}
                   className="bg-red-600 hover:bg-red-700 shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  Yes, delete everything
+                  Yes, cleanup data
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -321,14 +329,14 @@ const StripeManagement = () => {
                 className="shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 transform"
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Reseed Test Data
+                {isLoading ? 'Processing...' : 'Reseed Test Data'}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent className="shadow-2xl">
               <AlertDialogHeader>
                 <AlertDialogTitle>Reseed Stripe Test Data</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will create sample products and prices in your Stripe account for testing purposes.
+                  This will create sample products, prices, and billing meters in your Stripe account for testing purposes.
                   This is safe to run multiple times.
                 </AlertDialogDescription>
               </AlertDialogHeader>

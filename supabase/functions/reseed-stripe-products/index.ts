@@ -10,7 +10,7 @@ const corsHeaders = {
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[RESEED-STRIPE-PRODUCTS] ${step}${detailsStr}`);
+  console.log(`[RESEED-STRIPE] ${step}${detailsStr}`);
 };
 
 serve(async (req) => {
@@ -19,13 +19,7 @@ serve(async (req) => {
   }
 
   try {
-    logStep("Function started");
-    
-    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!stripeSecretKey) {
-      throw new Error('Stripe secret key not configured in Supabase secrets');
-    }
-    logStep("Stripe secret key found");
+    logStep("Reseed function started");
 
     // Authenticate user
     const supabaseClient = createClient(
@@ -46,234 +40,139 @@ serve(async (req) => {
       throw new Error('User not authenticated');
     }
 
-    logStep("User authenticated", { email: data.user.email });
+    logStep("User authenticated", { userId: data.user.id });
 
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2023-10-16',
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeKey) {
+      throw new Error('Stripe secret key not configured');
+    }
+
+    const stripe = new Stripe(stripeKey, {
+      apiVersion: '2024-06-20',
     });
 
-    // Define the products with exact pricing and features from the image
-    const productDefinitions = [
+    logStep("Starting reseed of Stripe test data");
+
+    // Sample products to create
+    const sampleProducts = [
       {
-        id: 'trial',
-        name: 'Free Trial',
-        subtitle: 'Trial',
-        description: 'Try all features risk-free before committing.',
-        price: 0, // $0 - Free
-        metadata: {
-          tier_id: 'trial',
-          plan_type: 'trial',
-          billing_model_type: 'free_trial',
-          created_via: 'billing_app_v1',
-          popular: 'false',
-          badge: 'Free Trial',
-          subtitle: 'Trial'
-        },
-        usage_limits: {
-          transactions: 500,
-          ai_processing: 50,
-          meter_rate_after_limit: 0.05
-        },
-        features: [
-          'Full access to all features',
-          '500 transaction limit',
-          'Basic AI processing',
-          'Email support'
+        name: "Basic Plan",
+        description: "Basic subscription plan with essential features",
+        prices: [
+          { amount: 999, currency: 'usd', interval: 'month' },
+          { amount: 9999, currency: 'usd', interval: 'year' }
         ]
       },
       {
-        id: 'starter',
-        name: 'Starter',
-        subtitle: 'Pay As-You-Go',
-        description: 'Perfect for getting started with transaction-based billing.',
-        price: 99, // $0.99 per transaction (99 cents)
-        metadata: {
-          tier_id: 'starter',
-          plan_type: 'metered',
-          billing_model_type: 'pay_as_you_go',
-          created_via: 'billing_app_v1',
-          popular: 'false',
-          subtitle: 'Pay As-You-Go'
-        },
-        usage_limits: {
-          transactions: 20,
-          ai_processing: 5,
-          meter_rate_after_limit: 0.05
-        },
-        features: [
-          'Pay only for what you use',
-          'No monthly commitment',
-          'Basic AI data extraction',
-          'Standard support'
+        name: "Pro Plan",
+        description: "Professional plan with advanced features",
+        prices: [
+          { amount: 2999, currency: 'usd', interval: 'month' },
+          { amount: 29999, currency: 'usd', interval: 'year' }
         ]
       },
       {
-        id: 'professional',
-        name: 'Professional',
-        subtitle: 'Credit Burndown',
-        description: 'Buy credits in advance for better rates and flexibility.',
-        price: 4900, // $49.00 prepaid credits (4900 cents)
-        metadata: {
-          tier_id: 'professional',
-          plan_type: 'package',
-          billing_model_type: 'credit_burndown',
-          created_via: 'billing_app_v1',
-          popular: 'true',
-          badge: 'Most Popular',
-          subtitle: 'Credit Burndown'
-        },
-        usage_limits: {
-          transactions: 1200,
-          ai_processing: 300,
-          meter_rate_after_limit: 0.04
-        },
-        features: [
-          '1,200 transaction credits',
-          '15% discount on bulk purchases',
-          'Advanced AI processing',
-          'Priority support',
-          'Usage analytics'
-        ]
-      },
-      {
-        id: 'business',
-        name: 'Business',
-        subtitle: 'Flat Fee',
-        description: 'Unlimited transactions with predictable monthly costs.',
-        price: 9900, // $99.00 monthly (9900 cents)
-        interval: 'month',
-        metadata: {
-          tier_id: 'business',
-          plan_type: 'recurring',
-          billing_model_type: 'flat_recurring',
-          created_via: 'billing_app_v1',
-          popular: 'false',
-          subtitle: 'Flat Fee'
-        },
-        usage_limits: {
-          transactions: 'unlimited',
-          ai_processing: 'unlimited',
-          unlimited: true
-        },
-        features: [
-          'Unlimited transactions',
-          'Unlimited AI processing',
-          'Advanced analytics',
-          'Dedicated support',
-          'Custom integrations'
-        ]
-      },
-      {
-        id: 'enterprise',
-        name: 'Enterprise',
-        subtitle: 'Per Seat',
-        description: 'Scale with your team size and organizational needs.',
-        price: 2500, // $25.00 per user/month (2500 cents)
-        interval: 'month',
-        metadata: {
-          tier_id: 'enterprise',
-          plan_type: 'per_seat',
-          billing_model_type: 'per_seat',
-          created_via: 'billing_app_v1',
-          popular: 'false',
-          subtitle: 'Per Seat'
-        },
-        usage_limits: {
-          transactions: 'unlimited',
-          ai_processing: 'unlimited',
-          unlimited: true
-        },
-        features: [
-          'Unlimited everything',
-          'Multi-user management',
-          'Advanced security',
-          'SLA guarantee',
-          'Custom development'
+        name: "API Usage",
+        description: "Pay-per-use API access",
+        prices: [
+          { amount: 50, currency: 'usd', billing_scheme: 'per_unit' }
         ]
       }
     ];
 
-    const results = [];
+    const createdItems: any[] = [];
 
-    for (const productDef of productDefinitions) {
-      logStep(`Creating product: ${productDef.name}`);
-      
-      try {
-        // Enhanced metadata with usage limits
-        const enhancedMetadata = {
-          ...productDef.metadata,
-          // Usage limits as metadata - handle unlimited values properly
-          usage_limit_transactions: productDef.usage_limits.transactions.toString(),
-          usage_limit_ai_processing: productDef.usage_limits.ai_processing.toString(),
-          meter_rate: productDef.usage_limits.meter_rate_after_limit?.toString() || '0',
-          unlimited_features: productDef.usage_limits.unlimited ? 'true' : 'false'
-        };
+    for (const productData of sampleProducts) {
+      // Create product
+      const product = await stripe.products.create({
+        name: productData.name,
+        description: productData.description,
+        type: 'service',
+        metadata: {
+          created_via: 'stripe_setup_pilot_reseed',
+          created_at: new Date().toISOString()
+        }
+      });
 
-        // Create the product
-        const product = await stripe.products.create({
-          name: productDef.name,
-          description: productDef.description,
-          metadata: enhancedMetadata
-        });
+      logStep("Created product", { productId: product.id, name: product.name });
 
-        logStep(`Product created: ${product.id}`);
-
-        // Create the price
-        const priceData: any = {
-          currency: 'usd',
-          unit_amount: productDef.price,
+      // Create prices for this product
+      const productPrices = [];
+      for (const priceData of productData.prices) {
+        const priceConfig: any = {
           product: product.id,
-          metadata: enhancedMetadata
+          unit_amount: priceData.amount,
+          currency: priceData.currency,
+          metadata: {
+            created_via: 'stripe_setup_pilot_reseed'
+          }
         };
 
-        if (productDef.interval) {
-          priceData.recurring = { interval: productDef.interval };
+        if (priceData.interval) {
+          priceConfig.recurring = {
+            interval: priceData.interval,
+            usage_type: 'licensed'
+          };
         }
 
-        const price = await stripe.prices.create(priceData);
+        if (priceData.billing_scheme) {
+          priceConfig.billing_scheme = priceData.billing_scheme;
+        }
 
-        logStep(`Price created: ${price.id}`);
-
-        // Set as default price for the product
-        await stripe.products.update(product.id, {
-          default_price: price.id
-        });
-
-        results.push({
-          product_id: product.id,
-          price_id: price.id,
-          tier_id: productDef.id,
-          name: productDef.name,
-          subtitle: productDef.subtitle,
-          amount: productDef.price,
-          usage_limits: productDef.usage_limits,
-          features: productDef.features,
-          status: 'success'
-        });
-
-        logStep(`Product setup complete for ${productDef.name}`);
-
-      } catch (error: any) {
-        logStep(`Error creating product ${productDef.name}`, { error: error.message });
-        results.push({
-          tier_id: productDef.id,
-          name: productDef.name,
-          error: error.message,
-          status: 'error'
+        const price = await stripe.prices.create(priceConfig);
+        productPrices.push(price);
+        
+        logStep("Created price", { 
+          priceId: price.id, 
+          amount: price.unit_amount,
+          interval: price.recurring?.interval || 'one-time'
         });
       }
+
+      createdItems.push({
+        product,
+        prices: productPrices
+      });
     }
 
-    logStep("Reseeding complete", { results });
+    // Create a sample billing meter
+    const meter = await stripe.billing.meters.create({
+      display_name: "API Requests",
+      event_name: "api_request_usage",
+      customer_mapping: {
+        event_payload_key: 'stripe_customer_id',
+        type: 'by_id'
+      },
+      default_aggregation: {
+        formula: 'sum'
+      },
+      value_settings: {
+        event_payload_key: 'value'
+      }
+    });
+
+    logStep("Created billing meter", { meterId: meter.id });
+
+    logStep("Reseed completed successfully", { 
+      productsCreated: createdItems.length,
+      totalPrices: createdItems.reduce((sum, item) => sum + item.prices.length, 0),
+      metersCreated: 1
+    });
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: 'Stripe products reseeded successfully with exact pricing from image',
-        results,
-        summary: {
-          products_created: results.filter(r => r.status === 'success').length,
-          errors: results.filter(r => r.status === 'error').length
+        message: `Reseed completed. Created ${createdItems.length} products with sample pricing and 1 billing meter.`,
+        data: {
+          products: createdItems.map(item => ({
+            id: item.product.id,
+            name: item.product.name,
+            prices: item.prices.length
+          })),
+          meter: {
+            id: meter.id,
+            name: meter.display_name
+          }
         }
       }),
       {
@@ -283,7 +182,7 @@ serve(async (req) => {
     );
 
   } catch (error: any) {
-    logStep("ERROR in reseed-stripe-products", { message: error.message });
+    logStep("ERROR in reseed-stripe-products", { message: error.message, stack: error.stack });
     
     return new Response(
       JSON.stringify({ 
