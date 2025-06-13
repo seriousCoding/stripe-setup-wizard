@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -205,52 +206,52 @@ const Products = () => {
                       <p className="text-sm text-gray-600">{product.description}</p>
                     )}
 
-                    {/* Default/Main Price Display */}
-                    {defaultPrice && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <DollarSign className="h-4 w-4 text-blue-600" />
-                            <span className="font-semibold text-blue-800">
-                              {formatPrice(defaultPrice.unit_amount, defaultPrice.currency)}
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            {defaultPrice.type === 'recurring' && defaultPrice.interval && (
-                              <Badge variant="outline" className="text-xs">
-                                <Calendar className="h-3 w-3 mr-1" />
-                                /{defaultPrice.interval}
-                              </Badge>
-                            )}
-                            {defaultPrice.billing_scheme === 'tiered' && (
-                              <Badge variant="secondary" className="text-xs">Tiered</Badge>
-                            )}
-                          </div>
+                    {/* All Prices Display */}
+                    {activePrices.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-gray-700">
+                          Active Prices ({activePrices.length}):
                         </div>
-                        <div className="text-xs text-blue-600 mt-1">
-                          {defaultPrice === product.default_price ? 'Default Price' : 'Primary Price'}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Additional Prices Summary */}
-                    {activePrices.length > 1 && (
-                      <div className="text-xs text-gray-500">
-                        <div className="font-medium">Additional Prices ({activePrices.length - 1}):</div>
-                        <div className="mt-1 space-y-1">
-                          {activePrices.slice(0, 3).filter(p => p.id !== defaultPrice?.id).map((price) => (
-                            <div key={price.id} className="flex justify-between">
-                              <span>{formatPrice(price.unit_amount, price.currency)}</span>
-                              <span>
-                                {price.type === 'recurring' && price.interval ? `/${price.interval}` : 'one-time'}
-                              </span>
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {activePrices.map((price, index) => (
+                            <div key={price.id} className={`p-2 rounded-lg border ${
+                              price.id === defaultPrice?.id ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+                            }`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                  <DollarSign className="h-3 w-3 text-green-600" />
+                                  <span className="font-medium text-sm">
+                                    {formatPrice(price.unit_amount, price.currency)}
+                                  </span>
+                                  {price.id === defaultPrice?.id && (
+                                    <Badge variant="outline" className="text-xs">Default</Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  {price.type === 'recurring' && price.recurring && (
+                                    <Badge variant="outline" className="text-xs">
+                                      <Calendar className="h-2 w-2 mr-1" />
+                                      /{price.recurring.interval}
+                                    </Badge>
+                                  )}
+                                  {price.billing_scheme === 'tiered' && (
+                                    <Badge variant="secondary" className="text-xs">Tiered</Badge>
+                                  )}
+                                  {price.recurring?.usage_type === 'metered' && (
+                                    <Badge variant="outline" className="text-xs">Metered</Badge>
+                                  )}
+                                </div>
+                              </div>
+                              {price.nickname && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {price.nickname}
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-400 mt-1 truncate">
+                                ID: {price.id}
+                              </div>
                             </div>
                           ))}
-                          {activePrices.length > 4 && (
-                            <div className="text-gray-400">
-                              +{activePrices.length - 4} more prices
-                            </div>
-                          )}
                         </div>
                       </div>
                     )}
@@ -259,6 +260,13 @@ const Products = () => {
                     {inactivePrices.length > 0 && (
                       <div className="text-xs text-orange-600">
                         {inactivePrices.length} inactive price{inactivePrices.length > 1 ? 's' : ''}
+                      </div>
+                    )}
+
+                    {/* No Prices */}
+                    {activePrices.length === 0 && inactivePrices.length === 0 && (
+                      <div className="text-sm text-gray-500 italic">
+                        No prices configured for this product
                       </div>
                     )}
 

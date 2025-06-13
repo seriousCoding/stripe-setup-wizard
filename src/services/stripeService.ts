@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { billingCreditsService } from './billingCreditsService';
 
@@ -15,19 +14,30 @@ export interface StripeProduct {
 
 export interface StripePrice {
   id: string;
-  unit_amount: number;
-  currency: string;
-  type: 'one_time' | 'recurring';
-  interval?: 'month' | 'year' | 'week' | 'day';
-  product: string;
+  object: string;
   active: boolean;
-  nickname?: string;
+  billing_scheme: 'per_unit' | 'tiered';
+  created: number;
+  currency: string;
+  custom_unit_amount: any | null;
+  livemode: boolean;
+  lookup_key: string | null;
+  metadata: Record<string, string>;
+  nickname?: string | null;
+  product: string;
   recurring?: {
     interval: 'month' | 'year' | 'week' | 'day';
-    interval_count?: number;
-    usage_type?: 'licensed' | 'metered';
-  };
-  billing_scheme?: 'per_unit' | 'tiered';
+    interval_count: number;
+    trial_period_days?: number | null;
+    usage_type: 'licensed' | 'metered';
+  } | null;
+  tax_behavior: 'inclusive' | 'exclusive' | 'unspecified';
+  tiers_mode: string | null;
+  transform_quantity: any | null;
+  type: 'one_time' | 'recurring';
+  unit_amount: number;
+  unit_amount_decimal: string;
+  interval?: 'month' | 'year' | 'week' | 'day';
 }
 
 export interface BillingModel {
