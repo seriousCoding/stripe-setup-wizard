@@ -1,112 +1,34 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '@/components/DashboardLayout';
+import useStripePricing from '@/hooks/useStripePricing';
 
 const Pricing = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  
+  // Use the hook to get live pricing data
+  const { pricingTiers, isLoading: pricingLoading, error: pricingError, refetch } = useStripePricing({
+    autoRefresh: true,
+    refreshInterval: 30000, // Refresh every 30 seconds
+    useAllProducts: false // Only use app-specific products
+  });
 
-  const pricingPlans = [
-    {
-      id: 'starter',
-      name: 'Starter',
-      subtitle: 'Pay As-You-Go',
-      description: 'Perfect for getting started with transaction-based billing.',
-      price: '$0.99',
-      priceSubtext: 'per transaction',
-      features: [
-        'Pay only for what you use',
-        'No monthly commitment',
-        'Basic AI data extraction',
-        'Standard support'
-      ],
-      usageLimits: [
-        { label: 'Transactions', value: '20' },
-        { label: 'AI Processing', value: '5' },
-        { label: 'After limit', value: '$0.05/transaction' }
-      ]
-    },
-    {
-      id: 'professional',
-      name: 'Professional',
-      subtitle: 'Credit Burndown',
-      description: 'Buy credits in advance for better rates and flexibility.',
-      price: '$49',
-      priceSubtext: 'prepaid credits',
-      popular: true,
-      features: [
-        '1,200 transaction credits',
-        '15% discount on bulk purchases',
-        'Advanced AI processing',
-        'Priority support',
-        'Usage analytics'
-      ],
-      usageLimits: [
-        { label: 'Transactions', value: '1,200' },
-        { label: 'AI Processing', value: '300' },
-        { label: 'After limit', value: '$0.04/transaction' }
-      ]
-    },
-    {
-      id: 'business',
-      name: 'Business',
-      subtitle: 'Flat Fee',
-      description: 'Unlimited transactions with predictable monthly costs.',
-      price: '$99',
-      priceSubtext: 'per month',
-      features: [
-        'Unlimited transactions',
-        'Unlimited AI processing',
-        'Advanced analytics',
-        'Dedicated support',
-        'Custom integrations'
-      ]
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      subtitle: 'Per Seat',
-      description: 'Scale with your team size and organizational needs.',
-      price: '$25',
-      priceSubtext: 'per user/month',
-      features: [
-        'Unlimited everything',
-        'Multi-user management',
-        'Advanced security',
-        'SLA guarantee',
-        'Custom development'
-      ]
-    },
-    {
-      id: 'trial',
-      name: 'Free Trial',
-      subtitle: 'Trial',
-      description: 'Try all features risk-free before committing.',
-      price: '$0',
-      priceSubtext: '14 days free',
-      badge: 'Free Trial',
-      features: [
-        'Full access to all features',
-        '500 transaction limit',
-        'Basic AI processing',
-        'Email support'
-      ],
-      usageLimits: [
-        { label: 'Transactions', value: '500' },
-        { label: 'AI Processing', value: '50' },
-        { label: 'After limit', value: '$0.05/transaction' }
-      ]
-    }
-  ];
+  useEffect(() => {
+    // Refetch pricing data when component mounts
+    refetch();
+  }, [refetch]);
 
   const handleSelectPlan = async (planId: string) => {
     if (!user) {
@@ -119,35 +41,43 @@ const Pricing = () => {
       return;
     }
 
+    if (selectedPlan === planId) return; // Prevent duplicate calls
+    
+    setSelectedPlan(planId);
+    setIsLoading(true);
+
     try {
       // For trial plan, handle locally
       if (planId === 'trial') {
         toast({
           title: "Free Trial Activated",
-          description: "Your 14-day free trial has been activated!",
+          description: "Your free trial has been activated!",
         });
         navigate('/');
         return;
       }
 
-      // For starter and professional plans, use payment mode instead of subscription
-      const isOneTimePayment = planId === 'starter' || planId === 'professional';
+      console.log(`Creating checkout for plan: ${planId}`);
       
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: { 
           tier_id: planId,
           user_email: user.email,
-          mode: isOneTimePayment ? 'payment' : 'subscription'
+          mode: 'subscription' // Always use subscription mode to prevent duplicates
         }
       });
 
       if (error) {
+        console.error('Checkout error:', error);
         throw error;
       }
 
       if (data?.url) {
+        console.log('Redirecting to checkout:', data.url);
         // Navigate within the app instead of external redirect
         window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL returned');
       }
     } catch (error: any) {
       console.error('Checkout error:', error);
@@ -156,33 +86,77 @@ const Pricing = () => {
         description: error.message || "Failed to create checkout session",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
+      setSelectedPlan(null);
     }
   };
+
+  const formatPrice = (price: number): string => {
+    if (price === 0) return '$0';
+    return `$${price}`;
+  };
+
+  const getPriceSubtext = (tier: any): string => {
+    if (tier.price === 0) return '14 days free';
+    if (tier.isMonthly) return 'per month';
+    if (tier.id === 'starter') return 'per transaction';
+    if (tier.id === 'professional') return 'prepaid credits';
+    if (tier.id === 'enterprise') return 'per user/month';
+    return '';
+  };
+
+  if (pricingError) {
+    return (
+      <DashboardLayout 
+        title="Choose Your Plan" 
+        description="Select the perfect pricing model for your business needs"
+      >
+        <div className="text-center py-12">
+          <p className="text-red-500 mb-4">Error loading pricing: {pricingError}</p>
+          <Button onClick={refetch} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout 
       title="Choose Your Plan" 
       description="Select the perfect pricing model for your business needs"
     >
+      <div className="mb-6 flex justify-between items-center">
+        <div className="text-sm text-gray-400">
+          {pricingLoading ? 'Loading latest pricing...' : `${pricingTiers.length} plans available`}
+        </div>
+        <Button onClick={refetch} variant="outline" size="sm" disabled={pricingLoading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${pricingLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
-        {pricingPlans.map((plan) => (
+        {pricingTiers.map((tier) => (
           <Card 
-            key={plan.id} 
+            key={tier.id} 
             className={`relative bg-gray-800 border-gray-700 transition-all duration-300 hover:shadow-xl hover:scale-105 hover:-translate-y-2 shadow-lg ${
-              plan.popular ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' : ''
+              tier.popular ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' : ''
             }`}
           >
-            {plan.badge && (
+            {tier.badge && (
               <div className="absolute -top-3 right-4">
                 <Badge className={`shadow-lg ${
-                  plan.badge === 'Free Trial' ? 'bg-green-600' : 'bg-blue-600'
+                  tier.badge === 'Free Trial' ? 'bg-green-600' : 'bg-blue-600'
                 } text-white`}>
-                  {plan.badge}
+                  {tier.badge}
                 </Badge>
               </div>
             )}
 
-            {plan.popular && (
+            {tier.popular && (
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                 <Badge className="bg-blue-600 text-white shadow-lg">Most Popular</Badge>
               </div>
@@ -191,22 +165,22 @@ const Pricing = () => {
             <CardHeader className="text-center pb-4">
               <div className="mb-3">
                 <CardTitle className="text-xl font-semibold text-white mb-1">
-                  {plan.name}
+                  {tier.name}
                 </CardTitle>
-                <div className="text-sm text-purple-300">{plan.subtitle}</div>
+                <div className="text-sm text-purple-300">{tier.subtitle}</div>
               </div>
               
-              <p className="text-gray-400 text-sm mb-6">{plan.description}</p>
+              <p className="text-gray-400 text-sm mb-6">{tier.description}</p>
               
               <div className="mb-4">
-                <div className="text-3xl font-bold text-white mb-1">{plan.price}</div>
-                <div className="text-gray-400 text-sm">{plan.priceSubtext}</div>
+                <div className="text-3xl font-bold text-white mb-1">{formatPrice(tier.price)}</div>
+                <div className="text-gray-400 text-sm">{getPriceSubtext(tier)}</div>
               </div>
             </CardHeader>
 
             <CardContent className="space-y-6">
               <div className="space-y-3">
-                {plan.features.map((feature, index) => (
+                {tier.features.map((feature, index) => (
                   <div key={index} className="flex items-center space-x-3">
                     <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
                     <span className="text-sm text-gray-300">{feature}</span>
@@ -214,15 +188,15 @@ const Pricing = () => {
                 ))}
               </div>
 
-              {plan.usageLimits && (
+              {tier.usageLimits && (
                 <div className="bg-gray-700/50 rounded-lg p-4 shadow-inner">
                   <h4 className="text-sm font-medium text-gray-300 mb-3 uppercase tracking-wide">
                     Usage Limits
                   </h4>
                   <div className="space-y-2">
-                    {plan.usageLimits.map((limit, index) => (
+                    {tier.usageLimits.map((limit, index) => (
                       <div key={index} className="flex justify-between text-sm">
-                        <span className="text-gray-400">{limit.label}</span>
+                        <span className="text-gray-400">{limit.name}</span>
                         <span className="text-white font-medium">{limit.value}</span>
                       </div>
                     ))}
@@ -232,14 +206,25 @@ const Pricing = () => {
 
               <Button 
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200 hover:shadow-lg hover:scale-105 shadow-md"
-                onClick={() => handleSelectPlan(plan.id)}
+                onClick={() => handleSelectPlan(tier.id)}
+                disabled={isLoading || selectedPlan === tier.id}
               >
-                Select Plan
+                {isLoading && selectedPlan === tier.id ? 'Processing...' : tier.buttonText}
               </Button>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {pricingTiers.length === 0 && !pricingLoading && (
+        <div className="text-center py-12">
+          <p className="text-gray-400 mb-4">No pricing plans available</p>
+          <Button onClick={refetch} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
+      )}
     </DashboardLayout>
   );
 };

@@ -36,8 +36,17 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFetchRef = useRef<number>(0);
 
   const fetchPricingData = async (isAutoRefresh = false) => {
+    // Prevent too frequent requests
+    const now = Date.now();
+    if (now - lastFetchRef.current < 5000 && isAutoRefresh) {
+      console.log('Skipping fetch due to rate limiting');
+      return;
+    }
+    lastFetchRef.current = now;
+
     try {
       if (isAutoRefresh) {
         setIsRefreshing(true);
@@ -46,9 +55,12 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
       }
       setError(null);
 
+      console.log('Fetching Stripe pricing data...');
+      
       const { data, error } = await supabase.functions.invoke('fetch-stripe-data');
 
       if (error) {
+        console.error('Error fetching Stripe data:', error);
         throw new Error(error.message);
       }
 
@@ -66,7 +78,7 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
           setPricingTiers(getDefaultPricingTiers());
         }
       } else {
-        console.log('No products found, using defaults');
+        console.log('No products found or fetch unsuccessful, using defaults');
         setPricingTiers(getDefaultPricingTiers());
       }
     } catch (err: any) {
@@ -95,7 +107,10 @@ export const useStripePricing = (options: UseStripePricingOptions = {}) => {
     };
   }, [autoRefresh, refreshInterval, useAllProducts]);
 
-  const refetch = () => fetchPricingData();
+  const refetch = () => {
+    console.log('Manual refetch triggered');
+    fetchPricingData();
+  };
 
   return {
     pricingTiers,
@@ -139,10 +154,10 @@ const mapStripeProductsToTiers = (products: any[]): StripePricingTier[] => {
       });
     }
 
-    if (metadata.meter_rate_after_limit) {
+    if (metadata.overage_rate) {
       usageLimits.push({
         name: 'After limit',
-        value: `$${metadata.meter_rate_after_limit}/transaction`
+        value: `$${metadata.overage_rate}/transaction`
       });
     }
 
@@ -259,7 +274,8 @@ const getSubtitleFromBillingType = (billingType: string, isRecurring: boolean): 
     case 'free_trial': return 'Trial';
     case 'pay_as_you_go': return 'Pay As-You-Go';
     case 'credit_burndown': return 'Credit Burndown';
-    case 'flat_recurring': return 'Fixed Fee + Overage';
+    case 'fixed_fee_graduated': return 'Fixed Fee + Overage';
+    case 'flat_recurring': return 'Flat Fee';
     case 'per_seat': return 'Per Seat';
     default: return isRecurring ? 'Fixed Fee + Overage' : 'Pay-as-you-go';
   }
@@ -290,7 +306,7 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Free Trial',
       subtitle: 'Trial',
       description: 'Try all features risk-free with 500 included transactions monthly.',
-      price: 0, // In dollars
+      price: 0,
       currency: 'USD',
       icon: '🎁',
       features: [
@@ -314,7 +330,7 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Starter',
       subtitle: 'Fixed Fee + Overage',
       description: 'Perfect for small teams with 1,000 included transactions monthly.',
-      price: 19, // In dollars
+      price: 19,
       currency: 'USD',
       icon: '📄',
       features: [
@@ -337,7 +353,7 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Professional',
       subtitle: 'Fixed Fee + Overage',
       description: 'Great for growing businesses with 5,000 included transactions monthly.',
-      price: 49, // In dollars
+      price: 49,
       currency: 'USD',
       icon: '💼',
       features: [
@@ -363,7 +379,7 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Business',
       subtitle: 'Flat Rate',
       description: 'Unlimited usage with predictable monthly costs for growing teams.',
-      price: 99, // In dollars
+      price: 99,
       currency: 'USD',
       icon: '⚡',
       features: [
@@ -386,7 +402,7 @@ const getDefaultPricingTiers = (): StripePricingTier[] => {
       name: 'Enterprise',
       subtitle: 'Per Seat',
       description: 'Scale with your organization with per-user pricing and enterprise features.',
-      price: 25, // In dollars
+      price: 25,
       currency: 'USD',
       icon: '👥',
       features: [
