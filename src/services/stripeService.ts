@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { billingCreditsService } from './billingCreditsService';
 
@@ -8,6 +9,7 @@ export interface StripeProduct {
   active: boolean;
   metadata: Record<string, string>;
   prices: StripePrice[];
+  default_price?: StripePrice | null;
   created: number;
 }
 
