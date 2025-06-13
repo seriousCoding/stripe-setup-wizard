@@ -21,9 +21,11 @@ export interface StripePrice {
   interval?: 'month' | 'year' | 'week' | 'day';
   product: string;
   active: boolean;
+  nickname?: string;
   recurring?: {
     interval: 'month' | 'year' | 'week' | 'day';
     interval_count?: number;
+    usage_type?: 'licensed' | 'metered';
   };
   billing_scheme?: 'per_unit' | 'tiered';
 }
