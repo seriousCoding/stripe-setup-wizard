@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import ProductEditDialog from '@/components/ProductEditDialog';
@@ -169,41 +170,46 @@ const Products = () => {
       console.log('Creating essential billing meters for app functionality...');
       
       // Create essential billing meters for app functionality
-      const requiredMeters = [
+      const requiredMeters: Array<{
+        display_name: string;
+        event_name: string;
+        aggregation_formula: 'sum' | 'count' | 'last_during_period' | 'last_ever' | 'max';
+        description: string;
+      }> = [
         {
           display_name: 'API Calls',
           event_name: 'api_calls',
-          aggregation_formula: 'sum',
+          aggregation_formula: 'sum' as const,
           description: 'Track API calls for usage-based billing'
         },
         {
           display_name: 'Data Processing',
           event_name: 'data_processing',
-          aggregation_formula: 'sum',
+          aggregation_formula: 'sum' as const,
           description: 'Track data processing operations'
         },
         {
           display_name: 'AI Processing',
           event_name: 'ai_processing',
-          aggregation_formula: 'sum',
+          aggregation_formula: 'sum' as const,
           description: 'Track AI processing requests'
         },
         {
           display_name: 'Document Uploads',
           event_name: 'document_uploads',
-          aggregation_formula: 'count',
+          aggregation_formula: 'count' as const,
           description: 'Track document upload operations'
         },
         {
           display_name: 'Storage Usage',
           event_name: 'storage_usage',
-          aggregation_formula: 'sum',
+          aggregation_formula: 'sum' as const,
           description: 'Track storage usage in bytes'
         },
         {
           display_name: 'User Sessions',
           event_name: 'user_sessions',
-          aggregation_formula: 'count',
+          aggregation_formula: 'count' as const,
           description: 'Track active user sessions'
         }
       ];
