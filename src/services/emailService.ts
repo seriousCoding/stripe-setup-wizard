@@ -10,7 +10,7 @@ export interface EmailNotification {
 }
 
 class EmailService {
-  async sendNotification(notification: EmailNotification): Promise<{ success: boolean; error?: string }> {
+  async sendNotification(notification: EmailNotification): Promise<{ success: boolean; error?: string; demo?: boolean }> {
     try {
       console.log('Sending email notification:', notification);
       
@@ -23,7 +23,13 @@ class EmailService {
         return { success: false, error: error.message };
       }
 
-      console.log('Email notification sent successfully:', data);
+      console.log('Email notification result:', data);
+      
+      // Handle demo mode response
+      if (data?.demo) {
+        return { success: true, demo: true };
+      }
+      
       return { success: true };
     } catch (error: any) {
       console.error('Error sending notification:', error);
@@ -31,7 +37,7 @@ class EmailService {
     }
   }
 
-  async sendBillingUpdate(userEmail: string, billingModelName: string, changes: string): Promise<{ success: boolean; error?: string }> {
+  async sendBillingUpdate(userEmail: string, billingModelName: string, changes: string): Promise<{ success: boolean; error?: string; demo?: boolean }> {
     return this.sendNotification({
       to: userEmail,
       subject: `Billing Model Update: ${billingModelName}`,
@@ -41,7 +47,7 @@ class EmailService {
     });
   }
 
-  async sendSystemMaintenance(userEmail: string, maintenanceDetails: string): Promise<{ success: boolean; error?: string }> {
+  async sendSystemMaintenance(userEmail: string, maintenanceDetails: string): Promise<{ success: boolean; error?: string; demo?: boolean }> {
     return this.sendNotification({
       to: userEmail,
       subject: 'Scheduled System Maintenance',
@@ -51,7 +57,7 @@ class EmailService {
     });
   }
 
-  async sendGeneralAlert(userEmail: string, subject: string, message: string): Promise<{ success: boolean; error?: string }> {
+  async sendGeneralAlert(userEmail: string, subject: string, message: string): Promise<{ success: boolean; error?: string; demo?: boolean }> {
     return this.sendNotification({
       to: userEmail,
       subject,

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -72,10 +71,17 @@ const Settings = () => {
       );
 
       if (result.success) {
-        toast({
-          title: "Test Email Sent",
-          description: "Check your inbox for the test notification email.",
-        });
+        if (result.demo) {
+          toast({
+            title: "Email Test (Demo Mode)",
+            description: "Email processing completed in demo mode. Configure SMTP settings in Supabase secrets for live email delivery.",
+          });
+        } else {
+          toast({
+            title: "Test Email Sent",
+            description: "Check your inbox for the test notification email.",
+          });
+        }
       } else {
         toast({
           title: "Email Test Failed",
@@ -224,7 +230,7 @@ const Settings = () => {
                 <div>
                   <Label>Test Email Notifications</Label>
                   <p className="text-sm text-gray-600">
-                    Send a test email to verify your notification settings
+                    Send a test email to verify your notification settings. Configure SMTP secrets in Supabase for live delivery.
                   </p>
                 </div>
                 <Button 

@@ -53,34 +53,36 @@ serve(async (req) => {
 
     logStep("Starting reseed of Stripe test data");
 
-    // Sample products to create
+    // Create sample products and prices
     const sampleProducts = [
       {
-        name: "Basic Plan",
-        description: "Basic subscription plan with essential features",
+        name: 'Basic Plan',
+        description: 'Perfect for individuals and small teams getting started',
         prices: [
-          { amount: 999, currency: 'usd', interval: 'month' },
-          { amount: 9999, currency: 'usd', interval: 'year' }
+          { amount: 999, interval: 'month' },
+          { amount: 9999, interval: 'year' }
         ]
       },
       {
-        name: "Pro Plan",
-        description: "Professional plan with advanced features",
+        name: 'Pro Plan',
+        description: 'Advanced features for growing businesses',
         prices: [
-          { amount: 2999, currency: 'usd', interval: 'month' },
-          { amount: 29999, currency: 'usd', interval: 'year' }
+          { amount: 2999, interval: 'month' },
+          { amount: 29999, interval: 'year' }
         ]
       },
       {
-        name: "API Usage",
-        description: "Pay-per-use API access",
+        name: 'API Usage',
+        description: 'Pay-as-you-go API usage charges',
         prices: [
-          { amount: 50, currency: 'usd', billing_scheme: 'per_unit' }
+          { amount: 50, type: 'one_time' }
         ]
       }
     ];
 
-    const createdItems: any[] = [];
+    const createdProducts = [];
+    const createdPrices = [];
+    const createdMeters = [];
 
     for (const productData of sampleProducts) {
       // Create product
@@ -89,90 +91,84 @@ serve(async (req) => {
         description: productData.description,
         type: 'service',
         metadata: {
-          created_via: 'stripe_setup_pilot_reseed',
-          created_at: new Date().toISOString()
+          created_via: 'stripe_setup_pilot',
+          tier_id: productData.name.toLowerCase().replace(' ', '_')
         }
       });
 
       logStep("Created product", { productId: product.id, name: product.name });
+      createdProducts.push(product);
 
       // Create prices for this product
-      const productPrices = [];
       for (const priceData of productData.prices) {
         const priceConfig: any = {
           product: product.id,
           unit_amount: priceData.amount,
-          currency: priceData.currency,
+          currency: 'usd',
           metadata: {
-            created_via: 'stripe_setup_pilot_reseed'
+            created_via: 'stripe_setup_pilot'
           }
         };
 
-        if (priceData.interval) {
+        if (priceData.type === 'one_time') {
+          // One-time price
+        } else {
+          // Recurring price
           priceConfig.recurring = {
             interval: priceData.interval,
             usage_type: 'licensed'
           };
         }
 
-        if (priceData.billing_scheme) {
-          priceConfig.billing_scheme = priceData.billing_scheme;
-        }
-
         const price = await stripe.prices.create(priceConfig);
-        productPrices.push(price);
-        
         logStep("Created price", { 
           priceId: price.id, 
-          amount: price.unit_amount,
-          interval: price.recurring?.interval || 'one-time'
+          amount: price.unit_amount, 
+          interval: priceData.interval || 'one-time'
         });
+        createdPrices.push(price);
       }
 
-      createdItems.push({
-        product,
-        prices: productPrices
-      });
+      // Create a billing meter for usage-based products
+      if (productData.name === 'API Usage') {
+        try {
+          const meter = await stripe.billing.meters.create({
+            display_name: `${productData.name} Meter`,
+            event_name: `${productData.name.toLowerCase().replace(' ', '_')}_events`,
+            customer_mapping: {
+              event_payload_key: 'customer_id',
+              type: 'by_id'
+            },
+            default_aggregation: {
+              formula: 'sum'
+            },
+            value_settings: {
+              event_payload_key: 'value'
+            }
+          });
+          
+          logStep("Created meter", { meterId: meter.id, displayName: meter.display_name });
+          createdMeters.push(meter);
+        } catch (meterError: any) {
+          logStep("Warning: Could not create meter", { error: meterError.message });
+        }
+      }
     }
 
-    // Create a sample billing meter
-    const meter = await stripe.billing.meters.create({
-      display_name: "API Requests",
-      event_name: "api_request_usage",
-      customer_mapping: {
-        event_payload_key: 'stripe_customer_id',
-        type: 'by_id'
-      },
-      default_aggregation: {
-        formula: 'sum'
-      },
-      value_settings: {
-        event_payload_key: 'value'
-      }
-    });
-
-    logStep("Created billing meter", { meterId: meter.id });
-
     logStep("Reseed completed successfully", { 
-      productsCreated: createdItems.length,
-      totalPrices: createdItems.reduce((sum, item) => sum + item.prices.length, 0),
-      metersCreated: 1
+      productsCreated: createdProducts.length,
+      pricesCreated: createdPrices.length,
+      metersCreated: createdMeters.length
     });
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Reseed completed. Created ${createdItems.length} products with sample pricing and 1 billing meter.`,
+        message: `Reseed completed. Created ${createdProducts.length} products, ${createdPrices.length} prices, and ${createdMeters.length} meters.`,
         data: {
-          products: createdItems.map(item => ({
-            id: item.product.id,
-            name: item.product.name,
-            prices: item.prices.length
-          })),
-          meter: {
-            id: meter.id,
-            name: meter.display_name
-          }
+          products: createdProducts.length,
+          prices: createdPrices.length,
+          meters: createdMeters.length
         }
       }),
       {

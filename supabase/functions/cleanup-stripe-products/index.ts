@@ -53,53 +53,103 @@ serve(async (req) => {
 
     logStep("Starting cleanup of Stripe products and prices");
 
-    // Get all products
+    // Get all products first
     const products = await stripe.products.list({ limit: 100 });
     logStep("Found products to cleanup", { count: products.data.length });
 
     let cleanupCount = 0;
+    let skippedCount = 0;
 
-    // Archive all products (this also archives associated prices)
+    // Archive products (this will also handle associated prices)
     for (const product of products.data) {
       if (product.active) {
-        await stripe.products.update(product.id, { active: false });
-        cleanupCount++;
-        logStep("Archived product", { productId: product.id, name: product.name });
+        try {
+          await stripe.products.update(product.id, { active: false });
+          cleanupCount++;
+          logStep("Archived product", { productId: product.id, name: product.name });
+        } catch (productError: any) {
+          logStep("Could not archive product", { 
+            productId: product.id, 
+            name: product.name, 
+            error: productError.message 
+          });
+          skippedCount++;
+        }
       }
     }
 
-    // Get all prices and archive them explicitly
+    // Get all prices and archive them (handling default price issues)
     const prices = await stripe.prices.list({ limit: 100 });
     logStep("Found prices to cleanup", { count: prices.data.length });
 
+    let pricesArchived = 0;
+    let pricesSkipped = 0;
+
     for (const price of prices.data) {
       if (price.active) {
-        await stripe.prices.update(price.id, { active: false });
-        logStep("Archived price", { priceId: price.id });
+        try {
+          await stripe.prices.update(price.id, { active: false });
+          pricesArchived++;
+          logStep("Archived price", { priceId: price.id });
+        } catch (priceError: any) {
+          // Skip default prices that can't be archived
+          if (priceError.message.includes('default price')) {
+            logStep("Skipped default price", { priceId: price.id });
+            pricesSkipped++;
+          } else {
+            logStep("Could not archive price", { 
+              priceId: price.id, 
+              error: priceError.message 
+            });
+            pricesSkipped++;
+          }
+        }
       }
     }
 
-    // Get all billing meters and archive them
-    const meters = await stripe.billing.meters.list({ limit: 100 });
-    logStep("Found meters to cleanup", { count: meters.data.length });
+    // Get all billing meters and deactivate them
+    let metersDeactivated = 0;
+    try {
+      const meters = await stripe.billing.meters.list({ limit: 100 });
+      logStep("Found meters to cleanup", { count: meters.data.length });
 
-    for (const meter of meters.data) {
-      if (meter.status === 'active') {
-        await stripe.billing.meters.update(meter.id, { status: 'inactive' });
-        logStep("Deactivated meter", { meterId: meter.id });
+      for (const meter of meters.data) {
+        if (meter.status === 'active') {
+          try {
+            await stripe.billing.meters.update(meter.id, { status: 'inactive' });
+            metersDeactivated++;
+            logStep("Deactivated meter", { meterId: meter.id });
+          } catch (meterError: any) {
+            logStep("Could not deactivate meter", { 
+              meterId: meter.id, 
+              error: meterError.message 
+            });
+          }
+        }
       }
+    } catch (meterListError: any) {
+      logStep("Could not list meters", { error: meterListError.message });
     }
 
-    logStep("Cleanup completed successfully", { 
+    logStep("Cleanup completed", { 
       productsArchived: cleanupCount,
-      pricesArchived: prices.data.filter(p => p.active).length,
-      metersDeactivated: meters.data.filter(m => m.status === 'active').length
+      productsSkipped: skippedCount,
+      pricesArchived,
+      pricesSkipped,
+      metersDeactivated
     });
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Cleanup completed. Archived ${cleanupCount} products and associated prices/meters.`
+        message: `Cleanup completed. Archived ${cleanupCount} products, ${pricesArchived} prices, and deactivated ${metersDeactivated} meters. Skipped ${skippedCount + pricesSkipped} items that couldn't be archived.`,
+        data: {
+          productsArchived: cleanupCount,
+          productsSkipped: skippedCount,
+          pricesArchived,
+          pricesSkipped,
+          metersDeactivated
+        }
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

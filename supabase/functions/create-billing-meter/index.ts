@@ -19,7 +19,7 @@ serve(async (req) => {
   }
 
   try {
-    logStep("Function started");
+    logStep("Create billing meter function started");
 
     // Authenticate user
     const supabaseClient = createClient(
@@ -40,32 +40,50 @@ serve(async (req) => {
       throw new Error('User not authenticated');
     }
 
-    const user = data.user;
-    logStep("User authenticated", { userId: user.id });
-
-    const { display_name, event_name, aggregation_formula = 'sum', description } = await req.json();
-
-    if (!display_name || !event_name) {
-      throw new Error('Display name and event name are required');
-    }
+    logStep("User authenticated", { userId: data.user.id });
 
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeKey) {
       throw new Error('Stripe secret key not configured');
     }
 
-    logStep("Creating Stripe billing meter", { display_name, event_name, aggregation_formula });
-
     const stripe = new Stripe(stripeKey, {
       apiVersion: '2024-06-20',
     });
 
-    // Create the billing meter according to Stripe documentation
+    const requestBody = await req.json();
+    logStep("Request body received", requestBody);
+
+    const {
+      display_name,
+      event_name,
+      aggregation_formula = 'sum',
+      description
+    } = requestBody;
+
+    if (!display_name || !event_name) {
+      throw new Error('display_name and event_name are required');
+    }
+
+    // Validate aggregation formula
+    const validFormulas = ['sum', 'count', 'last_during_period', 'last_ever', 'max'];
+    if (!validFormulas.includes(aggregation_formula)) {
+      throw new Error(`Invalid aggregation formula. Must be one of: ${validFormulas.join(', ')}`);
+    }
+
+    logStep("Creating billing meter with validated parameters", {
+      display_name,
+      event_name,
+      aggregation_formula,
+      description
+    });
+
+    // Create the billing meter using Stripe's billing.meters API
     const meter = await stripe.billing.meters.create({
       display_name,
       event_name,
       customer_mapping: {
-        event_payload_key: 'stripe_customer_id',
+        event_payload_key: 'customer_id',
         type: 'by_id'
       },
       default_aggregation: {
@@ -76,37 +94,14 @@ serve(async (req) => {
       }
     });
 
-    logStep("Stripe billing meter created successfully", { meterId: meter.id });
-
-    // Store meter info in Supabase for tracking
-    const supabaseService = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      { auth: { persistSession: false } }
-    );
-
-    const { data: meterRecord, error: insertError } = await supabaseService
-      .from('usage_meters')
-      .insert({
-        name: event_name,
-        display_name: display_name,
-        event_name: event_name,
-        stripe_meter_id: meter.id,
-        unit_label: 'units',
-        created_by: user.id
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      logStep("Error storing meter in Supabase", { error: insertError });
-      // Don't fail the request if we can't store in Supabase, meter is created in Stripe
-    } else {
-      logStep("Meter stored in Supabase", { recordId: meterRecord.id });
-    }
+    logStep("Billing meter created successfully", {
+      meterId: meter.id,
+      displayName: meter.display_name,
+      status: meter.status
+    });
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         meter: {
           id: meter.id,
@@ -126,9 +121,9 @@ serve(async (req) => {
     logStep("ERROR in create-billing-meter", { message: error.message, stack: error.stack });
     
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: false,
-        error: error.message 
+        error: error.message
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
