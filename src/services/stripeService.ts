@@ -6,6 +6,7 @@ export interface StripeProduct {
   name: string;
   description: string;
   active: boolean;
+  metadata: Record<string, string>;
   prices: StripePrice[];
   created: number;
 }
