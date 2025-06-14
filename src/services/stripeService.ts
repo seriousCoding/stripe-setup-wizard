@@ -87,45 +87,6 @@ export interface BillingItem {
   metadata?: Record<string, string>;
 }
 
-interface CreatePricePayload {
-  product: string;
-  unit_amount?: number; // in cents or float for UI convenience, will be converted
-  currency: string;
-  active?: boolean;
-  metadata?: Record<string, string>;
-  nickname?: string;
-  recurring?: {
-    interval: 'month' | 'year' | 'week' | 'day';
-    interval_count?: number;
-    usage_type?: 'licensed' | 'metered';
-    meter?: string; // Optional: ID of an existing meter
-    aggregate_usage?: 'sum' | 'last_during_period' | 'last_ever' | 'max';
-  };
-  tax_behavior?: 'inclusive' | 'exclusive' | 'unspecified';
-  billing_scheme?: 'per_unit' | 'tiered';
-  lookup_key?: string;
-  transfer_lookup_key?: boolean;
-  custom_unit_amount?: {
-    enabled: boolean;
-    minimum?: number; // in currency units for UI, will be converted to cents
-    maximum?: number; // in currency units for UI, will be converted to cents
-    preset?: number;  // in currency units for UI, will be converted to cents
-  };
-  currency_options?: {
-    [key: string]: {
-      unit_amount?: number; // in currency units for UI, will be converted to cents
-      tax_behavior?: 'inclusive' | 'exclusive' | 'unspecified';
-      // custom_unit_amount for currency_options can be added if needed
-    };
-  };
-  transform_quantity?: {
-    enabled: boolean;
-    divide_by?: number;
-    round?: 'up' | 'down';
-  };
-  // tiers and tiers_mode for tiered billing are not fully handled by the dialog yet
-}
-
 class StripeService {
   private getApiKey(): string | null {
     return localStorage.getItem('stripe_api_key');
@@ -167,60 +128,44 @@ class StripeService {
     }
   }
 
-  async createPrice(data: CreatePricePayload): Promise<{ price?: any; error?: string }> {
+  async createPrice(data: {
+    product: string;
+    unit_amount: number;
+    currency: string;
+    recurring?: {
+      interval: 'month' | 'year' | 'week' | 'day';
+      interval_count?: number;
+    };
+    billing_scheme?: 'per_unit' | 'tiered';
+    usage_type?: 'metered' | 'licensed';
+    aggregate_usage?: 'sum' | 'last_during_period' | 'last_ever' | 'max';
+    metadata?: Record<string, string>;
+  }): Promise<{ price?: any; error?: string }> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
       return { error: 'Stripe API key not configured' };
     }
 
     try {
-      // Prepare payload for the edge function
-      const payload: any = { ...data, apiKey };
-
-      // Convert unit_amount to cents if provided
-      if (payload.unit_amount !== undefined) {
-        payload.unit_amount = Math.round(Number(payload.unit_amount) * 100);
-      }
+      // Ensure unit_amount is an integer (Stripe requirement)
+      const unit_amount = Math.round(data.unit_amount);
       
-      // Convert custom_unit_amount fields to cents
-      if (payload.custom_unit_amount?.enabled) {
-        if (payload.custom_unit_amount.minimum !== undefined) {
-          payload.custom_unit_amount.minimum = Math.round(Number(payload.custom_unit_amount.minimum) * 100);
-        }
-        if (payload.custom_unit_amount.maximum !== undefined) {
-          payload.custom_unit_amount.maximum = Math.round(Number(payload.custom_unit_amount.maximum) * 100);
-        }
-        if (payload.custom_unit_amount.preset !== undefined) {
-          payload.custom_unit_amount.preset = Math.round(Number(payload.custom_unit_amount.preset) * 100);
-        }
-      }
+      // Ensure currency is lowercase (Stripe requirement)
+      const currency = data.currency.toLowerCase();
 
-      // Convert currency_options unit_amounts to cents
-      if (payload.currency_options) {
-        const newCurrencyOptions: Record<string, any> = {};
-        for (const [key, value] of Object.entries(payload.currency_options as Record<string, any>)) {
-          const newValue = { ...value };
-          if (newValue.unit_amount !== undefined) {
-            newValue.unit_amount = Math.round(Number(newValue.unit_amount) * 100);
-          }
-          newCurrencyOptions[key] = newValue;
+      const priceData = {
+        ...data,
+        unit_amount,
+        currency,
+        apiKey,
+        metadata: {
+          created_via: 'stripe_setup_pilot',
+          ...data.metadata
         }
-        payload.currency_options = newCurrencyOptions;
-      }
-
-      // Ensure currency is lowercase
-      payload.currency = (payload.currency || 'usd').toLowerCase();
-      
-      payload.metadata = {
-        created_via: 'stripe_setup_pilot',
-        ...(payload.metadata || {})
       };
-      
-      // Remove apiKey before sending to Supabase function as it's handled by env var now
-      const { apiKey: _, ...bodyPayload } = payload;
 
       const { data: result, error } = await supabase.functions.invoke('create-stripe-price', {
-        body: bodyPayload // Use the processed payload
+        body: priceData
       });
 
       if (error) {
