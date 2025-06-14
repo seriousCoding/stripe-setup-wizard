@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Save, X, Plus, DollarSign, Calendar } from 'lucide-react';
+import { Save, X, Plus, DollarSign, Calendar, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { stripeService, StripePrice } from '@/services/stripeService';
+import { InfoIconWithTooltip } from '@/components/InfoIconWithTooltip';
 
 interface PriceEditFormProps {
   price: StripePrice;
@@ -74,7 +75,7 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
   // Handle tier management for tiered prices
   const handleTierChange = (currency: string, index: number, field: string, value: any) => {
     setFormData((prev) => {
-      const tiers = prev.currency_options[currency]?.tiers || [];
+      const tiers = prev.currency_options?.[currency]?.tiers || [];
       const updatedTiers = tiers.map((tier: any, i: number) => 
         i === index ? { ...tier, [field]: value } : tier
       );
@@ -83,7 +84,7 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
         currency_options: {
           ...prev.currency_options,
           [currency]: {
-            ...prev.currency_options[currency],
+            ...(prev.currency_options?.[currency] || {}),
             tiers: updatedTiers,
           }
         }
@@ -92,14 +93,14 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
   };
   const handleAddTier = (currency: string) => {
     setFormData((prev) => {
-      const tiers = prev.currency_options[currency]?.tiers || [];
+      const tiers = prev.currency_options?.[currency]?.tiers || [];
       return {
         ...prev,
         currency_options: {
           ...prev.currency_options,
           [currency]: {
-            ...prev.currency_options[currency],
-            tiers: [...tiers, { up_to: '', unit_amount: '', flat_amount: '', tax_behavior: 'unspecified' }],
+            ...(prev.currency_options?.[currency] || {}),
+            tiers: [...tiers, { up_to: '', unit_amount: '', unit_amount_decimal: '', flat_amount: '', flat_amount_decimal: '' }],
           }
         }
       }
@@ -107,7 +108,7 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
   }
   const handleRemoveTier = (currency: string, index: number) => {
     setFormData((prev) => {
-      const tiers = [...(prev.currency_options[currency]?.tiers || [])];
+      const tiers = [...(prev.currency_options?.[currency]?.tiers || [])];
       tiers.splice(index, 1);
       return {
         ...prev,
@@ -191,7 +192,8 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
     }
   };
 
-  const formatPrice = (amount: number, currency: string) => {
+  const formatPrice = (amount: number | undefined, currency: string) => {
+    if (typeof amount !== 'number') return 'N/A';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency.toUpperCase(),
@@ -262,7 +264,10 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
         <form onSubmit={e => { e.preventDefault(); handleSubmit(); }} className="space-y-6">
           {/* Basic fields */}
           <div>
-            <Label htmlFor="nickname">Nickname</Label>
+            <div className="flex items-center">
+              <Label htmlFor="nickname">Nickname</Label>
+              <InfoIconWithTooltip description="A brief description of the price, hidden from customers." />
+            </div>
             <Input
               id="nickname"
               value={formData.nickname}
@@ -278,10 +283,14 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
               onCheckedChange={checked => setFormData({ ...formData, active: checked })}
               disabled={isLoading}
             />
-            <Label htmlFor="active">Active (can be used for new purchases)</Label>
+            <Label htmlFor="active">Active</Label>
+            <InfoIconWithTooltip description="Whether the price can be used for new purchases. Defaults to true." />
           </div>
           <div>
-            <Label htmlFor="tax_behavior">Tax Behavior</Label>
+            <div className="flex items-center">
+              <Label htmlFor="tax_behavior">Tax Behavior</Label>
+              <InfoIconWithTooltip description="Specifies whether the price is considered inclusive of taxes or exclusive of taxes. One of inclusive, exclusive, or unspecified. Once specified as either inclusive or exclusive, it cannot be changed." />
+            </div>
             <Select
               value={formData.tax_behavior}
               onValueChange={(value: 'inclusive' | 'exclusive' | 'unspecified') =>
@@ -300,7 +309,10 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
             </Select>
           </div>
           <div>
-            <Label htmlFor="lookup_key">Lookup Key</Label>
+            <div className="flex items-center">
+              <Label htmlFor="lookup_key">Lookup Key</Label>
+              <InfoIconWithTooltip description="A lookup key used to retrieve prices dynamically from a static string. This may be up to 200 characters." />
+            </div>
             <Input
               id="lookup_key"
               value={formData.lookup_key || ''}
@@ -317,11 +329,15 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
               disabled={isLoading}
             />
             <Label htmlFor="transfer_lookup_key">Transfer Lookup Key</Label>
+            <InfoIconWithTooltip description="If set to true, will atomically remove the lookup key from the existing price, and assign it to this price." />
           </div>
           <Separator className="my-6" />
           {/* Metadata */}
           <div>
-            <Label>Metadata</Label>
+            <div className="flex items-center">
+              <Label>Metadata</Label>
+              <InfoIconWithTooltip description="Set of key-value pairs that you can attach to an object. Useful for storing additional information." />
+            </div>
             <div className="space-y-2">
               {Object.entries(formData.metadata).map(([k, v]) => (
                 <div key={k} className="flex items-center border rounded p-2">
@@ -356,7 +372,10 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
           {/* currency_options */}
           <Separator className="my-6" />
           <div>
-            <Label>Currencies</Label>
+            <div className="flex items-center">
+             <Label>Currencies</Label>
+             <InfoIconWithTooltip description="Prices defined in each available currency option. Each key must be a three-letter ISO currency code and a supported currency." />
+            </div>
             <div className="flex items-center gap-2">
               <Input
                 placeholder="e.g. eur"
@@ -378,114 +397,202 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
                       Remove
                     </Button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4"> {/* Increased gap for better spacing */}
                     <div>
-                      <Label>Unit Amount (cents)</Label>
+                      <div className="flex items-center">
+                        <Label htmlFor={`unit_amount_${currency}`}>Unit Amount (cents)</Label>
+                        <InfoIconWithTooltip description="A positive integer in cents (or 0 for a free price) representing how much to charge." />
+                      </div>
                       <Input
-                        value={formData.currency_options[currency]?.unit_amount || ''}
+                        id={`unit_amount_${currency}`}
+                        value={formData.currency_options?.[currency]?.unit_amount || ''}
                         onChange={e => handleCurrencyChange(currency, 'unit_amount', e.target.value.replace(/\D/, ''))}
                         disabled={isLoading}
+                        placeholder="e.g., 1000 for $10.00"
                       />
                     </div>
                     <div>
-                      <Label>Unit Amount Decimal</Label>
+                      <div className="flex items-center">
+                        <Label htmlFor={`unit_amount_decimal_${currency}`}>Unit Amount Decimal</Label>
+                        <InfoIconWithTooltip description="Same as unit_amount, but accepts a decimal value in cents with at most 12 decimal places. Only one of unit_amount and unit_amount_decimal can be set." />
+                      </div>
                       <Input
-                        value={formData.currency_options[currency]?.unit_amount_decimal || ''}
+                        id={`unit_amount_decimal_${currency}`}
+                        value={formData.currency_options?.[currency]?.unit_amount_decimal || ''}
                         onChange={e => handleCurrencyChange(currency, 'unit_amount_decimal', e.target.value)}
                         disabled={isLoading}
+                        placeholder="e.g., 1000.50 for $10.005"
                       />
                     </div>
-                    <div>
-                      <Label>
-                        Tax Behavior
-                        <Select
-                          value={formData.currency_options[currency]?.tax_behavior || 'unspecified'}
-                          onValueChange={v => handleCurrencyChange(currency, 'tax_behavior', v)}
-                          disabled={isLoading}
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unspecified">Unspecified</SelectItem>
-                            <SelectItem value="inclusive">Inclusive</SelectItem>
-                            <SelectItem value="exclusive">Exclusive</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Label>
+                    <div className="col-span-1 md:col-span-2"> {/* Tax behavior for currency option spans full width on mobile */}
+                      <div className="flex items-center">
+                        <Label htmlFor={`tax_behavior_${currency}`}>Tax Behavior</Label>
+                        <InfoIconWithTooltip description="Specifies whether the price is considered inclusive of taxes or exclusive of taxes for this currency. Overrides the top-level tax_behavior." />
+                      </div>
+                      <Select
+                        value={formData.currency_options?.[currency]?.tax_behavior || 'unspecified'}
+                        onValueChange={v => handleCurrencyChange(currency, 'tax_behavior', v)}
+                        disabled={isLoading}
+                      >
+                        <SelectTrigger id={`tax_behavior_${currency}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unspecified">Unspecified</SelectItem>
+                          <SelectItem value="inclusive">Inclusive</SelectItem>
+                          <SelectItem value="exclusive">Exclusive</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     {/* Custom unit amount */}
-                    <div className="border bg-muted rounded-md p-2 col-span-2">
-                      <Label>Custom Unit Amount</Label>
-                      <div className="flex flex-wrap gap-2 items-center">
+                    <div className="border bg-muted rounded-md p-3 col-span-1 md:col-span-2"> {/* Spans full width */}
+                      <div className="flex items-center">
+                        <Label>Custom Unit Amount</Label>
+                        <InfoIconWithTooltip description="When set, provides configuration for the amount to be adjusted by the customer during Checkout Sessions and Payment Links." />
+                      </div>
+                      <div className="flex flex-wrap gap-2 items-center mt-2">
                         <Switch
-                          checked={!!formData.currency_options[currency]?.custom_unit_amount?.enabled}
+                          checked={!!formData.currency_options?.[currency]?.custom_unit_amount?.enabled}
                           onCheckedChange={checked => handleCustomUnitAmountChange(currency, 'enabled', checked)}
                           disabled={isLoading}
+                          id={`custom_unit_amount_enabled_${currency}`}
                         />
-                        <span>Enable</span>
-                        <Input
-                          placeholder="Minimum"
-                          type="number"
-                          value={formData.currency_options[currency]?.custom_unit_amount?.minimum || ''}
-                          onChange={e => handleCustomUnitAmountChange(currency, 'minimum', e.target.value)}
-                          className="w-24"
-                          disabled={isLoading}
-                        />
-                        <Input
-                          placeholder="Maximum"
-                          type="number"
-                          value={formData.currency_options[currency]?.custom_unit_amount?.maximum || ''}
-                          onChange={e => handleCustomUnitAmountChange(currency, 'maximum', e.target.value)}
-                          className="w-24"
-                          disabled={isLoading}
-                        />
-                        <Input
-                          placeholder="Preset"
-                          type="number"
-                          value={formData.currency_options[currency]?.custom_unit_amount?.preset || ''}
-                          onChange={e => handleCustomUnitAmountChange(currency, 'preset', e.target.value)}
-                          className="w-24"
-                          disabled={isLoading}
-                        />
+                        <Label htmlFor={`custom_unit_amount_enabled_${currency}`} className="mr-2">Enable</Label>
+                        <InfoIconWithTooltip description="Pass in true to enable custom_unit_amount." />
                       </div>
+                      {formData.currency_options?.[currency]?.custom_unit_amount?.enabled && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+                          <div>
+                            <div className="flex items-center">
+                              <Label htmlFor={`custom_unit_amount_minimum_${currency}`}>Minimum</Label>
+                              <InfoIconWithTooltip description="The minimum unit amount the customer can specify for this item. Must be at least the minimum charge amount." />
+                            </div>
+                            <Input
+                              id={`custom_unit_amount_minimum_${currency}`}
+                              placeholder="Min (cents)"
+                              type="number"
+                              value={formData.currency_options?.[currency]?.custom_unit_amount?.minimum || ''}
+                              onChange={e => handleCustomUnitAmountChange(currency, 'minimum', e.target.value)}
+                              disabled={isLoading}
+                            />
+                          </div>
+                          <div>
+                            <div className="flex items-center">
+                              <Label htmlFor={`custom_unit_amount_maximum_${currency}`}>Maximum</Label>
+                              <InfoIconWithTooltip description="The maximum unit amount the customer can specify for this item." />
+                            </div>
+                            <Input
+                              id={`custom_unit_amount_maximum_${currency}`}
+                              placeholder="Max (cents)"
+                              type="number"
+                              value={formData.currency_options?.[currency]?.custom_unit_amount?.maximum || ''}
+                              onChange={e => handleCustomUnitAmountChange(currency, 'maximum', e.target.value)}
+                              disabled={isLoading}
+                            />
+                          </div>
+                          <div>
+                            <div className="flex items-center">
+                             <Label htmlFor={`custom_unit_amount_preset_${currency}`}>Preset</Label>
+                             <InfoIconWithTooltip description="The starting unit amount which can be updated by the customer." />
+                            </div>
+                            <Input
+                              id={`custom_unit_amount_preset_${currency}`}
+                              placeholder="Preset (cents)"
+                              type="number"
+                              value={formData.currency_options?.[currency]?.custom_unit_amount?.preset || ''}
+                              onChange={e => handleCustomUnitAmountChange(currency, 'preset', e.target.value)}
+                              disabled={isLoading}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   {/* Tiers */}
-                  {(price.billing_scheme === 'tiered' || (formData.currency_options[currency]?.tiers?.length > 0)) && (
+                  {(price.billing_scheme === 'tiered' || (formData.currency_options?.[currency]?.tiers?.length ?? 0) > 0) && (
                     <div className="mt-4">
-                      <Label>Tiers (required for tiered prices)</Label>
+                      <div className="flex items-center">
+                        <Label>Tiers</Label>
+                        <InfoIconWithTooltip description="Each element represents a pricing tier. This parameter requires billing_scheme to be set to tiered." />
+                      </div>
                       <div className="space-y-2">
-                        {(formData.currency_options[currency]?.tiers || []).map((tier: any, i: number) => (
-                          <div key={i} className="grid grid-cols-2 md:grid-cols-3 gap-2 border p-2 rounded">
-                            <Input
-                              placeholder="Up To (number or 'inf')"
-                              value={tier.up_to}
-                              onChange={e => handleTierChange(currency, i, 'up_to', e.target.value)}
-                              disabled={isLoading}
-                            />
-                            <Input
-                              placeholder="Unit Amount"
-                              value={tier.unit_amount}
-                              onChange={e => handleTierChange(currency, i, 'unit_amount', e.target.value)}
-                              disabled={isLoading}
-                            />
-                            <Input
-                              placeholder="Flat Amount"
-                              value={tier.flat_amount}
-                              onChange={e => handleTierChange(currency, i, 'flat_amount', e.target.value)}
-                              disabled={isLoading}
-                            />
+                        {(formData.currency_options?.[currency]?.tiers || []).map((tier: any, i: number) => (
+                          <div key={i} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 border p-3 rounded bg-white"> {/* Increased padding and gap */}
+                            <div>
+                              <div className="flex items-center">
+                                <Label htmlFor={`tier_up_to_${currency}_${i}`}>Up To</Label>
+                                <InfoIconWithTooltip description="Specifies the upper bound of this tier. Use 'inf' for the last tier." />
+                              </div>
+                              <Input
+                                id={`tier_up_to_${currency}_${i}`}
+                                placeholder="Number or 'inf'"
+                                value={tier.up_to}
+                                onChange={e => handleTierChange(currency, i, 'up_to', e.target.value)}
+                                disabled={isLoading}
+                              />
+                            </div>
+                            <div>
+                              <div className="flex items-center">
+                                <Label htmlFor={`tier_unit_amount_${currency}_${i}`}>Unit Amount</Label>
+                                <InfoIconWithTooltip description="The per unit billing amount for each individual unit for which this tier applies (cents)." />
+                              </div>
+                              <Input
+                                id={`tier_unit_amount_${currency}_${i}`}
+                                placeholder="Unit Amount (cents)"
+                                value={tier.unit_amount || ''}
+                                onChange={e => handleTierChange(currency, i, 'unit_amount', e.target.value.replace(/\D/, ''))}
+                                disabled={isLoading}
+                              />
+                            </div>
+                            <div>
+                              <div className="flex items-center">
+                                <Label htmlFor={`tier_unit_amount_decimal_${currency}_${i}`}>Unit Amount Decimal</Label>
+                                <InfoIconWithTooltip description="Same as unit_amount, but accepts a decimal value in cents with at most 12 decimal places." />
+                              </div>
+                              <Input
+                                id={`tier_unit_amount_decimal_${currency}_${i}`}
+                                placeholder="e.g., 10.50"
+                                value={tier.unit_amount_decimal || ''}
+                                onChange={e => handleTierChange(currency, i, 'unit_amount_decimal', e.target.value)}
+                                disabled={isLoading}
+                              />
+                            </div>
+                            <div>
+                              <div className="flex items-center">
+                                <Label htmlFor={`tier_flat_amount_${currency}_${i}`}>Flat Amount</Label>
+                                <InfoIconWithTooltip description="The flat billing amount for an entire tier, regardless of the number of units in the tier (cents)." />
+                              </div>
+                              <Input
+                                id={`tier_flat_amount_${currency}_${i}`}
+                                placeholder="Flat Amount (cents)"
+                                value={tier.flat_amount || ''}
+                                onChange={e => handleTierChange(currency, i, 'flat_amount', e.target.value.replace(/\D/, ''))}
+                                disabled={isLoading}
+                              />
+                            </div>
+                            <div>
+                              <div className="flex items-center">
+                                <Label htmlFor={`tier_flat_amount_decimal_${currency}_${i}`}>Flat Amount Decimal</Label>
+                                <InfoIconWithTooltip description="Same as flat_amount, but accepts a decimal value representing an integer in the minor units of the currency." />
+                              </div>
+                              <Input
+                                id={`tier_flat_amount_decimal_${currency}_${i}`}
+                                placeholder="e.g., 500.75"
+                                value={tier.flat_amount_decimal || ''}
+                                onChange={e => handleTierChange(currency, i, 'flat_amount_decimal', e.target.value)}
+                                disabled={isLoading}
+                              />
+                            </div>
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
                               onClick={() => handleRemoveTier(currency, i)}
-                              className="col-span-full md:col-span-1"
+                              className="mt-4 md:mt-0 md:self-end" // Align button
                               disabled={isLoading}
-                            >Remove</Button>
+                            >Remove Tier</Button>
                           </div>
                         ))}
                         <Button type="button" variant="outline" size="sm" onClick={() => handleAddTier(currency)} disabled={isLoading}>
-                          Add Tier
+                          <Plus className="h-4 w-4 mr-2"/> Add Tier
                         </Button>
                       </div>
                     </div>
