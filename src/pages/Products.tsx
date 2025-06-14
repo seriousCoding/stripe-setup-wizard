@@ -10,6 +10,7 @@ import { ProductEditDialog } from '@/components/ProductEditDialog';
 import { StripeProduct, StripePrice } from '@/services/stripeService';
 import PriceCreateDialog from '@/components/PriceCreateDialog';
 import { PriceEditForm } from '@/components/PriceEditForm';
+import { Dialog, DialogContent, DialogTitle } from '@radix-ui/react-dialog';
 
 const Products = () => {
   const { toast } = useToast();
@@ -370,7 +371,6 @@ const Products = () => {
         product={selectedProduct}
         open={showEditDialog}
         onOpenChange={setShowEditDialog}
-        // Use new ProductEditForm
         onProductUpdated={fetchProducts}
       />
       {/* New: Price Create Dialog */}
@@ -387,31 +387,31 @@ const Products = () => {
           fetchProducts();
         }}
       />
-      {/* New: Price Edit Dialog (re-use PriceEditForm for now) */}
-      {priceToEdit && (
-        <div className="fixed z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg shadow-lg p-4 max-w-lg w-full relative">
-            <button
-              className="absolute top-2 right-2 text-gray-600 hover:text-red-500"
-              onClick={() => setShowEditPriceDialog(false)}
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <PriceEditForm
-              price={priceToEdit}
-              onPriceUpdated={() => {
-                setShowEditPriceDialog(false);
-                setPriceToEdit(null);
-                fetchProducts();
-              }}
-              onCancel={() => {
-                setShowEditPriceDialog(false);
-                setPriceToEdit(null);
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {/* New: Responsive Price Edit Dialog */}
+      <Dialog open={showEditPriceDialog} onOpenChange={(open) => {
+        setShowEditPriceDialog(open);
+        if (!open) setPriceToEdit(null);
+      }}>
+        <DialogContent className="max-w-lg w-full sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogTitle>Edit Price</DialogTitle>
+          {priceToEdit && (
+            <div className="py-2">
+              <PriceEditForm
+                price={priceToEdit}
+                onPriceUpdated={() => {
+                  setShowEditPriceDialog(false);
+                  setPriceToEdit(null);
+                  fetchProducts();
+                }}
+                onCancel={() => {
+                  setShowEditPriceDialog(false);
+                  setPriceToEdit(null);
+                }}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
