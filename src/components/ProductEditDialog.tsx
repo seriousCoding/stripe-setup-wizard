@@ -20,7 +20,7 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
   if (!product) return null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent>
         <DialogTitle>Edit Product</DialogTitle>
         <ProductEditForm
           product={product}
