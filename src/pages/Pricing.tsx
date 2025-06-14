@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +20,8 @@ const Pricing = () => {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isManaging, setIsManaging] = useState(false);
   const [managingPlanId, setManagingPlanId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancellingPlanId, setCancellingPlanId] = useState<string | null>(null);
 
   const { pricingTiers, isLoading: pricingLoading, error: pricingError } = useStripePricing({
     autoRefresh: false,
@@ -122,6 +125,49 @@ const Pricing = () => {
     }
   };
 
+  const handleCancelSubscription = async (planId: string) => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to cancel your subscription.",
+        variant: "destructive",
+      });
+      navigate('/auth');
+      return;
+    }
+
+    if (cancellingPlanId === planId && isCancelling) return;
+
+    setCancellingPlanId(planId);
+    setIsCancelling(true);
+
+    try {
+      console.log(`Cancelling subscription for plan: ${planId}`);
+      const { data, error } = await supabase.functions.invoke('customer-portal');
+
+      if (error) {
+        console.error('Customer portal error:', error);
+        throw error;
+      }
+
+      if (data?.url) {
+        console.log('Redirecting to customer portal for cancellation:', data.url);
+        window.location.href = data.url;
+      } else {
+        throw new Error('No customer portal URL returned');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to open cancellation portal.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCancelling(false);
+      setCancellingPlanId(null);
+    }
+  };
+
   const formatPrice = (price: number): string => {
     if (price === 0) return 'Free';
     return `$${price}`;
@@ -169,13 +215,15 @@ const Pricing = () => {
 
           let buttonText = tier.buttonText;
           let buttonAction = () => handleSelectPlan(tier.id);
-          let buttonDisabled = (isLoading && selectedPlan === tier.id) || (isManaging && managingPlanId === tier.id);
+          let buttonDisabled = (isLoading && selectedPlan === tier.id) || (isManaging && managingPlanId === tier.id) || (isCancelling && cancellingPlanId === tier.id);
           let currentButtonIsLoading = false;
+          let buttonVariant: "default" | "destructive" = "default";
 
           if (isCurrentUserSubscribedToThisPlan) {
-            buttonText = "Manage Subscription";
-            buttonAction = () => handleManageSubscription(tier.id);
-            currentButtonIsLoading = isManaging && managingPlanId === tier.id;
+            buttonText = "Cancel Subscription";
+            buttonAction = () => handleCancelSubscription(tier.id);
+            currentButtonIsLoading = isCancelling && cancellingPlanId === tier.id;
+            buttonVariant = "destructive";
           } else {
             currentButtonIsLoading = isLoading && selectedPlan === tier.id;
           }
@@ -251,9 +299,10 @@ const Pricing = () => {
                 )}
 
                 <Button 
+                  variant={buttonVariant}
                   className={`w-full mt-auto ${
                     isCurrentUserSubscribedToThisPlan 
-                      ? 'bg-gray-600 hover:bg-gray-700' 
+                      ? 'hover:bg-red-700' 
                       : 'bg-blue-600 hover:bg-blue-700'
                   } text-white transition-all duration-200 hover:shadow-lg hover:scale-105 shadow-md`}
                   onClick={buttonAction}
