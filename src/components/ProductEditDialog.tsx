@@ -80,7 +80,7 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
         description: product.description || '',
         active: product.active,
         metadata: product.metadata || {},
-        type: 'service', // Default since not always provided by Stripe
+        type: 'service',
         url: product.metadata?.url || '',
         unit_label: product.metadata?.unit_label || '',
         package_dimensions: {
@@ -93,7 +93,8 @@ export const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
         statement_descriptor: product.metadata?.statement_descriptor || '',
         tax_code: product.metadata?.tax_code || ''
       });
-      setPrices(product.prices || []);
+      // DYNAMICALLY SET PRICES LIST from product
+      setPrices(product.prices ? [...product.prices] : []);
       resetNewPrice();
     }
   }, [product]);

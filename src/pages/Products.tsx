@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { ProductEditDialog } from '@/components/ProductEditDialog';
-import { StripeProduct } from '@/services/stripeService';
+import { StripeProduct, StripePrice } from '@/services/stripeService';
 
 const Products = () => {
   const { toast } = useToast();
@@ -106,9 +105,21 @@ const Products = () => {
     // If no default price, try to find the first active recurring price
     const recurringPrice = product.prices?.find(p => p.active && p.type === 'recurring');
     if (recurringPrice) return recurringPrice;
-    
     // Otherwise, return the first active price
     return product.prices?.find(p => p.active);
+  };
+
+  const concisePrice = (price?: StripePrice) => {
+    if (!price) return null;
+    let amount = formatPrice(price.unit_amount, price.currency);
+    if (price.type === 'recurring' && price.recurring) {
+      if (price.recurring.interval_count && price.recurring.interval_count > 1) {
+        amount += ` every ${price.recurring.interval_count} ${price.recurring.interval}s`;
+      } else {
+        amount += `/${price.recurring.interval}`;
+      }
+    }
+    return amount;
   };
 
   useEffect(() => {
@@ -176,13 +187,23 @@ const Products = () => {
               const defaultPrice = getDefaultPrice(product);
               const activePrices = product.prices?.filter(p => p.active) || [];
               const inactivePrices = product.prices?.filter(p => !p.active) || [];
-              
+
               return (
                 <Card key={product.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg">{product.name}</CardTitle>
+                        <CardTitle className="text-lg flex flex-col">
+                          {product.name}
+                          {/* DEFAULT PRICE PROMINENTLY */}
+                          {defaultPrice && (
+                            <span className="text-base text-green-700 font-semibold mt-1 flex items-center gap-2">
+                              <DollarSign className="h-4 w-4 text-green-700" />
+                              {concisePrice(defaultPrice)}
+                              <Badge variant="outline" className="ml-2">Default</Badge>
+                            </span>
+                          )}
+                        </CardTitle>
                         {product.metadata?.subtitle && (
                           <p className="text-sm text-gray-500 mt-1">{product.metadata.subtitle}</p>
                         )}
@@ -200,28 +221,32 @@ const Products = () => {
                       </div>
                     </div>
                   </CardHeader>
-
                   <CardContent className="space-y-4">
                     {product.description && (
                       <p className="text-sm text-gray-600">{product.description}</p>
                     )}
 
-                    {/* All Prices Display */}
-                    {activePrices.length > 0 && (
+                    {/* List ALL STRIPE PRICES (active + inactive, clearly marking active ones) */}
+                    {product.prices && product.prices.length > 0 && (
                       <div className="space-y-2">
-                        <div className="text-sm font-medium text-gray-700">
-                          Active Prices ({activePrices.length}):
-                        </div>
+                        <div className="text-sm font-medium text-gray-700">All Prices ({product.prices.length}):</div>
                         <div className="space-y-2 max-h-40 overflow-y-auto">
-                          {activePrices.map((price, index) => (
-                            <div key={price.id} className={`p-2 rounded-lg border ${
-                              price.id === defaultPrice?.id ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
-                            }`}>
+                          {product.prices.map(price => (
+                            <div
+                              key={price.id}
+                              className={`p-2 rounded-lg border ${
+                                price.id === defaultPrice?.id
+                                  ? 'bg-blue-50 border-blue-200'
+                                  : price.active
+                                  ? 'bg-gray-50 border-gray-200'
+                                  : 'bg-gray-100 border-gray-300 opacity-70'
+                              }`}
+                            >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-2">
                                   <DollarSign className="h-3 w-3 text-green-600" />
                                   <span className="font-medium text-sm">
-                                    {formatPrice(price.unit_amount, price.currency)}
+                                    {concisePrice(price)}
                                   </span>
                                   {price.id === defaultPrice?.id && (
                                     <Badge variant="outline" className="text-xs">Default</Badge>
@@ -240,6 +265,9 @@ const Products = () => {
                                   {price.recurring?.usage_type === 'metered' && (
                                     <Badge variant="outline" className="text-xs">Metered</Badge>
                                   )}
+                                  {!price.active && (
+                                    <Badge variant="destructive" className="text-xs">Inactive</Badge>
+                                  )}
                                 </div>
                               </div>
                               {price.nickname && (
@@ -256,21 +284,7 @@ const Products = () => {
                       </div>
                     )}
 
-                    {/* Inactive Prices Notice */}
-                    {inactivePrices.length > 0 && (
-                      <div className="text-xs text-orange-600">
-                        {inactivePrices.length} inactive price{inactivePrices.length > 1 ? 's' : ''}
-                      </div>
-                    )}
-
-                    {/* No Prices */}
-                    {activePrices.length === 0 && inactivePrices.length === 0 && (
-                      <div className="text-sm text-gray-500 italic">
-                        No prices configured for this product
-                      </div>
-                    )}
-
-                    {/* Billing Model Info */}
+                    {/* Usage Limits, Actions, etc. */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-500">Billing Type:</span>
