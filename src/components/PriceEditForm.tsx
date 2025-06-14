@@ -29,97 +29,46 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
     nickname: price.nickname || '',
     active: price.active,
     tax_behavior: price.tax_behavior,
-    metadata: price.metadata || {},
-    lookup_key: price.lookup_key || '',
-    transfer_lookup_key: false,
-    currency_options: price.currency_options
-      ? JSON.parse(JSON.stringify(price.currency_options)) // Defensive deep clone
-      : {},
+    metadata: price.metadata || {}
   });
   const [newMetadataKey, setNewMetadataKey] = useState('');
   const [newMetadataValue, setNewMetadataValue] = useState('');
-  const [currencyToAdd, setCurrencyToAdd] = useState('');
 
-  // Handle currency option editing
-  const handleCurrencyChange = (currency: string, field: string, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      currency_options: {
-        ...prev.currency_options,
-        [currency]: {
-          ...prev.currency_options[currency],
-          [field]: value,
-        }
+  const handleSubmit = async () => {
+    setIsLoading(true);
+    try {
+      const updates = {
+        nickname: formData.nickname || null,
+        active: formData.active,
+        tax_behavior: formData.tax_behavior,
+        metadata: formData.metadata
+      };
+
+      const { price: updatedPrice, error } = await stripeService.updatePrice(price.id, updates);
+      
+      if (error) {
+        throw new Error(error);
       }
-    }));
+
+      if (updatedPrice) {
+        toast({
+          title: "Price Updated",
+          description: "The price has been successfully updated.",
+        });
+        onPriceUpdated(updatedPrice);
+      }
+    } catch (error: any) {
+      console.error('Error updating price:', error);
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update the price.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Handle deep updates for custom_unit_amount
-  const handleCustomUnitAmountChange = (currency: string, subfield: string, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      currency_options: {
-        ...prev.currency_options,
-        [currency]: {
-          ...prev.currency_options[currency],
-          custom_unit_amount: {
-            ...((prev.currency_options[currency] && prev.currency_options[currency].custom_unit_amount) || {}),
-            [subfield]: value,
-          }
-        }
-      }
-    }));
-  };
-
-  // Handle tier management for tiered prices
-  const handleTierChange = (currency: string, index: number, field: string, value: any) => {
-    setFormData((prev) => {
-      const tiers = prev.currency_options[currency]?.tiers || [];
-      const updatedTiers = tiers.map((tier: any, i: number) => 
-        i === index ? { ...tier, [field]: value } : tier
-      );
-      return {
-        ...prev,
-        currency_options: {
-          ...prev.currency_options,
-          [currency]: {
-            ...prev.currency_options[currency],
-            tiers: updatedTiers,
-          }
-        }
-      }
-    });
-  };
-  const handleAddTier = (currency: string) => {
-    setFormData((prev) => {
-      const tiers = prev.currency_options[currency]?.tiers || [];
-      return {
-        ...prev,
-        currency_options: {
-          ...prev.currency_options,
-          [currency]: {
-            ...prev.currency_options[currency],
-            tiers: [...tiers, { up_to: '', unit_amount: '', flat_amount: '', tax_behavior: 'unspecified' }],
-          }
-        }
-      }
-    });
-  }
-  const handleRemoveTier = (currency: string, index: number) => {
-    setFormData((prev) => {
-      const tiers = [...(prev.currency_options[currency]?.tiers || [])];
-      tiers.splice(index, 1);
-      return {
-        ...prev,
-        currency_options: {
-          ...prev.currency_options,
-          [currency]: { ...prev.currency_options[currency], tiers }
-        }
-      }
-    });
-  }
-
-  // Handle add/remove metadata and currency
   const handleAddMetadata = () => {
     if (newMetadataKey && newMetadataValue) {
       setFormData({
@@ -133,6 +82,7 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
       setNewMetadataValue('');
     }
   };
+
   const handleRemoveMetadata = (key: string) => {
     const updatedMetadata = { ...formData.metadata };
     delete updatedMetadata[key];
@@ -140,55 +90,6 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
       ...formData,
       metadata: updatedMetadata
     });
-  };
-
-  const handleAddCurrency = () => {
-    if (currencyToAdd.match(/^[a-z]{3}$/i)) {
-      setFormData((prev) => ({
-        ...prev,
-        currency_options: {
-          ...prev.currency_options,
-          [currencyToAdd.toLowerCase()]: {},
-        }
-      }));
-      setCurrencyToAdd('');
-    }
-  };
-  const handleRemoveCurrency = (currency: string) => {
-    const copy = { ...formData.currency_options };
-    delete copy[currency];
-    setFormData((prev) => ({
-      ...prev,
-      currency_options: copy,
-    }));
-  };
-
-  const handleSubmit = async () => {
-    setIsLoading(true);
-    try {
-      const updates: any = {
-        nickname: formData.nickname || null,
-        active: formData.active,
-        tax_behavior: formData.tax_behavior,
-        metadata: formData.metadata,
-        lookup_key: formData.lookup_key || null,
-        transfer_lookup_key: formData.transfer_lookup_key,
-        currency_options: Object.keys(formData.currency_options).length > 0 ? formData.currency_options : undefined,
-      };
-
-      const { price: updatedPrice, error } = await stripeService.updatePrice(price.id, updates);
-      if (error) {
-        throw new Error(error);
-      }
-      if (updatedPrice) {
-        toast({ title: "Price Updated", description: "The price has been successfully updated." });
-        onPriceUpdated(updatedPrice);
-      }
-    } catch (error: any) {
-      toast({ title: "Update Failed", description: error.message || "Failed to update the price.", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const formatPrice = (amount: number, currency: string) => {
@@ -260,7 +161,6 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
 
         {/* Editable fields */}
         <form onSubmit={e => { e.preventDefault(); handleSubmit(); }} className="space-y-6">
-          {/* Basic fields */}
           <div>
             <Label htmlFor="nickname">Nickname</Label>
             <Input
@@ -281,10 +181,10 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
             <Label htmlFor="active">Active (can be used for new purchases)</Label>
           </div>
           <div>
-            <Label htmlFor="tax_behavior">Tax Behavior</Label>
+            <Label htmlFor="tax-behavior">Tax Behavior</Label>
             <Select
               value={formData.tax_behavior}
-              onValueChange={(value: 'inclusive' | 'exclusive' | 'unspecified') =>
+              onValueChange={(value: 'inclusive' | 'exclusive' | 'unspecified') => 
                 setFormData({ ...formData, tax_behavior: value })
               }
               disabled={isLoading}
@@ -299,27 +199,8 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label htmlFor="lookup_key">Lookup Key</Label>
-            <Input
-              id="lookup_key"
-              value={formData.lookup_key || ''}
-              onChange={e => setFormData({ ...formData, lookup_key: e.target.value })}
-              placeholder="Optional static lookup key for this price"
-              disabled={isLoading}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="transfer_lookup_key"
-              checked={formData.transfer_lookup_key}
-              onCheckedChange={checked => setFormData({ ...formData, transfer_lookup_key: checked })}
-              disabled={isLoading}
-            />
-            <Label htmlFor="transfer_lookup_key">Transfer Lookup Key</Label>
-          </div>
           <Separator className="my-6" />
-          {/* Metadata */}
+          {/* Metadata section */}
           <div>
             <Label>Metadata</Label>
             <div className="space-y-2">
@@ -347,154 +228,18 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
                   className="flex-1"
                   disabled={isLoading}
                 />
-                <Button type="button" size="sm" variant="outline" onClick={handleAddMetadata} disabled={!newMetadataKey || !newMetadataValue || isLoading}>
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={handleAddMetadata}
+                  disabled={!newMetadataKey || !newMetadataValue || isLoading}
+                >
                   Add
                 </Button>
               </div>
             </div>
           </div>
-          {/* currency_options */}
-          <Separator className="my-6" />
-          <div>
-            <Label>Currencies</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="e.g. eur"
-                value={currencyToAdd}
-                onChange={e => setCurrencyToAdd(e.target.value)}
-                className="w-24"
-                disabled={isLoading}
-              />
-              <Button type="button" size="sm" variant="outline" onClick={handleAddCurrency} disabled={!currencyToAdd.match(/^[a-z]{3}$/i) || isLoading}>
-                Add Currency
-              </Button>
-            </div>
-            <div className="space-y-4 mt-4">
-              {Object.keys(formData.currency_options || {}).map(currency => (
-                <div key={currency} className="border rounded-lg p-3 bg-gray-50 mt-2">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="font-semibold">Currency: {currency.toUpperCase()}</span>
-                    <Button type="button" size="xs" variant="ghost" onClick={() => handleRemoveCurrency(currency)} disabled={isLoading}>
-                      Remove
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div>
-                      <Label>Unit Amount (cents)</Label>
-                      <Input
-                        value={formData.currency_options[currency]?.unit_amount || ''}
-                        onChange={e => handleCurrencyChange(currency, 'unit_amount', e.target.value.replace(/\D/, ''))}
-                        disabled={isLoading}
-                      />
-                    </div>
-                    <div>
-                      <Label>Unit Amount Decimal</Label>
-                      <Input
-                        value={formData.currency_options[currency]?.unit_amount_decimal || ''}
-                        onChange={e => handleCurrencyChange(currency, 'unit_amount_decimal', e.target.value)}
-                        disabled={isLoading}
-                      />
-                    </div>
-                    <div>
-                      <Label>
-                        Tax Behavior
-                        <Select
-                          value={formData.currency_options[currency]?.tax_behavior || 'unspecified'}
-                          onValueChange={v => handleCurrencyChange(currency, 'tax_behavior', v)}
-                          disabled={isLoading}
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unspecified">Unspecified</SelectItem>
-                            <SelectItem value="inclusive">Inclusive</SelectItem>
-                            <SelectItem value="exclusive">Exclusive</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Label>
-                    </div>
-                    {/* Custom unit amount */}
-                    <div className="border bg-muted rounded-md p-2 col-span-2">
-                      <Label>Custom Unit Amount</Label>
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <Switch
-                          checked={!!formData.currency_options[currency]?.custom_unit_amount?.enabled}
-                          onCheckedChange={checked => handleCustomUnitAmountChange(currency, 'enabled', checked)}
-                          disabled={isLoading}
-                        />
-                        <span>Enable</span>
-                        <Input
-                          placeholder="Minimum"
-                          type="number"
-                          value={formData.currency_options[currency]?.custom_unit_amount?.minimum || ''}
-                          onChange={e => handleCustomUnitAmountChange(currency, 'minimum', e.target.value)}
-                          className="w-24"
-                          disabled={isLoading}
-                        />
-                        <Input
-                          placeholder="Maximum"
-                          type="number"
-                          value={formData.currency_options[currency]?.custom_unit_amount?.maximum || ''}
-                          onChange={e => handleCustomUnitAmountChange(currency, 'maximum', e.target.value)}
-                          className="w-24"
-                          disabled={isLoading}
-                        />
-                        <Input
-                          placeholder="Preset"
-                          type="number"
-                          value={formData.currency_options[currency]?.custom_unit_amount?.preset || ''}
-                          onChange={e => handleCustomUnitAmountChange(currency, 'preset', e.target.value)}
-                          className="w-24"
-                          disabled={isLoading}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  {/* Tiers */}
-                  {(price.billing_scheme === 'tiered' || (formData.currency_options[currency]?.tiers?.length > 0)) && (
-                    <div className="mt-4">
-                      <Label>Tiers (required for tiered prices)</Label>
-                      <div className="space-y-2">
-                        {(formData.currency_options[currency]?.tiers || []).map((tier: any, i: number) => (
-                          <div key={i} className="grid grid-cols-2 md:grid-cols-3 gap-2 border p-2 rounded">
-                            <Input
-                              placeholder="Up To (number or 'inf')"
-                              value={tier.up_to}
-                              onChange={e => handleTierChange(currency, i, 'up_to', e.target.value)}
-                              disabled={isLoading}
-                            />
-                            <Input
-                              placeholder="Unit Amount"
-                              value={tier.unit_amount}
-                              onChange={e => handleTierChange(currency, i, 'unit_amount', e.target.value)}
-                              disabled={isLoading}
-                            />
-                            <Input
-                              placeholder="Flat Amount"
-                              value={tier.flat_amount}
-                              onChange={e => handleTierChange(currency, i, 'flat_amount', e.target.value)}
-                              disabled={isLoading}
-                            />
-                            <Button
-                              type="button"
-                              size="xs"
-                              variant="outline"
-                              onClick={() => handleRemoveTier(currency, i)}
-                              className="col-span-full md:col-span-1"
-                              disabled={isLoading}
-                            >Remove</Button>
-                          </div>
-                        ))}
-                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddTier(currency)} disabled={isLoading}>
-                          Add Tier
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div className="flex gap-2 pt-4">
             <Button type="submit" disabled={isLoading} className="flex-1">
               <Save className="h-4 w-4 mr-2" />

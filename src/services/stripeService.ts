@@ -282,9 +282,6 @@ class StripeService {
     active?: boolean;
     metadata?: Record<string, string>;
     tax_behavior?: 'inclusive' | 'exclusive' | 'unspecified';
-    lookup_key?: string;
-    transfer_lookup_key?: boolean;
-    currency_options?: Record<string, any>;
   }): Promise<{ price?: StripePrice; error?: string }> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
