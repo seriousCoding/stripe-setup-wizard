@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -121,7 +122,7 @@ const PricingCard: React.FC<PricingCardProps> = ({
         <Button 
           className={`w-full mt-auto transition-all duration-200 hover:shadow-lg hover:scale-105 shadow-md ${
             isCurrentPlan 
-              ? 'bg-green-600 hover:bg-green-700 cursor-not-allowed' 
+              ? 'bg-gray-500 text-gray-700 hover:bg-gray-500 cursor-not-allowed' // Changed to grey for current plan
               : tier.popular
               ? 'bg-blue-600 hover:bg-blue-700 text-white'
               : 'bg-blue-600 hover:bg-blue-700 text-white'
