@@ -2,15 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Plus, RefreshCw, DollarSign, Calendar, X } from 'lucide-react';
+import { Edit, Plus, RefreshCw, DollarSign, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { ProductEditDialog } from '@/components/ProductEditDialog';
 import { StripeProduct, StripePrice } from '@/services/stripeService';
-import PriceCreateDialog from '@/components/PriceCreateDialog';
-import { PriceEditForm } from '@/components/PriceEditForm';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 const Products = () => {
   const { toast } = useToast();
@@ -18,10 +15,6 @@ const Products = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<StripeProduct | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showCreatePriceDialog, setShowCreatePriceDialog] = useState(false);
-  const [priceTargetProduct, setPriceTargetProduct] = useState<StripeProduct | null>(null);
-  const [showEditPriceDialog, setShowEditPriceDialog] = useState(false);
-  const [priceToEdit, setPriceToEdit] = useState<any | null>(null);
 
   const fetchProducts = async () => {
     try {
@@ -78,16 +71,6 @@ const Products = () => {
   const handleEditProduct = (product: StripeProduct) => {
     setSelectedProduct(product);
     setShowEditDialog(true);
-  };
-
-  const handleAddPrice = (product: StripeProduct) => {
-    setPriceTargetProduct(product);
-    setShowCreatePriceDialog(true);
-  };
-
-  const handleEditPrice = (price: any) => {
-    setPriceToEdit(price);
-    setShowEditPriceDialog(true);
   };
 
   const formatPrice = (amount: number, currency: string) => {
@@ -202,7 +185,10 @@ const Products = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {products.map((product) => {
               const defaultPrice = getDefaultPrice(product);
+              const activePrices = product.prices?.filter(p => p.active) || [];
+              const inactivePrices = product.prices?.filter(p => !p.active) || [];
               const priceCount = product.prices?.length || 0;
+
               return (
                 <Card key={product.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -213,6 +199,7 @@ const Products = () => {
                             {product.name}
                             <Badge variant="secondary">{priceCount} {priceCount === 1 ? 'Price' : 'Prices'}</Badge>
                           </span>
+                          {/* DEFAULT PRICE PROMINENTLY */}
                           {defaultPrice && (
                             <span className="text-base text-green-700 font-semibold mt-1 flex items-center gap-2">
                               <DollarSign className="h-4 w-4 text-green-700" />
@@ -225,27 +212,16 @@ const Products = () => {
                           <p className="text-sm text-gray-500 mt-1">{product.metadata.subtitle}</p>
                         )}
                       </div>
-                      <div className="flex flex-col items-end space-y-2">
-                        <div className="flex items-center space-x-2">
-                          {product.metadata?.popular === 'true' && (
-                            <Badge className="bg-blue-600">Most Popular</Badge>
-                          )}
-                          {product.metadata?.badge && (
-                            <Badge variant="secondary">{product.metadata.badge}</Badge>
-                          )}
-                          {!product.active && (
-                            <Badge variant="destructive">Inactive</Badge>
-                          )}
-                        </div>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="text-xs px-2 py-1 mt-1"
-                          onClick={() => handleAddPrice(product)}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Add Price
-                        </Button>
+                      <div className="flex items-center space-x-2">
+                        {product.metadata?.popular === 'true' && (
+                          <Badge className="bg-blue-600">Most Popular</Badge>
+                        )}
+                        {product.metadata?.badge && (
+                          <Badge variant="secondary">{product.metadata.badge}</Badge>
+                        )}
+                        {!product.active && (
+                          <Badge variant="destructive">Inactive</Badge>
+                        )}
                       </div>
                     </div>
                   </CardHeader>
@@ -254,7 +230,7 @@ const Products = () => {
                       <p className="text-sm text-gray-600">{product.description}</p>
                     )}
 
-                    {/* All Prices (active + inactive) */}
+                    {/* List ALL STRIPE PRICES (active + inactive, clearly marking active ones) */}
                     {product.prices && product.prices.length > 0 && (
                       <div className="space-y-2">
                         <div className="text-sm font-medium text-gray-700">All Prices ({product.prices.length}):</div>
@@ -262,7 +238,7 @@ const Products = () => {
                           {product.prices.map(price => (
                             <div
                               key={price.id}
-                              className={`p-2 rounded-lg border flex items-center ${
+                              className={`p-2 rounded-lg border ${
                                 price.id === defaultPrice?.id
                                   ? 'bg-blue-50 border-blue-200'
                                   : price.active
@@ -270,7 +246,7 @@ const Products = () => {
                                   : 'bg-gray-100 border-gray-300 opacity-70'
                               }`}
                             >
-                              <div className="flex flex-col flex-1">
+                              <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-2">
                                   <DollarSign className="h-3 w-3 text-green-600" />
                                   <span className="font-medium text-sm">
@@ -280,16 +256,6 @@ const Products = () => {
                                     <Badge variant="outline" className="text-xs">Default</Badge>
                                   )}
                                 </div>
-                                {price.nickname && (
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    {price.nickname}
-                                  </div>
-                                )}
-                                <div className="text-xs text-gray-400 mt-1 truncate">
-                                  ID: {price.id}
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end ml-4 gap-2">
                                 <div className="flex items-center space-x-1">
                                   {price.type === 'recurring' && price.recurring && (
                                     <Badge variant="outline" className="text-xs">
@@ -307,15 +273,14 @@ const Products = () => {
                                     <Badge variant="destructive" className="text-xs">Inactive</Badge>
                                   )}
                                 </div>
-                                <Button 
-                                  size="sm" 
-                                  variant="outline" 
-                                  className="text-xs px-2 py-1 mt-2"
-                                  onClick={() => handleEditPrice(price)}
-                                >
-                                  <Edit className="h-4 w-4 mr-1" />
-                                  Edit
-                                </Button>
+                              </div>
+                              {price.nickname && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {price.nickname}
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-400 mt-1 truncate">
+                                ID: {price.id}
                               </div>
                             </div>
                           ))}
@@ -329,6 +294,7 @@ const Products = () => {
                         <span className="text-gray-500">Billing Type:</span>
                         <Badge variant="outline">{getBillingType(product.metadata)}</Badge>
                       </div>
+                      
                       {/* Usage Limits */}
                       {getTierInfo(product.metadata).length > 0 && (
                         <div className="text-xs text-gray-500">
@@ -351,10 +317,11 @@ const Products = () => {
                         className="flex-1"
                       >
                         <Edit className="h-4 w-4 mr-2" />
-                        Edit Product
+                        Edit
                       </Button>
                     </div>
 
+                    {/* Product ID */}
                     <div className="text-xs text-gray-400 truncate">
                       ID: {product.id}
                     </div>
@@ -366,55 +333,13 @@ const Products = () => {
         )}
       </div>
 
-      {/* Product Edit Dialog */}
+      {/* Edit Product Dialog */}
       <ProductEditDialog
         product={selectedProduct}
         open={showEditDialog}
         onOpenChange={setShowEditDialog}
         onProductUpdated={fetchProducts}
       />
-      {/* New: Price Create Dialog */}
-      <PriceCreateDialog
-        product={priceTargetProduct}
-        open={showCreatePriceDialog}
-        onOpenChange={(open) => {
-          setShowCreatePriceDialog(open);
-          if (!open) setPriceTargetProduct(null);
-        }}
-        onPriceCreated={() => {
-          setShowCreatePriceDialog(false); 
-          setPriceTargetProduct(null);
-          fetchProducts();
-        }}
-      />
-      {/* New: Responsive Price Edit Dialog */}
-      <Dialog open={showEditPriceDialog} onOpenChange={(open) => {
-        setShowEditPriceDialog(open);
-        if (!open) setPriceToEdit(null);
-      }}>
-        <DialogContent className="max-w-lg w-full sm:max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogTitle>Edit Price</DialogTitle>
-          <DialogDescription>
-            Update allowed fields for this Stripe price. Changes are immediate—save to apply, or Cancel to discard.
-          </DialogDescription>
-          {priceToEdit && (
-            <div className="py-2">
-              <PriceEditForm
-                price={priceToEdit}
-                onPriceUpdated={() => {
-                  setShowEditPriceDialog(false);
-                  setPriceToEdit(null);
-                  fetchProducts();
-                }}
-                onCancel={() => {
-                  setShowEditPriceDialog(false);
-                  setPriceToEdit(null);
-                }}
-              />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </DashboardLayout>
   );
 };

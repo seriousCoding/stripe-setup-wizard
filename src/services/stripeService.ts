@@ -305,31 +305,6 @@ class StripeService {
     }
   }
 
-  async updateProduct(productId: string, updates: {
-    name?: string;
-    description?: string;
-    active?: boolean;
-    metadata?: Record<string, string>;
-  }): Promise<{ product?: StripeProduct; error?: string }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { error: 'Stripe API key not configured' };
-    }
-    try {
-      const { data: result, error } = await supabase.functions.invoke('update-stripe-product', {
-        body: { product_id: productId, updates, apiKey }
-      });
-
-      if (error) {
-        console.error('Error updating product:', error);
-        return { error: error.message };
-      }
-      return { product: result.product };
-    } catch (error: any) {
-      return { error: error.message };
-    }
-  }
-
   private generateEventName(productName: string): string {
     return productName
       .toLowerCase()
