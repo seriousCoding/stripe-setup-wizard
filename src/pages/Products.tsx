@@ -10,7 +10,7 @@ import { ProductEditDialog } from '@/components/ProductEditDialog';
 import { StripeProduct, StripePrice } from '@/services/stripeService';
 import PriceCreateDialog from '@/components/PriceCreateDialog';
 import { PriceEditForm } from '@/components/PriceEditForm';
-import { Dialog, DialogContent, DialogTitle } from '@radix-ui/react-dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 const Products = () => {
   const { toast } = useToast();
@@ -394,6 +394,9 @@ const Products = () => {
       }}>
         <DialogContent className="max-w-lg w-full sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogTitle>Edit Price</DialogTitle>
+          <DialogDescription>
+            Update allowed fields for this Stripe price. Changes are immediate—save to apply, or Cancel to discard.
+          </DialogDescription>
           {priceToEdit && (
             <div className="py-2">
               <PriceEditForm
