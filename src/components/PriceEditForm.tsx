@@ -476,7 +476,7 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
                             />
                             <Button
                               type="button"
-                              size="xs"
+                              size="sm"
                               variant="outline"
                               onClick={() => handleRemoveTier(currency, i)}
                               className="col-span-full md:col-span-1"

@@ -38,6 +38,28 @@ export interface StripePrice {
   unit_amount: number;
   unit_amount_decimal: string;
   interval?: 'month' | 'year' | 'week' | 'day';
+
+  // Add currency_options as expected by the PriceEditForm
+  currency_options?: {
+    [currency: string]: {
+      unit_amount?: number;
+      unit_amount_decimal?: string;
+      tax_behavior?: 'inclusive' | 'exclusive' | 'unspecified';
+      custom_unit_amount?: {
+        enabled: boolean;
+        minimum?: number;
+        maximum?: number;
+        preset?: number;
+      };
+      tiers?: Array<{
+        up_to: string | number;
+        unit_amount?: number;
+        unit_amount_decimal?: string;
+        flat_amount?: number;
+        flat_amount_decimal?: string;
+      }>;
+    };
+  };
 }
 
 export interface BillingModel {
