@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,6 +10,7 @@ interface SubscriptionStatus {
   customer_id?: string;
   current_period_end?: number;
   price_amount?: number;
+  subscription_price_id?: string; // Added field for price ID
 }
 
 export const useSubscription = () => {
@@ -18,7 +18,8 @@ export const useSubscription = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>({
     subscribed: false,
     subscription_tier: null,
-    subscription_status: 'loading'
+    subscription_status: 'loading',
+    subscription_price_id: undefined,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +29,8 @@ export const useSubscription = () => {
       setSubscriptionStatus({
         subscribed: false,
         subscription_tier: null,
-        subscription_status: 'no_user'
+        subscription_status: 'no_user',
+        subscription_price_id: undefined,
       });
       setIsLoading(false);
       return;
@@ -49,21 +51,20 @@ export const useSubscription = () => {
 
       console.log('Raw subscription check result:', data);
       
-      // Ensure we have a valid response structure
-      const validatedData = {
+      const validatedData: SubscriptionStatus = {
         subscribed: Boolean(data?.subscribed),
         subscription_tier: data?.subscription_tier || null,
         subscription_status: data?.subscription_status || 'unknown',
         subscription_id: data?.subscription_id || undefined,
         customer_id: data?.customer_id || undefined,
         current_period_end: data?.current_period_end || undefined,
-        price_amount: data?.price_amount || undefined
+        price_amount: data?.price_amount || undefined,
+        subscription_price_id: data?.price_id || undefined, // Map price_id
       };
 
       console.log('Validated subscription data:', validatedData);
       setSubscriptionStatus(validatedData);
 
-      // Store in localStorage for persistence
       localStorage.setItem('subscription_status', JSON.stringify(validatedData));
 
     } catch (err: any) {
@@ -72,7 +73,8 @@ export const useSubscription = () => {
       setSubscriptionStatus({
         subscribed: false,
         subscription_tier: null,
-        subscription_status: 'error'
+        subscription_status: 'error',
+        subscription_price_id: undefined,
       });
     } finally {
       setIsLoading(false);
@@ -87,15 +89,30 @@ export const useSubscription = () => {
       if (cached) {
         try {
           const cachedData = JSON.parse(cached);
+          // Ensure new field is handled if not in cache
+          if (!('subscription_price_id' in cachedData)) {
+            cachedData.subscription_price_id = undefined;
+          }
           setSubscriptionStatus(cachedData);
-          setIsLoading(false);
+          setIsLoading(false); // Assuming cached data is good enough for initial load
         } catch (e) {
           console.warn('Failed to parse cached subscription status');
+          localStorage.removeItem('subscription_status'); // Clear invalid cache
         }
       }
       
       // Then fetch fresh data
       checkSubscription();
+    } else {
+       // Clear status if no user
+      setSubscriptionStatus({
+        subscribed: false,
+        subscription_tier: null,
+        subscription_status: 'no_user',
+        subscription_price_id: undefined,
+      });
+      setIsLoading(false);
+      localStorage.removeItem('subscription_status');
     }
   }, [user]);
 
@@ -113,7 +130,7 @@ export const useSubscription = () => {
 
   return {
     subscriptionStatus,
-    isLoading,
+    isLoading: isLoading, // Renamed for clarity from hook's perspective
     error,
     refetch: checkSubscription
   };

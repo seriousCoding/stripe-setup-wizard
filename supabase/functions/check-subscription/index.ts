@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -68,7 +67,8 @@ serve(async (req) => {
           customer_id: null,
           subscription_id: null,
           current_period_end: null,
-          price_amount: null
+          price_amount: null,
+          price_id: null // Add price_id here
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -80,7 +80,7 @@ serve(async (req) => {
     const customerId = customers.data[0].id;
     logStep("Found Stripe customer", { customerId });
 
-    // Get subscriptions - using separate API calls to avoid expand issues
+    // Get subscriptions
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
       status: 'active',
@@ -97,7 +97,8 @@ serve(async (req) => {
           customer_id: customerId,
           subscription_id: null,
           current_period_end: null,
-          price_amount: null
+          price_amount: null,
+          price_id: null // Add price_id here
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -109,7 +110,6 @@ serve(async (req) => {
     const subscription = subscriptions.data[0];
     const subscriptionItem = subscription.items.data[0];
     
-    // Get the price separately to avoid expand issues
     const price = await stripe.prices.retrieve(subscriptionItem.price.id);
     
     logStep("Active subscription found", {
@@ -137,7 +137,8 @@ serve(async (req) => {
     logStep("Subscription details determined", {
       tier: subscriptionTier,
       amount: priceAmount,
-      currentPeriodEnd: subscription.current_period_end
+      currentPeriodEnd: subscription.current_period_end,
+      priceId: price.id // Log the priceId
     });
 
     return new Response(
@@ -148,7 +149,8 @@ serve(async (req) => {
         customer_id: customerId,
         subscription_id: subscription.id,
         current_period_end: subscription.current_period_end,
-        price_amount: priceAmount
+        price_amount: priceAmount,
+        price_id: price.id // Return price_id
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -168,11 +170,12 @@ serve(async (req) => {
         customer_id: null,
         subscription_id: null,
         current_period_end: null,
-        price_amount: null
+        price_amount: null,
+        price_id: null // Add price_id here
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200, // Return 200 even for errors to prevent frontend issues
+        status: 200, 
       }
     );
   }
