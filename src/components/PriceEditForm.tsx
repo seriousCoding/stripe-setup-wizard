@@ -374,7 +374,7 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
                 <div key={currency} className="border rounded-lg p-3 bg-gray-50 mt-2">
                   <div className="flex justify-between items-center mb-3">
                     <span className="font-semibold">Currency: {currency.toUpperCase()}</span>
-                    <Button type="button" size="xs" variant="ghost" onClick={() => handleRemoveCurrency(currency)} disabled={isLoading}>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => handleRemoveCurrency(currency)} disabled={isLoading}>
                       Remove
                     </Button>
                   </div>
