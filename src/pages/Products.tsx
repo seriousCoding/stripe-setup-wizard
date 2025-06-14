@@ -187,6 +187,7 @@ const Products = () => {
               const defaultPrice = getDefaultPrice(product);
               const activePrices = product.prices?.filter(p => p.active) || [];
               const inactivePrices = product.prices?.filter(p => !p.active) || [];
+              const priceCount = product.prices?.length || 0;
 
               return (
                 <Card key={product.id} className="hover:shadow-lg transition-shadow">
@@ -194,7 +195,10 @@ const Products = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg flex flex-col">
-                          {product.name}
+                          <span className="flex items-center gap-2">
+                            {product.name}
+                            <Badge variant="secondary">{priceCount} {priceCount === 1 ? 'Price' : 'Prices'}</Badge>
+                          </span>
                           {/* DEFAULT PRICE PROMINENTLY */}
                           {defaultPrice && (
                             <span className="text-base text-green-700 font-semibold mt-1 flex items-center gap-2">
