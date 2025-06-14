@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -111,14 +110,38 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
     return text;
   };
 
+  // Redesign: Show essential details in a visually grouped card 
+  // Add clear section headers; better spacing; clear separation of readonly and editable fields.
+
+  // Readonly price info block
+  const PriceInfo = () => (
+    <div className="p-4 bg-muted rounded-lg">
+      <div className="font-medium text-primary mb-2">Stripe Price Information</div>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div><span className="text-gray-500">Amount:</span> <span className="ml-2 font-medium">{formatPrice(price.unit_amount, price.currency)}</span></div>
+        <div><span className="text-gray-500">Currency:</span> <span className="ml-2 font-medium">{price.currency.toUpperCase()}</span></div>
+        <div><span className="text-gray-500">Type:</span> <span className="ml-2 font-medium">{price.type}</span></div>
+        <div><span className="text-gray-500">Scheme:</span> <span className="ml-2 font-medium">{price.billing_scheme}</span></div>
+        {price.recurring && (
+          <>
+            <div><span className="text-gray-500">Interval:</span> <span className="ml-2 font-medium">
+              {price.recurring.interval_count > 1 ? `${price.recurring.interval_count} ` : ''}{price.recurring.interval}
+            </span></div>
+            <div><span className="text-gray-500">Usage Type:</span> <span className="ml-2 font-medium">{price.recurring.usage_type}</span></div>
+          </>
+        )}
+      </div>
+      <div className="text-xs text-gray-400 mt-2">ID: {price.id}</div>
+    </div>
+  );
+
   return (
-    <Card className="w-full">
+    <Card className="w-full max-w-lg">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <DollarSign className="h-5 w-5" />
-          Edit Price: {getPriceDisplayText(price)}
+          <DollarSign className="h-5 w-5" /> Edit Price: {getPriceDisplayText(price)}
         </CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mt-2">
           <Badge variant={price.active ? "default" : "secondary"}>
             {price.active ? "Active" : "Inactive"}
           </Badge>
@@ -131,52 +154,13 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
           )}
         </div>
       </CardHeader>
-      
-      <CardContent className="space-y-6">
-        {/* Read-only price information */}
-        <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-medium text-sm text-gray-700">Price Details (Read-only)</h4>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-gray-500">Amount:</span>
-              <span className="ml-2 font-medium">{formatPrice(price.unit_amount, price.currency)}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Currency:</span>
-              <span className="ml-2 font-medium">{price.currency.toUpperCase()}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Type:</span>
-              <span className="ml-2 font-medium">{price.type}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Billing Scheme:</span>
-              <span className="ml-2 font-medium">{price.billing_scheme}</span>
-            </div>
-            {price.recurring && (
-              <>
-                <div>
-                  <span className="text-gray-500">Interval:</span>
-                  <span className="ml-2 font-medium">
-                    {price.recurring.interval_count > 1 ? `${price.recurring.interval_count} ` : ''}{price.recurring.interval}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Usage Type:</span>
-                  <span className="ml-2 font-medium">{price.recurring.usage_type}</span>
-                </div>
-              </>
-            )}
-          </div>
-          <div className="text-xs text-gray-400">
-            ID: {price.id}
-          </div>
-        </div>
+      <CardContent className="space-y-7">
+        <PriceInfo />
 
         <Separator />
 
         {/* Editable fields */}
-        <div className="space-y-4">
+        <form onSubmit={e => { e.preventDefault(); handleSubmit(); }} className="space-y-6">
           <div>
             <Label htmlFor="nickname">Nickname</Label>
             <Input
@@ -184,18 +168,18 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
               value={formData.nickname}
               onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
               placeholder="Optional price nickname"
+              disabled={isLoading}
             />
           </div>
-
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <Switch
               id="active"
               checked={formData.active}
-              onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
+              onCheckedChange={checked => setFormData({ ...formData, active: checked })}
+              disabled={isLoading}
             />
             <Label htmlFor="active">Active (can be used for new purchases)</Label>
           </div>
-
           <div>
             <Label htmlFor="tax-behavior">Tax Behavior</Label>
             <Select
@@ -203,6 +187,7 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
               onValueChange={(value: 'inclusive' | 'exclusive' | 'unspecified') => 
                 setFormData({ ...formData, tax_behavior: value })
               }
+              disabled={isLoading}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -214,71 +199,58 @@ export const PriceEditForm: React.FC<PriceEditFormProps> = ({
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        <Separator />
-
-        {/* Metadata section */}
-        <div className="space-y-4">
-          <h4 className="font-medium">Metadata</h4>
-          
-          {Object.keys(formData.metadata).length > 0 && (
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {Object.entries(formData.metadata).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between p-3 border rounded">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{key}</div>
-                    <div className="text-sm text-gray-500 break-all">{value}</div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveMetadata(key)}
-                  >
+          <Separator className="my-6" />
+          {/* Metadata section */}
+          <div>
+            <Label>Metadata</Label>
+            <div className="space-y-2">
+              {Object.entries(formData.metadata).map(([k, v]) => (
+                <div key={k} className="flex items-center border rounded p-2">
+                  <span className="text-sm font-medium mr-2">{k}:</span>
+                  <span className="text-sm text-gray-600 break-all mr-2">{v}</span>
+                  <Button size="icon" variant="ghost" onClick={() => handleRemoveMetadata(k)} type="button">
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               ))}
+              <div className="flex gap-2 mt-2">
+                <Input
+                  placeholder="Key"
+                  value={newMetadataKey}
+                  onChange={e => setNewMetadataKey(e.target.value)}
+                  className="flex-1"
+                  disabled={isLoading}
+                />
+                <Input
+                  placeholder="Value"
+                  value={newMetadataValue}
+                  onChange={e => setNewMetadataValue(e.target.value)}
+                  className="flex-1"
+                  disabled={isLoading}
+                />
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={handleAddMetadata}
+                  disabled={!newMetadataKey || !newMetadataValue || isLoading}
+                >
+                  Add
+                </Button>
+              </div>
             </div>
-          )}
-
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                placeholder="Metadata key"
-                value={newMetadataKey}
-                onChange={(e) => setNewMetadataKey(e.target.value)}
-              />
-              <Input
-                placeholder="Metadata value"
-                value={newMetadataValue}
-                onChange={(e) => setNewMetadataValue(e.target.value)}
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAddMetadata}
-              disabled={!newMetadataKey || !newMetadataValue}
-              className="w-full"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Metadata
+          </div>
+          <div className="flex gap-2 pt-4">
+            <Button type="submit" disabled={isLoading} className="flex-1">
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </Button>
+            <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+              <X className="h-4 w-4 mr-2" />
+              Cancel
             </Button>
           </div>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex space-x-2 pt-4">
-          <Button onClick={handleSubmit} disabled={isLoading} className="flex-1">
-            <Save className="h-4 w-4 mr-2" />
-            Save Changes
-          </Button>
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
-            <X className="h-4 w-4 mr-2" />
-            Cancel
-          </Button>
-        </div>
+        </form>
       </CardContent>
     </Card>
   );
