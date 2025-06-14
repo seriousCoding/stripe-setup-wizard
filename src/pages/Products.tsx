@@ -9,7 +9,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { ProductEditDialog } from '@/components/ProductEditDialog';
 import { StripeProduct, StripePrice } from '@/services/stripeService';
 import PriceCreateDialog from '@/components/PriceCreateDialog';
-import PriceEditForm from '@/components/PriceEditForm';
+import { PriceEditForm } from '@/components/PriceEditForm';
 
 const Products = () => {
   const { toast } = useToast();
@@ -237,7 +237,7 @@ const Products = () => {
                           )}
                         </div>
                         <Button 
-                          size="xs" 
+                          size="sm" 
                           variant="outline" 
                           className="text-xs px-2 py-1 mt-1"
                           onClick={() => handleAddPrice(product)}
@@ -307,7 +307,7 @@ const Products = () => {
                                   )}
                                 </div>
                                 <Button 
-                                  size="xs" 
+                                  size="sm" 
                                   variant="outline" 
                                   className="text-xs px-2 py-1 mt-2"
                                   onClick={() => handleEditPrice(price)}
@@ -370,6 +370,7 @@ const Products = () => {
         product={selectedProduct}
         open={showEditDialog}
         onOpenChange={setShowEditDialog}
+        // Use new ProductEditForm
         onProductUpdated={fetchProducts}
       />
       {/* New: Price Create Dialog */}
