@@ -1,28 +1,28 @@
 
-import React, { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check } from 'lucide-react';
+import React, { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '@/components/DashboardLayout';
 import useStripePricing from '@/hooks/useStripePricing';
+import { useSubscription } from '@/hooks/useSubscription'; // Import useSubscription
+import PricingCard from '@/components/PricingCard'; // Import PricingCard
+import { StripePricingTier } from '@/hooks/useStripePricing'; // Import the tier type
 
 const Pricing = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [isLoadingCheckout, setIsLoadingCheckout] = useState(false); // Renamed for clarity
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null); // Renamed for clarity
   
-  // Use the hook to get live pricing data
   const { pricingTiers, isLoading: pricingLoading, error: pricingError } = useStripePricing({
     autoRefresh: false,
     useAllProducts: false
   });
+
+  const { subscriptionStatus, isLoading: subscriptionLoading } = useSubscription(); // Get subscription status
 
   const handleSelectPlan = async (planId: string) => {
     if (!user) {
@@ -35,20 +35,25 @@ const Pricing = () => {
       return;
     }
 
-    if (selectedPlan === planId) return;
+    // Prevent re-subscribing to the current plan if somehow clicked (button should be disabled)
+    if (subscriptionStatus.subscribed && subscriptionStatus.subscription_tier === planId) {
+      toast({
+        title: "Already Subscribed",
+        description: "You are already subscribed to this plan.",
+      });
+      return;
+    }
     
-    setSelectedPlan(planId);
-    setIsLoading(true);
+    setSelectedPlanId(planId);
+    setIsLoadingCheckout(true);
 
     try {
       console.log(`Creating checkout for plan: ${planId}`);
-      
-      // Determine the mode based on the plan type
-      const mode = planId === 'trial' ? 'subscription' : 'subscription';
+      const mode = 'subscription'; // All plans are subscriptions
       
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: { 
-          tier_id: planId,
+          tier_id: planId, // Use the planId which should match Stripe Price/Product ID or metadata
           user_email: user.email,
           mode: mode
         }
@@ -73,23 +78,9 @@ const Pricing = () => {
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
-      setSelectedPlan(null);
+      setIsLoadingCheckout(false);
+      setSelectedPlanId(null);
     }
-  };
-
-  const formatPrice = (price: number): string => {
-    if (price === 0) return 'Free';
-    return `$${price}`;
-  };
-
-  const getPriceSubtext = (tier: any): string => {
-    if (tier.price === 0) return '14 days free trial';
-    if (tier.isMonthly) return 'per month';
-    if (tier.id === 'starter') return 'per month + overages';
-    if (tier.id === 'professional') return 'per month + overages';
-    if (tier.id === 'enterprise') return 'per user/month';
-    return '';
   };
 
   if (pricingError) {
@@ -100,105 +91,46 @@ const Pricing = () => {
       >
         <div className="text-center py-12">
           <p className="text-red-500 mb-4">Error loading pricing plans: {pricingError}</p>
-          <p className="text-gray-400">Displaying default pricing plans</p>
         </div>
       </DashboardLayout>
     );
   }
+  
+  const actualPricingTiers: StripePricingTier[] = pricingTiers as StripePricingTier[];
+
 
   return (
     <DashboardLayout 
       title="Choose Your Plan" 
       description="Select the perfect pricing model for your business needs"
     >
-      {pricingLoading && (
+      {(pricingLoading || subscriptionLoading) && (
         <div className="mb-6 text-center">
-          <div className="text-sm text-gray-400">Loading pricing plans...</div>
+          <div className="text-sm text-gray-400">Loading plans...</div>
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
-        {pricingTiers.map((tier) => (
-          <Card 
-            key={tier.id} 
-            className={`relative bg-gray-800 border-gray-700 transition-all duration-300 hover:shadow-xl hover:scale-105 hover:-translate-y-2 shadow-lg ${
-              tier.popular ? 'border-2 border-blue-500 shadow-lg shadow-blue-500/20' : ''
-            }`}
-          >
-            {tier.badge && (
-              <div className="absolute -top-3 right-4">
-                <Badge className={`shadow-lg ${
-                  tier.badge === 'Free Trial' ? 'bg-green-600' : 'bg-blue-600'
-                } text-white`}>
-                  {tier.badge}
-                </Badge>
-              </div>
-            )}
-
-            {tier.popular && (
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                <Badge className="bg-blue-600 text-white shadow-lg">Most Popular</Badge>
-              </div>
-            )}
-
-            <CardHeader className="text-center pb-4">
-              <div className="mb-3">
-                <CardTitle className="text-xl font-semibold text-white mb-1">
-                  {tier.name}
-                </CardTitle>
-                <div className="text-sm text-purple-300">{tier.subtitle}</div>
-              </div>
-              
-              <p className="text-gray-400 text-sm mb-6">{tier.description}</p>
-              
-              <div className="mb-4">
-                <div className="text-3xl font-bold text-white mb-1">{formatPrice(tier.price)}</div>
-                <div className="text-gray-400 text-sm">{getPriceSubtext(tier)}</div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-6">
-              <div className="space-y-3">
-                {tier.features.map((feature, index) => (
-                  <div key={index} className="flex items-center space-x-3">
-                    <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
-                    <span className="text-sm text-gray-300">{feature}</span>
-                  </div>
-                ))}
-              </div>
-
-              {tier.usageLimits && (
-                <div className="bg-gray-700/50 rounded-lg p-4 shadow-inner">
-                  <h4 className="text-sm font-medium text-gray-300 mb-3 uppercase tracking-wide">
-                    Usage Limits
-                  </h4>
-                  <div className="space-y-2">
-                    {tier.usageLimits.map((limit, index) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="text-gray-400">{limit.name}</span>
-                        <span className="text-white font-medium">{limit.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <Button 
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200 hover:shadow-lg hover:scale-105 shadow-md"
-                onClick={() => handleSelectPlan(tier.id)}
-                disabled={isLoading || selectedPlan === tier.id}
-              >
-                {isLoading && selectedPlan === tier.id ? 'Processing...' : tier.buttonText}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+        {actualPricingTiers.map((tier) => {
+          const isCurrentPlan = subscriptionStatus.subscribed && subscriptionStatus.subscription_tier === tier.id;
+          const isProcessing = isLoadingCheckout && selectedPlanId === tier.id;
+          return (
+            <PricingCard
+              key={tier.id}
+              tier={tier}
+              onSelectPlan={handleSelectPlan}
+              isLoading={isProcessing}
+              isCurrentPlan={isCurrentPlan}
+              isSubscribedToAnyPlan={subscriptionStatus.subscribed}
+            />
+          );
+        })}
       </div>
 
-      {pricingTiers.length === 0 && !pricingLoading && (
+      {actualPricingTiers.length === 0 && !pricingLoading && (
         <div className="text-center py-12">
-          <p className="text-gray-400 mb-4">No pricing plans available</p>
-          <p className="text-gray-500 text-sm">Please check your Stripe configuration or contact support.</p>
+          <p className="text-gray-400 mb-4">No pricing plans available at the moment.</p>
+          <p className="text-gray-500 text-sm">Please check back later or contact support.</p>
         </div>
       )}
     </DashboardLayout>
