@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -63,17 +64,6 @@ serve(async (req) => {
     });
 
     logStep("All products fetched from Stripe", { count: products.data.length });
-
-    // --- FETCH ALL PRICES FOR EACH PRODUCT ---
-    for (const product of products.data) {
-      const priceList = await stripe.prices.list({
-        product: product.id,
-        limit: 100,
-        expand: ['data.tiers'], // for completeness (tiers for tiered pricing)
-      });
-      // Attach all prices to the product object
-      product.prices = priceList.data;
-    }
 
     // Separate app products from all products
     const appProducts = products.data.filter(product => {
