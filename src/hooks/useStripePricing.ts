@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-export interface StripePricingTier {
+interface StripePricingTier {
   id: string;
   name: string;
   subtitle: string;
