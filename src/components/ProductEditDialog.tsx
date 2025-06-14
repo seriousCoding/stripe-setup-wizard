@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Trash2, Plus, Save, X, Edit2, DollarSign, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { StripeProduct, StripePrice } from '@/services/stripeService';
+import { StripeProduct, StripePrice, stripeService } from '@/services/stripeService';
 import { PriceEditForm } from './PriceEditForm';
 
 interface ProductEditDialogProps {
