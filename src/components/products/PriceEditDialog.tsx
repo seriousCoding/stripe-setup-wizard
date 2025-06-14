@@ -1,9 +1,8 @@
 
 import React from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { PriceEditForm } from '@/components/PriceEditForm'; // Assuming this is the correct path
+import { PriceEditForm } from '@/components/PriceEditForm';
 import { StripePrice } from '@/services/stripeService';
-import { TooltipProvider } from '@/components/ui/tooltip'; // Added TooltipProvider
 
 interface PriceEditDialogProps {
   open: boolean;
@@ -23,19 +22,16 @@ export const PriceEditDialog: React.FC<PriceEditDialogProps> = ({
         Update allowed fields for this Stripe price. Changes are immediate—save to apply, or Cancel to discard.
       </DialogDescription>
       {priceToEdit && (
-        <TooltipProvider> {/* Added TooltipProvider here */}
-          <div className="py-2">
-            <PriceEditForm
-              price={priceToEdit}
-              onPriceUpdated={onPriceUpdated}
-              onCancel={onCancel}
-            />
-          </div>
-        </TooltipProvider>
+        <div className="py-2">
+          <PriceEditForm
+            price={priceToEdit}
+            onPriceUpdated={onPriceUpdated}
+            onCancel={onCancel}
+          />
+        </div>
       )}
     </DialogContent>
   </Dialog>
 );
 
 export default PriceEditDialog;
-
