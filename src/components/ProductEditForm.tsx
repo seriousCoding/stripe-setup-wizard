@@ -27,7 +27,7 @@ export const ProductEditForm: React.FC<ProductEditFormProps> = ({
     name: product.name,
     description: product.description || "",
     active: product.active,
-    metadata: { ...product.metadata }, // removed '|| {}' to fix TS2872
+    metadata: { ...product.metadata } || {},
   });
   const [isLoading, setIsLoading] = useState(false);
   const [newMetadataKey, setNewMetadataKey] = useState("");
@@ -148,7 +148,7 @@ export const ProductEditForm: React.FC<ProductEditFormProps> = ({
                     value={newMetadataKey}
                     onChange={e => setNewMetadataKey(e.target.value)}
                     className="flex-1"
-                  />
+                    />
                   <Input
                     placeholder="Value"
                     value={newMetadataValue}
@@ -182,5 +182,4 @@ export const ProductEditForm: React.FC<ProductEditFormProps> = ({
       </CardContent>
     </Card>
   );
-};
-
+}
