@@ -1,14 +1,13 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-import { corsHeaders } from "../_shared/cors.ts";
-import { logStep } from "../_shared/logger.ts";
-import { METER_CONFIGS } from "./_config/meter-configs.ts"; // Adjusted path
-import { authenticateUser } from "./_services/auth-service.ts"; // Adjusted path
-import { processMeters } from "./_services/meter-service.ts"; // Adjusted path
-import { processBillingPlans } from "./_services/plan-service.ts"; // Adjusted path
+import { corsHeaders } from "../../_shared/cors.ts";
+import { logStep } from "../../_shared/logger.ts";
+import { METER_CONFIGS } from "./_config/meter-configs.ts";
+import { authenticateUser } from "./_services/auth-service.ts";
+import { processMeters } from "./_services/meter-service.ts";
+import { processBillingPlans } from "./_services/plan-service.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {

@@ -1,6 +1,6 @@
 
 import Stripe from "https://esm.sh/stripe@14.21.0";
-import { logStep } from "../../../_shared/logger.ts";
+import { logStep } from "../../_shared/logger.ts"; // Corrected path
 import { BILLING_PLANS, BillingPlan } from "../_config/plan-configs.ts";
 
 interface PlanProcessingResult {
@@ -22,6 +22,7 @@ export async function processBillingPlans(
   stripeMeterIdsMap: { [key: string]: string | undefined }
 ): Promise<PlanProcessingResult[]> {
   const results: PlanProcessingResult[] = [];
+  // Safely access meter IDs
   const transactionMeterId = stripeMeterIdsMap['transaction_usage'];
   const aiProcessingMeterId = stripeMeterIdsMap['ai_processing_usage'];
 
@@ -32,21 +33,22 @@ export async function processBillingPlans(
         name: plan.name,
         description: plan.description,
         metadata: {
-          ...plan.metadata,
-          created_via: 'stripe_billing_pilot'
+          ...plan.metadata, // Spread existing metadata
+          created_via: 'stripe_billing_pilot' // Add or update specific metadata
         }
       });
       logStep(`Product created: ${product.id}`, { name: product.name });
 
+      // Main recurring price
       const priceData: Stripe.PriceCreateParams = {
         currency: 'usd',
         product: product.id,
         recurring: {
           interval: plan.interval,
-          usage_type: 'licensed'
+          usage_type: 'licensed' // Base price is licensed
         },
-        unit_amount: plan.price,
-        metadata: {
+        unit_amount: plan.price, // Assuming plan.price is in cents
+        metadata: { // Add metadata to price as well
           ...plan.metadata,
           price_type: 'recurring_base'
         }
@@ -55,21 +57,23 @@ export async function processBillingPlans(
       logStep(`Main recurring price created: ${price.id}`, { amount: plan.price });
 
       const additionalPricesObjects = [];
+
+      // Overage prices if applicable and meters are available
       if (plan.metadata.overage_rate) {
         if (transactionMeterId) {
           const transactionOveragePrice = await stripe.prices.create({
             currency: 'usd',
             product: product.id,
             billing_scheme: 'tiered',
-            tiers_mode: 'graduated',
+            tiers_mode: 'graduated', // Example: graduated, could be volume
             recurring: {
-              interval: 'month',
+              interval: 'month', // Overage typically aligns with base plan interval
               usage_type: 'metered',
-              meter: transactionMeterId
+              meter: transactionMeterId // Link to the transaction meter
             },
-            tiers: [
-              { up_to: parseInt(plan.metadata.usage_limit_transactions) || 1000, unit_amount: 0, flat_amount: 0 },
-              { up_to: null, unit_amount: Math.round(parseFloat(plan.metadata.overage_rate) * 100), flat_amount: 0 }
+            tiers: [ // Define tiers for overage
+              { up_to: parseInt(plan.metadata.usage_limit_transactions) || 1000, unit_amount: 0, flat_amount: 0 }, // Free tier up to limit
+              { up_to: null, unit_amount: Math.round(parseFloat(plan.metadata.overage_rate) * 100), flat_amount: 0 } // Overage rate
             ],
             metadata: { ...plan.metadata, price_type: 'overage_transactions', meter_id: transactionMeterId }
           });
@@ -92,7 +96,7 @@ export async function processBillingPlans(
             },
             tiers: [
               { up_to: parseInt(plan.metadata.usage_limit_ai_processing) || 100, unit_amount: 0, flat_amount: 0 },
-              { up_to: null, unit_amount: Math.round(parseFloat(plan.metadata.overage_rate) * 100), flat_amount: 0 }
+              { up_to: null, unit_amount: Math.round(parseFloat(plan.metadata.overage_rate) * 100), flat_amount: 0 } // Assuming same overage rate for simplicity
             ],
             metadata: { ...plan.metadata, price_type: 'overage_ai_processing', meter_id: aiProcessingMeterId }
           });
@@ -102,7 +106,8 @@ export async function processBillingPlans(
           logStep(`Skipping AI processing overage price for ${plan.name} as AI processing meter ID is unavailable.`);
         }
       }
-
+      
+      // Set the default price for the product
       await stripe.products.update(product.id, { default_price: price.id });
 
       results.push({
@@ -124,6 +129,10 @@ export async function processBillingPlans(
       results.push({
         tier_id: plan.id,
         name: plan.name,
+        // subtitle: plan.subtitle, // Ensure these are available in plan or handle undefined
+        // amount: plan.price,
+        // type: plan.type,
+        // interval: plan.interval,
         error: error.message,
         status: 'error'
       });
@@ -131,3 +140,4 @@ export async function processBillingPlans(
   }
   return results;
 }
+
