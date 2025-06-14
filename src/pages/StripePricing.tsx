@@ -1,5 +1,5 @@
+
 import React, { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,8 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useToast } from '@/hooks/use-toast';
-import { stripeService } from '@/services/stripeService';
+// Removed useToast import, it's now in the hook
+// Removed stripeService import, it's now in the hook
 import { Separator } from '@/components/ui/separator';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { InfoIconWithTooltip } from '@/components/InfoIconWithTooltip';
@@ -18,203 +18,26 @@ import { BillingPeriodSection } from '@/components/pricing-form/BillingPeriodSec
 import { UsageTransformationSection } from '@/components/pricing-form/UsageTransformationSection';
 import { AdvancedOptionsSection } from '@/components/pricing-form/AdvancedOptionsSection';
 import { PricingPreviewPanel } from '@/components/pricing-form/PricingPreviewPanel';
+import { useStripePricingForm, PricingFormData } from '@/hooks/useStripePricingForm'; // Import the hook and type
 
-export interface PricingFormData {
-  billingType: 'recurring' | 'oneOff';
-  pricingModel: 'flatRate' | 'package' | 'tiered' | 'usageBased' | 'payAsYouGo';
-  amount: string;
-  currency: string;
-  taxBehavior: 'inclusive' | 'exclusive' | 'unspecified';
-  interval: 'day' | 'week' | 'month' | 'year' | 'quarter' | 'semiannual';
-  description: string; // Price description (internal)
-  lookupKey: string;
-  productName: string;
-  productDescription: string;
-  trialPeriodDays: string;
-  usageType: 'licensed' | 'metered';
-  meteredAggregation: 'sum' | 'last_during_period' | 'last_ever' | 'max';
-  meteredEventName: string;
-  nickname: string;
-  billingScheme: 'per_unit' | 'tiered';
-  transformQuantityDivideBy: string;
-  transformQuantityRound: 'up' | 'down';
-}
+// PricingFormData is now exported from useStripePricingForm.ts
 
 const StripePricing = () => {
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { form, isSubmitting, onSubmit } = useStripePricingForm();
   const [previewAmount, setPreviewAmount] = useState('0.00');
   const [previewQuantity, setPreviewQuantity] = useState('1');
-
-  const form = useForm<PricingFormData>({
-    defaultValues: {
-      billingType: 'recurring',
-      pricingModel: 'flatRate',
-      amount: '',
-      currency: 'USD',
-      taxBehavior: 'exclusive',
-      interval: 'month',
-      description: '',
-      lookupKey: '',
-      productName: '',
-      productDescription: '',
-      trialPeriodDays: '',
-      usageType: 'licensed',
-      billingScheme: 'per_unit',
-      meteredAggregation: 'sum',
-      meteredEventName: '',
-      nickname: '',
-      transformQuantityDivideBy: '',
-      transformQuantityRound: 'up',
-    },
-  });
 
   const watchedValues = form.watch();
 
   useEffect(() => {
     const amountValue = parseFloat(watchedValues.amount || '0');
-    const quantityValue = parseInt(previewQuantity || '1'); // Use previewQuantity for calculation
+    const quantityValue = parseInt(previewQuantity || '1');
     const total = (amountValue * quantityValue).toFixed(2);
     setPreviewAmount(total);
+    // The useEffect that was here for updating form.setValue('amount', etc.)
+    // has been moved to the useStripePricingForm hook.
+  }, [watchedValues.amount, previewQuantity]);
 
-    // Logic based on pricingModel
-    const { pricingModel, billingType } = watchedValues;
-    let newAmount = watchedValues.amount;
-    let newUsageType = watchedValues.usageType;
-    let newBillingScheme = watchedValues.billingScheme;
-
-    if (pricingModel === 'payAsYouGo') {
-      newAmount = '0';
-      if (billingType === 'recurring') newUsageType = 'metered';
-      newBillingScheme = 'per_unit';
-    } else if (pricingModel === 'usageBased') {
-      if (billingType === 'recurring') newUsageType = 'metered';
-      newBillingScheme = 'per_unit';
-    } else if (pricingModel === 'tiered') {
-      newBillingScheme = 'tiered';
-      // For tiered, amount field might represent a base fee or be unused if tiers define all costs
-      // For now, we keep 'amount' field active but it might need reconsideration for tiered model
-    } else { // flatRate, package
-      if (billingType === 'recurring') newUsageType = 'licensed';
-      newBillingScheme = 'per_unit';
-    }
-
-    if (newAmount !== watchedValues.amount) form.setValue('amount', newAmount);
-    if (newUsageType !== watchedValues.usageType && billingType === 'recurring') form.setValue('usageType', newUsageType);
-    if (newBillingScheme !== watchedValues.billingScheme) form.setValue('billingScheme', newBillingScheme);
-
-  }, [
-    watchedValues.amount,
-    previewQuantity,
-    watchedValues.pricingModel,
-    watchedValues.billingType,
-    watchedValues.usageType,
-    watchedValues.billingScheme,
-    form
-  ]);
-
-  const onSubmit = async (data: PricingFormData) => {
-    setIsSubmitting(true);
-    try {
-      console.log('Creating Stripe pricing with data:', data);
-
-      const productResult = await stripeService.createProduct({
-        name: data.productName || `Product for ${data.pricingModel} pricing`,
-        description: data.productDescription || data.description || undefined,
-      });
-
-      if (productResult.error || !productResult.product) {
-        throw new Error(productResult.error || "Failed to create product");
-      }
-
-      const priceData: any = {
-        product: productResult.product.id,
-        currency: data.currency.toLowerCase(),
-        nickname: data.nickname || undefined,
-        tax_behavior: data.taxBehavior,
-        lookup_key: data.lookupKey || undefined,
-        billing_scheme: data.billingScheme,
-        metadata: {
-          pricing_model: data.pricingModel,
-        },
-      };
-      
-      if (data.billingScheme !== 'tiered') {
-        priceData.unit_amount = parseFloat(data.amount); 
-      } else {
-        toast({ title: "Tiered Pricing Note", description: "UI for defining specific tiers is not yet implemented. Backend supports it if data is passed.", duration: 7000});
-      }
-
-      if (data.transformQuantityDivideBy && data.billingScheme !== 'tiered') {
-        priceData.transform_quantity = {
-          enabled: true,
-          divide_by: parseInt(data.transformQuantityDivideBy),
-          round: data.transformQuantityRound,
-        };
-      }
-      
-      if (data.billingType === 'recurring') {
-        let interval: 'day' | 'week' | 'month' | 'year' = 'month';
-        let interval_count = 1;
-
-        switch (data.interval) {
-          case 'quarter':
-            interval = 'month';
-            interval_count = 3;
-            break;
-          case 'semiannual':
-            interval = 'month';
-            interval_count = 6;
-            break;
-          default:
-            interval = data.interval as 'day' | 'week' | 'month' | 'year';
-            break;
-        }
-
-        priceData.recurring = {
-          interval,
-          interval_count,
-          usage_type: data.usageType,
-        };
-        
-        if (data.trialPeriodDays) {
-          priceData.recurring.trial_period_days = parseInt(data.trialPeriodDays);
-        }
-
-        if (data.usageType === 'metered') {
-           priceData.recurring.aggregate_usage = data.meteredAggregation;
-           if (data.meteredEventName) {
-               if (!priceData.metadata) priceData.metadata = {};
-               priceData.metadata.event_name = data.meteredEventName;
-           }
-        }
-      }
-      
-      const priceResult = await stripeService.createPrice(priceData);
-
-      if (priceResult.error) {
-        throw new Error(priceResult.error);
-      }
-
-      toast({
-        title: "Success!",
-        description: `Stripe product and price created successfully. Price ID: ${priceResult.price.id}`,
-      });
-
-      form.reset();
-      setPreviewQuantity('1');
-
-    } catch (error: any) {
-      console.error('Error creating Stripe pricing:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create Stripe pricing",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const formatCurrency = (amount: string) => {
     const num = parseFloat(amount || '0');
@@ -272,8 +95,11 @@ const StripePricing = () => {
                               value={field.value}
                               onValueChange={(value) => {
                                 field.onChange(value);
+                                // This logic is now primarily handled by the useEffect in the hook,
+                                // but direct setValue here ensures immediate UI feedback if needed or for fields not covered by the hook's effect.
+                                // The hook's useEffect will also run and ensure consistency.
                                 if (value === 'oneOff') {
-                                  form.setValue('usageType', 'licensed');
+                                  form.setValue('usageType', 'licensed'); // Ensure usageType is licensed for oneOff
                                 }
                               }}
                               className="flex space-x-6"
