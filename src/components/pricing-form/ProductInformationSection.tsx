@@ -1,10 +1,11 @@
+
 import React from 'react';
 import { Control } from 'react-hook-form';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { InfoIconWithTooltip } from '@/components/InfoIconWithTooltip';
-import { PricingFormData } from '@/hooks/useStripePricingForm'; // Updated import
+import { PricingFormData } from '@/pages/StripePricing'; // Assuming PricingFormData is exported
 
 interface ProductInformationSectionProps {
   control: Control<PricingFormData>;

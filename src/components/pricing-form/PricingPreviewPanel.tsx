@@ -1,9 +1,10 @@
+
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { PricingFormData } from '@/hooks/useStripePricingForm';
+import { PricingFormData } from '@/pages/StripePricing';
 
 interface PricingPreviewPanelProps {
   watchedValues: PricingFormData;

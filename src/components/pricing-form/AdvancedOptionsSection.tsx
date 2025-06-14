@@ -1,9 +1,10 @@
+
 import React from 'react';
 import { Control } from 'react-hook-form';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { InfoIconWithTooltip } from '@/components/InfoIconWithTooltip';
-import { PricingFormData } from '@/hooks/useStripePricingForm';
+import { PricingFormData } from '@/pages/StripePricing';
 
 interface AdvancedOptionsSectionProps {
   control: Control<PricingFormData>;
